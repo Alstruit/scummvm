@@ -63,7 +63,7 @@ void ZoombiniInteractiveSlides::loadFeatures() {
 	// At highest difficulty, load NODE/PATH for walking
 	// IDA: if (slides_difficultyLevel == 3) node_loadNodeAndPath(0x3E8u)
 	if (_difficultyLevel == 3) {
-		// TODO: loadNodeAndPath(1000); — NODE/PATH loading not yet implemented
+		loadNODE(ZmbArchiveKind::kPage, 1000);
 	}
 
 	// Load terrain barrier bitmap (tBMP 100)

@@ -81,6 +81,17 @@ protected:
 		kVirtualFeatureTownZoombini = 9000,
 	};
 
+	// -----------------------------------------------------------------------
+	// Shape indices within SHPL 1100 (town overlays and buttons)
+	// -----------------------------------------------------------------------
+	enum ShapeId : uint16 {
+		// Exit gate scroll buttons (from picker_renderExitGateScrb / picker_renderHotspot_45876F)
+		kShape1100_ExitGateLeftNormal_05 = 5,
+		kShape1100_ExitGateLeftPressed_06 = 6,
+		kShape1100_ExitGateRightNormal_24 = 24,
+		kShape1100_ExitGateRightPressed_25 = 25,
+	};
+
 	/**
 	 * Whether all 625 Zoombinis have been stored in town.
 	 */

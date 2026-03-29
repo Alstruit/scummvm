@@ -106,7 +106,9 @@ void ZoombiniInteractiveBridge::open() {
 }
 
 void ZoombiniInteractiveBridge::setBackgroundMusic() {
-	// Bridge has no dedicated BGM; ambient audio comes from water/troll SCRS animations
+	// Bridge intentionally has no dedicated BGM in the original game.
+	// IDA: bridge_initPuzzleState (0x414C83) has no call to playBgm/loadBgmTrack.
+	// Ambient audio comes from water/troll SCRS animations.
 }
 
 void ZoombiniInteractiveBridge::setBackgroundBitmap() {

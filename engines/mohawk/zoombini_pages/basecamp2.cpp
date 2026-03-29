@@ -48,6 +48,9 @@ void ZoombiniInteractiveBasecampTwo::open() {
 }
 
 void ZoombiniInteractiveBasecampTwo::setBackgroundMusic() {
+	// BC2 intentionally has no background music in the original game.
+	// IDA: bc2_initAndSetupPuzzle (0x412E68) has no call to playBgm/loadBgmTrack.
+	// Ambient audio comes from SCRS feature animations (storage scroll, transport, etc.).
 }
 
 void ZoombiniInteractiveBasecampTwo::setBackgroundBitmap() {
@@ -69,6 +72,10 @@ void ZoombiniInteractiveBasecampTwo::loadFeatures() {
 	_vm->_gfx->preloadImage(kResBitmapShape7000_Pedestal);
 	_vm->_gfx->preloadImage(kResBitmapShape8000_Storage);
 	_vm->_gfx->preloadImage(kResBitmapShape9000_Buttons);
+
+	// Load NODE/PATH for walk network
+	// IDA: node_loadNodeAndPath(0x3E8u)
+	loadNODE(ZmbArchiveKind::kPage, kResNode1000);
 
 	// Load terrain barrier bitmap (tBMP 100) for walkability checks.
 	// IDA: rmap_loadTerrainArchive(0x64) — 160x120 mask, pixel==1 means walkable.
@@ -442,9 +449,13 @@ void ZoombiniInteractiveBasecampTwo::buttons_postRender(ZmbFeature *feature) {
 
 bool ZoombiniInteractiveBasecampTwo::goButton_preRender(ZmbFeature *feature) {
 	// Sync _canGoVisible with _canGoEnabled each frame.
+	// IDA: The original just toggles between shapes 1 (enabled) and 15 (disabled)
+	// in renderButtons based on bridge_bAllZmbOnField. No separate animation SCRB.
 	if (_canGoEnabled != _canGoVisible) {
 		_canGoVisible = _canGoEnabled;
-		// TODO: show/hide go button animation if needed
+		// Go button state changed: mark the button feature dirty for re-render.
+		// The actual shape change (1 vs 15) happens in renderButtons().
+		feature->setSortRect(Common::Rect());
 	}
 	return true;
 }
@@ -710,9 +721,9 @@ void ZoombiniInteractiveBasecampTwo::renderButtons(bool blit, int group, bool pr
 			// Map/Return button
 			shapeIdx = kShape9000_MapNormal_05;
 		} else if (i == 3) {
-			// Save button — uses a SCRB hotspot path in the original; skip for now
-			// TODO: implement SCRB-based save button rendering
-			continue;
+			// Save/Help button — uses shape 24, rendered via drawShape
+			// IDA: slotIdx == 3 → result = 24, rendered with gfx_blitBitmapShape
+			shapeIdx = kShape9000_HelpNormal_24;
 		} else if (i >= 4 && i <= 7) {
 			// Scroll arrow buttons
 			hasScrollButton = true;
@@ -734,7 +745,10 @@ void ZoombiniInteractiveBasecampTwo::renderButtons(bool blit, int group, bool pr
 	}
 
 	if (blit && hasScrollButton) {
-		// TODO: blit dirty scroll-arrow region using blitActivePortToRect equivalent
+		// In the original, gfx_blitActivePortToRect was called here for immediate
+		// button feedback during scroll hold. In ScummVM, screen updates are handled
+		// by the main loop's flushScreens(), so we just mark the screen dirty.
+		_vm->_gfx->setDirty();
 	}
 }
 

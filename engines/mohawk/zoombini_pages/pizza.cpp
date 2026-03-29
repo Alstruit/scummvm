@@ -65,7 +65,7 @@ void ZoombiniInteractivePizza::loadFeatures() {
 
 	// Load NODE and PATH for walk network
 	// IDA: node_loadNodeAndPath(0x3E8u)
-	// TODO: loadNodeAndPath(1000); — NODE/PATH loading not yet implemented
+	loadNODE(ZmbArchiveKind::kPage, 1000);
 
 	// Load terrain barrier bitmap (tBMP 100)
 	// IDA: rmap_loadTerrainArchive(0x64u)

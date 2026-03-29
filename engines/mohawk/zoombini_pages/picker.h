@@ -251,6 +251,29 @@ protected:
 	const Common::Rect _helpButtonRect = Common::Rect(0x0258, 0x016D, 0x027F, 0x0192);
 
 	/**
+	 * Embark priority order: seat indices checked when selecting which snoid to animate.
+	 * IDA: dword_4A2D9A/4A2D9E = [11, 12, 6, 7]
+	 * These seats are in the upper-right corner, near the ladder.
+	 *
+	 * When 16 snoids are on the boat (0 remaining on picker), the Go button
+	 * animates one snoid climbing the ladder. The engine checks seats in this
+	 * priority order: if seat 11 is empty, check 12; if 12 is empty, check 6; etc.
+	 */
+	static const int16 kEmbarkOrder[4];
+
+	/**
+	 * Embark destination point on the boat.
+	 * IDA: pZmb->animDestPos = (544, 264)
+	 */
+	const Common::Point _embarkDestination = Common::Point(544, 264);
+
+	/**
+	 * Frame stagger between each embarking snoid.
+	 * IDA: 60 frames between each snoid's start
+	 */
+	static constexpr uint32 kEmbarkStagger = 60;
+
+	/**
 	 * Drop zone rect for the cave entrance (SCRB 4110 CaveMark area).
 	 * Dropping a dragged snoid inside this rect removes it from the board.
 	 * IDA: DRAW_ON_REG overlap between snoid and CaveMark position.
@@ -309,6 +332,29 @@ protected:
 	bool _pendingGoTransition = false;
 	bool _pendingGoTransitionHasSoundHandle = false;
 	Audio::SoundHandle _pendingGoTransitionSoundHandle;
+
+	/**
+	 * Snoids currently walking during embark animation.
+	 * Cleared when all snoids finish their walk animation.
+	 */
+	Common::Array<ZmbSnoid *> _embarkingSnoids;
+
+	/**
+	 * Seat-to-snoid mapping. Index is seat position (0-15), value is pointer to snoid.
+	 * Updated when snoids are generated or removed.
+	 */
+	ZmbSnoid *_seatToSnoid[16] = {nullptr};
+
+	/**
+	 * Find a snoid at or near the given seat position.
+	 * Used for embark animation to locate snoids by their seat.
+	 */
+	ZmbSnoid *findSnoidAtSeat(int16 seatIdx);
+
+	/**
+	 * Check if all embarking snoids have finished their walk animation.
+	 */
+	bool areAllEmbarkersDone() const;
 
 };
 

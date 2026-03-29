@@ -33,6 +33,8 @@
 
 namespace Mohawk {
 
+const int16 ZoombiniInteractivePicker::kEmbarkOrder[4] = {11, 12, 6, 7};
+
 ZoombiniInteractivePicker::ZoombiniInteractivePicker(MohawkEngine_Zoombini *vm) : ZoombiniInteractive(vm, ZoombiniPageType::kPicker), _previewSnoid(vm, 0, ZmbFeature::FLAG_00000001_TYPE_SNOID) {
 	_mode = kPickerMode_SelectZoombinis;
 	_isFirstVisit = _vm->_state->isFirstLaunch();
@@ -356,13 +358,48 @@ void ZoombiniInteractivePicker::updatePendingGoTransition() {
 	if (!_pendingGoTransition)
 		return;
 
+	// Wait for departure sound to finish
 	if (_pendingGoTransitionHasSoundHandle && _vm->_system->getMixer()->isSoundHandleActive(_pendingGoTransitionSoundHandle))
+		return;
+
+	// Wait for all embarking snoids to finish their walk animation
+	// IDA: puzzle_pendingTransitionTarget=7 polling
+	if (!areAllEmbarkersDone())
 		return;
 
 	_pendingGoTransition = false;
 	_pendingGoTransitionHasSoundHandle = false;
+	_embarkingSnoids.clear();
 	_vm->setNextPage(ZoombiniPageType::kXfer);
 	close();
+}
+
+ZmbSnoid *ZoombiniInteractivePicker::findSnoidAtSeat(int16 seatIdx) {
+	if (seatIdx < 0 || seatIdx >= 16)
+		return nullptr;
+	return _seatToSnoid[seatIdx];
+}
+
+bool ZoombiniInteractivePicker::areAllEmbarkersDone() const {
+	// Check if all embarking snoids have finished (either idle or walked off-screen right edge)
+	// IDA: departure polling similar to picker_tryTransition at 0x439E8F
+	for (ZmbSnoid *snoid : _embarkingSnoids) {
+		if (!snoid)
+			continue;
+
+		// Check if snoid has reached the right edge (off-screen)
+		const Common::Point pos = snoid->getPointLoc();
+		if (pos.x >= 640)
+			continue; // Snoid walked off screen - done
+
+		// Check if snoid has returned to idle state (reached destination)
+		if (snoid->getAnimState() == kSnoidAnimIdle)
+			continue; // Done animating
+
+		// Snoid is still walking
+		return false;
+	}
+	return true;
 }
 
 void ZoombiniInteractivePicker::pickerButtons_onButtonAction(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs) {
@@ -418,6 +455,8 @@ void ZoombiniInteractivePicker::pickerButtons_onButtonAction(ZmbFeature *feature
 			snoid->setFacingLeft(spawnPos.x > seatPos.x);
 			snoid->setAnimTargetPos(seatPos);
 			snoid->setAnimState(kSnoidAnimDepart, nullptr);
+			// Track seat-to-snoid mapping for embark animation
+			_seatToSnoid[zmbOnScreen] = snoid;
 		}
 
 		// Increment total generated count
@@ -702,11 +741,12 @@ ZmbEventHandleResult ZoombiniInteractivePicker::onLButtonUp(const Common::Point 
 void ZoombiniInteractivePicker::repackSeatPositions() {
 	// IDA: picker_getNextSeatOrRepack(0, 0)
 	// Reassign all remaining snoids to sequential seat positions.
-	// Also rebuild the active pack entries.
+	// Also rebuild the active pack entries and seat-to-snoid mapping.
 	ZmbStateFile &f = _vm->_state->_f;
 
-	// Clear old pack entries
+	// Clear old pack entries and seat mapping
 	f._zmbPackActive._wPackZmbCount = 0;
+	memset(_seatToSnoid, 0, sizeof(_seatToSnoid));
 
 	uint16 seatIdx = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
@@ -720,6 +760,7 @@ void ZoombiniInteractivePicker::repackSeatPositions() {
 		s->setPointLoc(_zoombiniSeatPoints[seatIdx]);
 		s->setAnimState(kSnoidAnimIdle);
 		s->setupIdleHotspots();
+		_seatToSnoid[seatIdx] = s;
 
 		// Rebuild pack entry
 		ZmbStateActiveEntry &entry = f._zmbPackActive._entries[seatIdx];
@@ -738,7 +779,8 @@ void ZoombiniInteractivePicker::onGoButtonActivated() {
 	if (_pendingGoTransition)
 		return;
 
-	// IDA: puzzlePicker_buttonClickHandler_439EC2 case 5:
+	// IDA: puzzlePicker_buttonClickHandler_439EC2 case 6
+	// Play departure sound 996
 	Audio::SoundHandle *departSfxHandle = _vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound0996_DepartSFX),
 																Audio::Mixer::kSFXSoundType);
 
@@ -748,10 +790,39 @@ void ZoombiniInteractivePicker::onGoButtonActivated() {
 	f._zmbPackIsle._wPackZmbCount = 0;
 
 	_vm->_xferSrcSiPage = ZMB_SI_PICKER_01;
-
 	setGoButtonsEnabled(false);
-	// Keep Picker visible until SFX 996 (depart) finishes, then switch to XFER.
-	// This matches original timing and avoids cutting off the departure audio.
+
+	// Clear embarking snoid list for new departure
+	_embarkingSnoids.clear();
+
+	// IDA: Only ONE snoid embarks! The loop condition is `ui_bDragLockActive < 1`
+	// which means only the first idle snoid from priority seats [11, 12, 6, 7] animates.
+	// This snoid walks to the embark destination (544, 264) on the boat.
+	// IDA: dword_4A2D9A = [11, 12], dword_4A2D9E = [6, 7]
+	for (uint16 i = 0; i < 4; i++) {
+		int16 seatIdx = kEmbarkOrder[i];
+		if (seatIdx < 0 || seatIdx >= 16)
+			continue;
+
+		ZmbSnoid *snoid = _seatToSnoid[seatIdx];
+		if (!snoid)
+			continue;
+
+		// Only take snoids that are idle (not still walking in, etc.)
+		if (snoid->getAnimState() != kSnoidAnimIdle)
+			continue;
+
+		// Set destination and begin walking animation
+		// IDA: pZmb->animDestPos = (544, 264); animateZoombini(0, 7, pZmb);
+		snoid->setAnimTargetPos(_embarkDestination);
+		snoid->setAnimState(kSnoidAnimDepart, nullptr);
+
+		_embarkingSnoids.push_back(snoid);
+		// IDA: ui_bDragLockActive < 1 means only ONE snoid - break after first
+		break;
+	}
+
+	// Keep Picker visible until embark animation and SFX 996 finish, then switch to XFER.
 	_pendingGoTransition = true;
 	_pendingGoTransitionHasSoundHandle = departSfxHandle != nullptr;
 	if (departSfxHandle)
@@ -879,6 +950,8 @@ void ZoombiniInteractivePicker::randomizeTraitSelection() {
 					snoid->setDelayUntilFrame(nextStartFrame);
 					snoid->deactivateRender();
 				}
+				// Track seat-to-snoid mapping for embark animation
+				_seatToSnoid[zmbOnScreen] = snoid;
 			}
 
 			++f._zmbGeneratedCount;
@@ -935,6 +1008,9 @@ int16 ZoombiniInteractivePicker::loadZoombinisFromPack(ZmbStateActivePack &pack)
 	int16 count = 0;
 	uint16 occupiedPosIdx = 0;
 
+	// Clear seat-to-snoid mapping
+	memset(_seatToSnoid, 0, sizeof(_seatToSnoid));
+
 	for (int16 i = 0; i < pack._wPackZmbCount; i++) {
 		ZmbStateActiveEntry &entry = pack._entries[i];
 
@@ -951,7 +1027,6 @@ int16 ZoombiniInteractivePicker::loadZoombinisFromPack(ZmbStateActivePack &pack)
 		if (16 <= occupiedPosIdx)
 			continue;
 		Common::Point pos = _zoombiniSeatPoints[occupiedPosIdx];
-		occupiedPosIdx++;
 
 		// Create ZmbSnoid from pack entry
 		uint16 snoidId = kSnoidPackBase + _nextPackSnoidId++;
@@ -962,8 +1037,11 @@ int16 ZoombiniInteractivePicker::loadZoombinisFromPack(ZmbStateActivePack &pack)
 			snoid->_name = entry.getU32Name(_vm);
 			snoid->_packIsOccupied = true;
 			snoid->setupIdleHotspots();
+			// Track seat-to-snoid mapping for embark animation
+			_seatToSnoid[occupiedPosIdx] = snoid;
 		}
 
+		occupiedPosIdx++;
 		count++;
 	}
 

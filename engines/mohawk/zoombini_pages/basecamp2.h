@@ -151,6 +151,9 @@ protected:
 		kShape9000_ScrollRMaxNormal_13 = 13,
 		kShape9000_ScrollRMaxPressed_14 = 14,
 		kShape9000_GoDisabled_15 = 15,
+		// Help/Save button (slot 3 in bridge_drawSegmentsSCRB, IDA: shape 24)
+		kShape9000_HelpNormal_24 = 24,
+		kShape9000_HelpPressed_25 = 25,
 	};
 
 	// -----------------------------------------------------------------------

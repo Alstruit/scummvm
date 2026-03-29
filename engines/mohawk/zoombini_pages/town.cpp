@@ -291,8 +291,15 @@ void ZoombiniInteractiveTown::loadFeatures() {
 	} else if (difficultyId == ZMB_DIFFICULTY_LEVEL3_05) {
 		_entrySoundRes = ZmbResource(ZmbArchiveKind::kSystem, kResSound20086_Voice);
 	} else {
-		// Default: pick a random ambient sound
-		// TODO: Implement sub_4588ED - random ambient sound selection
+		// Default: compute route-based sound ID from maze page flag.
+		// IDA: rodmap_getScrbIdFromRoute (0x4588ED): ((pageFlagMaze - 1) & 0xFFF) % 3 + 3000, clamped to [3000, 3002].
+		uint16 mazePF = _vm->_state->_f._pageFlagMaze;
+		int16 soundId = ((mazePF - 1) & 0x0FFF) % 3 + 3000;
+		if (soundId < 3000)
+			soundId = 3000;
+		if (soundId >= 3003)
+			soundId = 3002;
+		_entrySoundRes = ZmbResource(ZmbArchiveKind::kSystem, soundId);
 		_playEntrySoundImmediately = true;
 	}
 
@@ -365,8 +372,27 @@ ZmbRenderResult ZoombiniInteractiveTown::townZoombini_render(ZmbFeature *feature
 
 void ZoombiniInteractiveTown::townZoombini_postRender(ZmbFeature *feature) {
 	// Post-render: renders exit gate scroll buttons at overlay positions.
-	// Original: town_onPostRenderButtons calls picker_renderExitGateScrb for buttons 1 and 2.
-	// TODO: Implement scroll button rendering when town panoramic scroll is added.
+	// Original: town_onPostRenderButtons (0x45880F) calls picker_renderExitGateScrb
+	// for buttons 1 (left gate, shape 5) and 2 (right gate, shape 24).
+	//
+	// IDA: picker_renderHotspot_45876F
+	// - buttonIdx 1 → shape 5 (normal), 6 (pressed) — left gate exit
+	// - buttonIdx 2 → shape 24 (normal), 25 (pressed) — right gate exit
+	//
+	// Position data from off_4A71B4 + 18*buttonIdx (RECT16 with x,y at offsets 0,2):
+	// - Button 1: (600, 403)
+	// - Button 2: (600, 441)
+
+	ZoombiniGraphics::ScreenKind screenKind = ZoombiniGraphics::kShapeScreen;
+	ZmbResource shapeBitmap = ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100);
+
+	// Render left exit gate button (shape 5, button index 1)
+	_vm->_gfx->drawShape(screenKind, shapeBitmap, kShape1100_ExitGateLeftNormal_05,
+						 Common::Point(600, 403));
+
+	// Render right exit gate button (shape 24, button index 2)
+	_vm->_gfx->drawShape(screenKind, shapeBitmap, kShape1100_ExitGateRightNormal_24,
+						 Common::Point(600, 441));
 }
 
 void ZoombiniInteractiveTown::overlay_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {

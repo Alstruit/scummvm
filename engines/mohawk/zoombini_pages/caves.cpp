@@ -68,6 +68,10 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 	// IDA: rmap_loadTerrainArchive(0x64u)
 	loadTerrainBitmap(100);
 
+	// Load NODE/PATH for walk network
+	// IDA: node_loadNodeAndPath(0x3E8u)
+	loadNODE(ZmbArchiveKind::kPage, 1000);
+
 	// Load feature groups
 	// IDA: scrb_useFeatureGroup(0, 0, 6000) — entrance animations
 	// IDA: scrb_useFeatureGroup(0, 1, 9000) — overlays
