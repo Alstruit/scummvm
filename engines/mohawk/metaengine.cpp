@@ -353,6 +353,12 @@ void MohawkMetaEngine::registerDefaultSettings(const Common::String &target) con
 		ConfMan.flushToDisk();
 	}
 
+#ifdef ENABLE_ZOOMBINI
+	if (gameId == "zoombini") {
+		ConfMan.registerDefault("brighten_palette", false);
+	}
+#endif
+
 	return MetaEngine::registerDefaultSettings(target);
 }
 
@@ -367,6 +373,12 @@ GUI::OptionsContainerWidget *MohawkMetaEngine::buildEngineOptionsWidget(GUI::Gui
 #ifdef ENABLE_RIVEN
 	if (gameId == "riven") {
 		return new Mohawk::RivenOptionsWidget(boss, name, target);
+	}
+#endif
+
+#ifdef ENABLE_ZOOMBINI
+	if (gameId == "zoombini") {
+		return new Mohawk::ZoombiniOptionsWidget(boss, name, target);
 	}
 #endif
 

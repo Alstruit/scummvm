@@ -20,6 +20,7 @@
  */
 #include "mohawk/zoombini_resource.h"
 
+#include "common/config-manager.h"
 #include "common/substream.h"
 #include "common/system.h"
 #include "common/textconsole.h"
@@ -773,6 +774,17 @@ bool ZoombiniGraphics::readPalette(uint16 id, byte *destBuf, size_t destBufSize)
 	}
 
 	delete shplStream;
+
+	// Apply brightness adjustment if enabled (matches original readSHPLbody_4512A5 behavior)
+	if (ConfMan.getBool("brighten_palette")) {
+		for (uint16 i = paletteColorStart; i < paletteColorStart + paletteColorCount; i++) {
+			for (int ch = 0; ch < 3; ch++) {
+				byte &v = destBuf[i * 3 + ch];
+				if (v != 0)
+					v = v + 31 - (v >> 3);
+			}
+		}
+	}
 
 	return true;
 }

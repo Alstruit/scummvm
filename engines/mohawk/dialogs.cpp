@@ -478,4 +478,44 @@ bool MohawkDefaultOptionsWidget::save() {
 	return true;
 }
 
+#ifdef ENABLE_ZOOMBINI
+
+ZoombiniOptionsWidget::ZoombiniOptionsWidget(GuiObject *boss, const Common::String &name, const Common::String &domain) :
+	OptionsContainerWidget(boss, name, "ZoombiniEngineOptionsDialog", domain) {
+
+	_audioPopFixCheckbox = new GUI::CheckboxWidget(widgetsBoss(), "ZoombiniEngineOptionsDialog.AudioDiscontinuityFix",
+		_("Fix audio pops/clicks"),
+		_("Reduces audible pops at the end of some sound effects."));
+
+	_brightenPaletteCheckbox = new GUI::CheckboxWidget(widgetsBoss(), "ZoombiniEngineOptionsDialog.BrightenPalette",
+		_("Brighten palette (original behavior)"),
+		_("Applies the brightness adjustment to SHPL palettes as the original engine does."));
+}
+
+ZoombiniOptionsWidget::~ZoombiniOptionsWidget() {
+}
+
+void ZoombiniOptionsWidget::defineLayout(GUI::ThemeEval &layouts, const Common::String &layoutName, const Common::String &overlayedLayout) const {
+	layouts.addDialog(layoutName, overlayedLayout)
+		.addLayout(GUI::ThemeLayout::kLayoutVertical)
+			.addPadding(0, 0, 0, 0)
+			.addWidget("AudioDiscontinuityFix", "Checkbox")
+			.addWidget("BrightenPalette", "Checkbox")
+		.closeLayout()
+	.closeDialog();
+}
+
+void ZoombiniOptionsWidget::load() {
+	_audioPopFixCheckbox->setState(ConfMan.getBool("fix_audio_pops", _domain));
+	_brightenPaletteCheckbox->setState(ConfMan.getBool("brighten_palette", _domain));
+}
+
+bool ZoombiniOptionsWidget::save() {
+	ConfMan.setBool("fix_audio_pops", _audioPopFixCheckbox->getState(), _domain);
+	ConfMan.setBool("brighten_palette", _brightenPaletteCheckbox->getState(), _domain);
+	return true;
+}
+
+#endif
+
 } // End of namespace Mohawk

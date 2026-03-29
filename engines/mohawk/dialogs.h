@@ -159,6 +159,27 @@ private:
 	GUI::CheckboxWidget *_audioPopFixCheckbox;
 };
 
+#ifdef ENABLE_ZOOMBINI
+
+class ZoombiniOptionsWidget : public GUI::OptionsContainerWidget {
+public:
+	ZoombiniOptionsWidget(GuiObject *boss, const Common::String &name, const Common::String &domain);
+	~ZoombiniOptionsWidget() override;
+
+	// OptionsContainerWidget API
+	void load() override;
+	bool save() override;
+
+private:
+	// OptionsContainerWidget API
+	void defineLayout(GUI::ThemeEval &layouts, const Common::String &layoutName, const Common::String &overlayedLayout) const override;
+
+	GUI::CheckboxWidget *_audioPopFixCheckbox;
+	GUI::CheckboxWidget *_brightenPaletteCheckbox;
+};
+
+#endif
+
 } // End of namespace Mohawk
 
 #endif
