@@ -221,21 +221,8 @@ public:
 	 * @param destBufSize Size of the destBuf.
 	 * @return True if successfully read the palette data. False if the buffer size is not enough, or failed to read a resource.
 	 */
-	bool readPalette(uint16 id, byte *destBuf, size_t destBufSize, uint16 &paletteColorStart, uint16 &paletteColorCount);
+	bool readPalette(uint16 id, byte *destBuf, size_t destBufSize);
 	void clearPalette();
-	/**
-	 * Load the system palette from ZOOMBINI.MHK tBMP 3000 (snoid shapes).
-	 * This palette contains the zoombini sprite colors and should be loaded
-	 * once when the system archive is opened.
-	 */
-	void loadSystemPalette();
-	/**
-	 * Merge the system palette (zoombini sprite colors) into the current active palette.
-	 * Copies palette entries 10-245 from the cached system palette to the active palette.
-	 * IDA: SHPL_copyPaletteSrcToDst(236, 10) - copies 236 entries starting at index 10.
-	 * Call this after setPalette() on pages that display zoombini characters.
-	 */
-	void mergeSystemPalette();
 
 	enum PredefinedColor : uint32 {
 		kTransparentKey = 0x00,
@@ -462,13 +449,7 @@ private:
 	MohawkEngine_Zoombini *_vm;
 	MohawkBitmap *_bmpDecoder;
 
-	byte _palette[3 * 256];
-	uint16 _paletteColorStart = 0;
-	uint16 _paletteColorCount = 0;
-
-	/** System palette from ZOOMBINI.MHK tBMP 3000 (snoid shapes). */
-	byte _systemPalette[3 * 256];
-	bool _systemPaletteLoaded = false;
+	byte _paletteBytes[3 * 256];
 
 	Graphics::PixelFormat _pixelFormat;
 	Common::Rect _screenRect;

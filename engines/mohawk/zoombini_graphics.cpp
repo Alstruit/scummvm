@@ -29,25 +29,24 @@
 #include "graphics/fonts/ttf.h"
 #include "graphics/paletteman.h"
 
-#include "mohawk/resource.h"
 #include "mohawk/cursors.h"
+#include "mohawk/resource.h"
 #include "mohawk/zoombini.h"
+#include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_scripts.h"
 #include "mohawk/zoombini_text.h"
-#include "mohawk/zoombini_graphics.h"
+#include "zoombini_graphics.h"
 
 namespace Mohawk {
 
 ZoombiniGraphics::ZoombiniGraphics(MohawkEngine_Zoombini *vm) : GraphicsManager(), _vm(vm),
 																_bmpDecoder(new MohawkBitmap()),
-																_screenRect(Common::Rect(kScreenWidth, kScreenHeight)),
-																_systemPaletteLoaded(false) {
+																_screenRect(Common::Rect(kScreenWidth, kScreenHeight)) {
 	initGraphics(_screenRect.width(), _screenRect.height());
 	clearPalette();
 
 	_pixelFormat = Graphics::PixelFormat::createFormatCLUT8();
-	memset(_palette, 0, sizeof(_palette));
-	memset(_systemPalette, 0, sizeof(_systemPalette));
+	memset(_paletteBytes, 0, sizeof(_paletteBytes));
 
 	// Initialize Surface Screens
 	_backScreen = new Graphics::Surface();
@@ -189,7 +188,6 @@ void ZoombiniGraphics::setMouseCursor(MouseCursorResourceId cursorId) {
 	}
 	_activeCursorId = cursorId;
 }
-
 
 void ZoombiniGraphics::startMouseCursorEyeAnimation(uint32 currentTimeMs) {
 	if (isMouseCursorEyeAnimationActive())
@@ -428,7 +426,7 @@ void ZoombiniGraphics::drawText(ScreenKind screenKind, const Common::U32String &
 		error("Zoombini: cannot open fontfile of kind %u", static_cast<uint32>(tc._fontUsage));
 
 	const Common::Array<Common::U32String> &lines = prepareTextLines(text, font, tc._wordWrap, destRect.width());
-	
+
 	// Calculate total draw height and max draw width
 	Common::Point boundSize = getTextLinesBounds(font, tc._outlineEffect, lines);
 
@@ -550,7 +548,7 @@ Common::Point ZoombiniGraphics::getTextLinesBounds(const Graphics::Font *font, b
 
 		// Expand drawRect (virtualize GDI DT_NOCLIP)
 		drawTotalHeight += bbox.height();
-		boundSize.x = MAX(boundSize.x, bbox.width());	
+		boundSize.x = MAX(boundSize.x, bbox.width());
 		boundSize.y = MAX(boundSize.y, drawTotalHeight);
 	}
 	return boundSize;
@@ -652,17 +650,15 @@ bool ZoombiniGraphics::isFading() const {
 void ZoombiniGraphics::dimPalette(uint16 idx, uint16 steps) {
 	assert(idx <= steps);
 	assert(0 <= idx);
-	assert(_paletteColorCount <= 255);
 
-	uint16 bufSize = _paletteColorCount * 3;
+	const size_t bufSize = ARRAYSIZE(_paletteBytes);
 	byte *fadePalette = new byte[bufSize];
-	memset(fadePalette, 0, sizeof(bufSize));
+	memset(fadePalette, 0, bufSize);
 
-	for (uint16 i = 0; i < bufSize; i++) {
-		fadePalette[i] = static_cast<byte>(static_cast<uint32>(_palette[i]) * idx / steps);
-	}
+	for (uint16 i = 0; i < bufSize; i++)
+		fadePalette[i] = static_cast<byte>(static_cast<uint32>(_paletteBytes[i]) * idx / steps);
 
-	_vm->_system->getPaletteManager()->setPalette(fadePalette, _paletteColorStart, _paletteColorCount);
+	_vm->_system->getPaletteManager()->setPalette(fadePalette, 0, bufSize / 3);
 	delete[] fadePalette;
 
 	_vm->_system->updateScreen();
@@ -752,38 +748,37 @@ void ZoombiniGraphics::clearCommonCache() {
 
 // [*] 256color Palette
 void ZoombiniGraphics::setPalette(uint16 id) {
-	if (!readPalette(id, _palette, ARRAYSIZE(_palette), _paletteColorStart, _paletteColorCount)) {
+	if (!readPalette(id, _paletteBytes, ARRAYSIZE(_paletteBytes))) {
 		error("Could not read palette from SHPL p:%04u", id);
 		return;
 	}
 
-	_vm->_system->getPaletteManager()->setPalette(_palette + _paletteColorStart * 3, _paletteColorStart, _paletteColorCount);
+	_vm->_system->getPaletteManager()->setPalette(_paletteBytes, 0, ARRAYSIZE(_paletteBytes) / 3);
 }
 
-bool ZoombiniGraphics::readPalette(uint16 id, byte *destBuf, size_t destBufSize, uint16 &paletteColorStart, uint16 &paletteColorCount) {
+bool ZoombiniGraphics::readPalette(uint16 id, byte *destBuf, size_t destBufSize) {
 	if (!destBuf || destBufSize == 0)
 		return false;
 
-	memset(destBuf, 0, destBufSize);
-
+	// Do not clear the readPalette, the old value must be kept when the value is not overwritten (e.g. XFER palette).
 	Common::SeekableReadStream *shplStream = _vm->getResource(ID_SHPL, ZmbResource(ZmbArchiveKind::kPage, id));
 	uint16 shplId = shplStream->readUint16BE();
 	assert(shplId == id);
-	shplStream->readUint16BE();                     // Always 00 01
-	paletteColorStart = shplStream->readUint16BE();
-	paletteColorCount = shplStream->readUint16BE();
+	shplStream->readUint16BE(); // Always 00 01
+	uint16 paletteColorStart = shplStream->readUint16BE();
+	uint16 paletteColorCount = shplStream->readUint16BE();
 	assert(paletteColorStart <= 255);
 	assert(paletteColorStart + paletteColorCount <= 256);
 
 	// Is size of the buffer enough?
-	if (destBufSize < 3 * paletteColorCount)
+	if (destBufSize < 3 * (paletteColorStart + paletteColorCount))
 		return false;
 
-	for (uint16 i = 0; i < paletteColorCount; i++) {
+	for (uint16 i = paletteColorStart; i < paletteColorStart + paletteColorCount; i++) {
 		destBuf[i * 3 + 0] = shplStream->readByte();
 		destBuf[i * 3 + 1] = shplStream->readByte();
 		destBuf[i * 3 + 2] = shplStream->readByte();
-		shplStream->readByte();  // Skip alpha/flags byte
+		shplStream->readByte(); // Skip flags byte
 	}
 
 	delete shplStream;
@@ -793,64 +788,8 @@ bool ZoombiniGraphics::readPalette(uint16 id, byte *destBuf, size_t destBufSize,
 
 void ZoombiniGraphics::clearPalette() {
 	// Set the palette to all black
-	memset(_palette, 0, sizeof(_palette));
-	_vm->_system->getPaletteManager()->setPalette(_palette, _paletteColorStart, _paletteColorCount);
-}
-
-void ZoombiniGraphics::loadSystemPalette() {
-	if (_systemPaletteLoaded)
-		return;
-
-	// Load the palette from tBMP 3000 (main snoid shapes) in ZOOMBINI.MHK.
-	// This contains the zoombini sprite colors and UI colors used across all pages.
-	ZmbResource snoidShapesRes(ZmbArchiveKind::kSystem, 3000);
-	if (!_vm->hasResource(ID_TBMP, snoidShapesRes)) {
-		warning("ZoombiniGraphics::loadSystemPalette: tBMP 3000 not found in system archive");
-		return;
-	}
-
-	Common::SeekableReadStream *stream = _vm->getResource(ID_TBMP, snoidShapesRes);
-	MohawkSurface *surface = _bmpDecoder->decodeImage(stream);
-	if (surface && surface->getPalette()) {
-		memcpy(_systemPalette, surface->getPalette(), sizeof(_systemPalette));
-		_systemPaletteLoaded = true;
-		debugC(kZmbDebugRender, "Loaded system palette from tBMP 3000");
-	} else {
-		warning("ZoombiniGraphics::loadSystemPalette: Failed to get palette from tBMP 3000");
-		memset(_systemPalette, 0, sizeof(_systemPalette));
-	}
-	delete surface;
-}
-
-void ZoombiniGraphics::mergeSystemPalette() {
-	if (!_systemPaletteLoaded) {
-		loadSystemPalette();
-		if (!_systemPaletteLoaded)
-			return;
-	}
-
-	// The page SHPL covers screen palette indices [_paletteColorStart, _paletteColorStart + _paletteColorCount).
-	// We need to fill in system palette colors for indices OUTSIDE this range.
-	// IDA: SHPL_copyPaletteSrcToDst(236, 10) merges indices 10-245.
-	//
-	// For XFER: SHPL 1000 covers indices 46-243, so we apply system palette:
-	//   - Indices 10-45: zoombini sprite colors + UI (text fg/bg)
-	//   - Indices 244-245: additional system colors if needed
-
-	uint16 shplStart = _paletteColorStart;
-	uint16 shplEnd = _paletteColorStart + _paletteColorCount;
-
-	// Apply system palette for indices 10 to shplStart-1 (before SHPL range)
-	if (shplStart > 10) {
-		uint16 count = shplStart - 10;
-		_vm->_system->getPaletteManager()->setPalette(_systemPalette + 10 * 3, 10, count);
-	}
-
-	// Apply system palette for indices shplEnd to 245 (after SHPL range)
-	if (shplEnd < 246) {
-		uint16 count = 246 - shplEnd;
-		_vm->_system->getPaletteManager()->setPalette(_systemPalette + shplEnd * 3, shplEnd, count);
-	}
+	memset(_paletteBytes, 0, sizeof(_paletteBytes));
+	_vm->_system->getPaletteManager()->setPalette(_paletteBytes, 0, ARRAYSIZE(_paletteBytes) / 3);
 }
 
 MohawkSurface *ZoombiniGraphics::decodeImage(uint16 id) {

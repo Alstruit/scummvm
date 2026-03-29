@@ -1226,17 +1226,10 @@ bool ZoombiniConsole::Cmd_DumpImage(int argc, const char **argv) {
 	byte palette[3 * 256];
 	memset(palette, 0, ARRAYSIZE(palette));
 	{
-		uint16 palColorStart = 0;
-		uint16 palColorCount = 0;
-		byte rawPalette[3 * 256] = { 0, };
-		if (!_vm->_gfx->readPalette(imageId, rawPalette, ARRAYSIZE(rawPalette), palColorStart, palColorCount)) {
+		if (!_vm->_gfx->readPalette(imageId, palette, ARRAYSIZE(palette))) {
 			debugPrintf("Failed to load palette from SHPL %04u\n", imageId);
 			return true;
 		}
-
-		assert(palColorStart < 256);
-		assert(3 * palColorCount <= ARRAYSIZE(palette));
-		memcpy(palette + 3 * palColorStart, rawPalette, 3 * palColorCount);
 	}
 
 	// Read image surface
@@ -1361,23 +1354,16 @@ bool ZoombiniConsole::Cmd_DumpShapes(int argc, const char **argv) {
 		_vm->_system->getPaletteManager()->grabPalette(palette, 0, 256);
 		palLogStr = "with current palettes";
 	} else { // Read palette from a SHPL resource
-		// There is no SHPL resources in common ZOOMBINI.MHK
+		// There is no SHPL resources in system ZOOMBINI.MHK
 		if (!_vm->hasResource(ID_SHPL, ZmbResource(ZmbArchiveKind::kPage, shplId))) {
 			debugPrintf("Cannot find resource SHPL %04u\n", shplId);
 			return true;
 		}
 
-		uint16 palColorStart = 0;
-		uint16 palColorCount = 0;
-		byte rawPalette[3 * 256] = { 0, };
-		if (!_vm->_gfx->readPalette(shplId, rawPalette, ARRAYSIZE(rawPalette), palColorStart, palColorCount)) {
+		if (!_vm->_gfx->readPalette(shplId, palette, ARRAYSIZE(palette))) {
 			debugPrintf("Failed to load palette from SHPL %04u\n", shplId);
 			return true;
 		}
-
-		assert(palColorStart < 256);
-		assert(3 * palColorCount <= ARRAYSIZE(palette));
-		memcpy(palette + 3 * palColorStart, rawPalette, 3 * palColorCount);
 
 		palLogStr = Common::String::format("with SHPL %04u palettes", shplId);
 	}
