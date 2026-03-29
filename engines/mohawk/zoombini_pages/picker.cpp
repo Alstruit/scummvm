@@ -580,6 +580,17 @@ ZmbRenderResult ZoombiniInteractivePicker::oneTimeLoadDialog_onRenderShape(ZmbFe
 // ---------------------------------------------------------------------------
 
 ZmbEventHandleResult ZoombiniInteractivePicker::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+	// IDA: puzzlePicker_buttonClickHandler_439EC2 calls picker_tryTransition() (0x439E8F) first.
+	// picker_tryTransition immediately completes the pending departure if puzzle_pendingTransitionTarget is set.
+	if (_pendingGoTransition) {
+		_pendingGoTransition = false;
+		_pendingGoTransitionHasSoundHandle = false;
+		_embarkingSnoids.clear();
+		_vm->setNextPage(ZoombiniPageType::kXfer);
+		close();
+		return ZmbEventHandleResult::kConsumed;
+	}
+
 	// In sticky mouse mode, a second click ends the drag
 	if (isDragging() && _vm->_state->getEnableStickyMouse()) {
 		endDrag(absPos);

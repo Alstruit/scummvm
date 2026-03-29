@@ -554,11 +554,6 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonDown(const Common:
 	startSnoidDrag(snoid, absPos);
 	_dragInProgress = true;
 	_dragActive = true;
-
-	// Show snoid name in NotiBox
-	if (!snoid->_name.empty())
-		showNotiBoxShort(snoid->_name);
-
 	return ZmbEventHandleResult::kConsumed;
 }
 
@@ -638,9 +633,6 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonUp(const Common::P
 			snoid->setupIdleHotspots();
 		}
 	}
-
-	// Hide notibox
-	hideNotiBoxShort();
 
 	// Update Go button state
 	int16 totalFieldCount = 0;

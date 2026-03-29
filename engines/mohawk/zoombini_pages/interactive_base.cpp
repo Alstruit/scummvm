@@ -255,6 +255,19 @@ void ZoombiniInteractive::goMapButtons_onPostRender(ZmbFeature *feature) {
 	genericButton_action(feature, _goMapButtonStateMap, reinterpret_cast<OnButtonActionFunc>(&ZoombiniInteractive::goMapButtons_onButtonAction));
 }
 
+ZmbEventHandleResult ZoombiniInteractive::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+	// IDA: All puzzle click handlers (bc1_onButtonClick_4117F9, bridge_onClickHandler_4157EB,
+	// net_funcOnClick_43747F, pizza_funcOnClick_43CFA1, etc.) check puzzle_pendingTransitionTarget
+	// at the very top: if set, they immediately complete the departure transition (skip animation).
+	// Replicate by clearing _hasDepartSfxHandle so isDepartSfxDone() returns true;
+	// onEveryFrame() will then fire the transition on the very next tick.
+	if (_pendingGoDepart) {
+		_hasDepartSfxHandle = false;
+		return ZmbEventHandleResult::kConsumed;
+	}
+	return ZoombiniPage::onLButtonDown(absPos, relPos);
+}
+
 void ZoombiniInteractive::onGoButtonActivated() {
 	close();
 }
@@ -674,12 +687,17 @@ void ZoombiniInteractive::startSnoidDrag(ZmbSnoid *snoid, const Common::Point &m
 	snoid->setFacingLeft(false);
 	snoid->setHoldingAnimPhase(2);
 	beginSnoidDrag(snoid);
+
+	// IDA: showNotiBoxMsg_454090 — show snoid name while dragging (all pages)
+	if (!snoid->_name.empty())
+		showNotiBoxShort(snoid->_name);
 }
 
 ZmbSnoid *ZoombiniInteractive::finishSnoidDrag() {
 	ZmbSnoid *snoid = _draggedSnoid;
 	_draggedSnoid = nullptr;
 	endSnoidDrag(snoid);
+	hideNotiBoxShort();
 	return snoid;
 }
 

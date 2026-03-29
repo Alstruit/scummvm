@@ -1052,9 +1052,6 @@ void ZoombiniInteractiveBasecampOne::endDrag(const Common::Point &dropPos) {
 	// decrement stored count was already done in the pickup phase.
 	// If it was placed back into storage, count was incremented above.
 
-	// Hide notibox
-	hideNotiBoxShort();
-
 	// Update Go button enabled state
 	// IDA: bc1_bFinalArrival / bc1_bCanProceed
 	int16 totalLoadedCount = 0;
@@ -1152,12 +1149,6 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampOne::onLButtonDown(const Common:
 	// --- Begin drag ---
 	// IDA: beginDragFeatureRunner_45360F entry (detach, set anim, hide cursor, show notibox)
 	startSnoidDrag(snoid, absPos);
-
-	// Show snoid name in NotiBox
-	// IDA: showNotiBoxMsg_454090(0, 0, &p236[1].core188.u.s.pcStr1[13])
-	if (!snoid->_name.empty())
-		showNotiBoxShort(snoid->_name);
-
 	return ZmbEventHandleResult::kConsumed;
 }
 

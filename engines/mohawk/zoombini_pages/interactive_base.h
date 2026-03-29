@@ -166,6 +166,13 @@ protected:
 	}
 
 	/**
+	 * Override to implement departure-animation click-skip.
+	 * IDA: all puzzle click handlers check puzzle_pendingTransitionTarget at the top:
+	 * if set, they immediately complete the departure instead of processing clicks.
+	 */
+	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
+
+	/**
 	 * Called when the Go button is activated. Default implementation calls close().
 	 * Override in derived classes for page-specific Go button behavior.
 	 */
