@@ -37,6 +37,13 @@
 #include "mohawk/myst_graphics.h"
 #endif
 
+#ifdef ENABLE_ZOOMBINI
+#include "graphics/paletteman.h"
+#include "mohawk/zoombini.h"
+#include "mohawk/zoombini_graphics.h"
+#include "mohawk/bitmap.h"
+#endif
+
 namespace Mohawk {
 
 void CursorManager::showCursor() {
@@ -190,6 +197,34 @@ LivingBooksCursorManager_v2::LivingBooksCursorManager_v2() {
 LivingBooksCursorManager_v2::~LivingBooksCursorManager_v2() {
 	delete _sysArchive;
 }
+
+#ifdef ENABLE_ZOOMBINI
+
+ZoombiniCursorManager::ZoombiniCursorManager(MohawkEngine_Zoombini *vm) : _vm(vm) {
+}
+
+ZoombiniCursorManager::~ZoombiniCursorManager() {
+}
+
+void ZoombiniCursorManager::setCursor(uint16 id) {
+	setMacCursor(_vm->getResource(ID_CURS, ZmbResource(ZmbArchiveKind::kSystem, id)));
+}
+
+void ZoombiniCursorManager::setShapeCursor(ZmbArchiveKind archiveKind, uint16 imageId, uint16 shapeIdx, const Common::Point &minusREGS) {
+	MohawkSurface *mhkSurface = _vm->_gfx->findShape(ZmbResource(archiveKind, imageId), shapeIdx);
+	assert(mhkSurface);
+	Graphics::Surface *surface = mhkSurface->getSurface();
+	assert(surface);
+
+	if (surface->format.bytesPerPixel != 1)
+		error("Cursor bitmap is not 8bpp as expected, imageId(%u) shapeIdx(%u)", imageId, shapeIdx);
+	CursorMan.replaceCursor(*surface, minusREGS.x, minusREGS.y, ZoombiniGraphics::kTransparentKey);
+
+	const Graphics::Palette &palette = _vm->_system->getPaletteManager()->grabPalette(0, 255);
+	CursorMan.replaceCursorPalette(palette.data(), 0, palette.size());
+}
+
+#endif
 
 void LivingBooksCursorManager_v2::setCursor(uint16 id) {
 	if (_sysArchive && _sysArchive->hasResource(ID_TCUR, id)) {

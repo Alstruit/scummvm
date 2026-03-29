@@ -28,6 +28,7 @@
 #include "common/stream.h"
 
 #include "audio/mixer.h"
+#include "audio/midiplayer.h"
 
 class MidiDriver;
 class MidiParser;
@@ -102,10 +103,11 @@ class MohawkEngine;
 class Sound {
 public:
 	explicit Sound(MohawkEngine *vm);
-	~Sound();
+	virtual ~Sound();
 
 	// Generic sound functions
 	Audio::SoundHandle *playSound(uint16 id, byte volume = Audio::Mixer::kMaxChannelVolume, bool loop = false, CueList *cueList = NULL);
+	Audio::SoundHandle *playSound(uint16 id, Audio::Mixer::SoundType soundType, byte volume = Audio::Mixer::kMaxChannelVolume, bool loop = false, CueList *cueList = NULL);
 	void stopSound();
 	void stopSound(uint16 id);
 	bool isPlaying(uint16 id);
@@ -120,6 +122,26 @@ private:
 	Common::Array<SndHandle> _handles;
 	SndHandle *getHandle();
 	Audio::RewindableAudioStream *makeAudioStream(uint16 id, CueList *cueList = nullptr);
+};
+
+class MidiPlayer : public Audio::MidiPlayer {
+public:
+	MidiPlayer(MohawkEngine *vm);
+	~MidiPlayer();
+
+	void pause(bool p);
+	void playMidi(uint16 id);
+
+	void pause() override { Audio::MidiPlayer::pause(); }
+
+	void sendToChannel(byte channel, uint32 b) override;
+	void onTimer() override;
+
+private:
+	MohawkEngine *_vm;
+	bool _paused;
+
+	Common::SeekableReadStream *makeMidiStream(uint16 id);
 };
 
 } // End of namespace Mohawk

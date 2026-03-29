@@ -65,6 +65,8 @@ namespace Video {
  *
  * Video decoder used in engines:
  *  - scumm (he)
+ *  - myst3
+ *  - mohawk (zoombinitlc)
  */
 class BinkDecoder : public VideoDecoder {
 public:

@@ -223,7 +223,7 @@ Audio::RewindableAudioStream *makeMohawkWaveStream(Common::SeekableReadStream *s
 	// makeMohawkWaveStream always takes control of the original stream
 	delete stream;
 
-	// The sound in Myst uses raw unsigned 8-bit data
+	// The sound in Myst, Zoombini uses raw unsigned 8-bit data
 	// The sound in the CD version of Riven is encoded in Intel DVI ADPCM
 	// The sound in the DVD version of Riven is encoded in MPEG-2 Layer II or Intel DVI ADPCM
 	if (dataChunk.encoding == kCodecRaw) {
@@ -286,6 +286,10 @@ Audio::RewindableAudioStream *Sound::makeAudioStream(uint16 id, CueList *cueList
 }
 
 Audio::SoundHandle *Sound::playSound(uint16 id, byte volume, bool loop, CueList *cueList) {
+	return playSound(id, Audio::Mixer::kPlainSoundType, volume, loop, cueList);
+}
+
+Audio::SoundHandle *Sound::playSound(uint16 id, Audio::Mixer::SoundType soundType, byte volume, bool loop, CueList *cueList) {
 	debug (0, "Playing sound %d", id);
 
 	Audio::RewindableAudioStream *rewindStream = makeAudioStream(id, cueList);
@@ -301,7 +305,7 @@ Audio::SoundHandle *Sound::playSound(uint16 id, byte volume, bool loop, CueList 
 		if (loop)
 			audStream = Audio::makeLoopingAudioStream(rewindStream, 0);
 
-		_vm->_mixer->playStream(Audio::Mixer::kPlainSoundType, &handle->handle, audStream, -1, volume);
+		_vm->_mixer->playStream(soundType, &handle->handle, audStream, -1, volume);
 		return &handle->handle;
 	}
 
@@ -395,6 +399,98 @@ uint Sound::getNumSamplesPlayed(uint16 id) {
 		}
 
 	return 0;
+}
+
+
+MidiPlayer::MidiPlayer(MohawkEngine *vm) : _vm(vm) {
+	MidiDriver::DeviceHandle dev = MidiDriver::detectDevice(MDT_MIDI | MDT_ADLIB | MDT_PREFER_GM);
+	_driver = MidiDriver::createMidi(dev);
+	assert(_driver);
+	_paused = false;
+
+
+	int ret = _driver->open();
+	if (ret == 0) {
+		_driver->sendGMReset();
+
+		_driver->setTimerCallback(this, &timerCallback);
+	}
+}
+
+MidiPlayer::~MidiPlayer() {
+
+}
+
+void MidiPlayer::playMidi(uint16 id) {
+	// debugC(3, kDebugMusic, "MidiPlayer::play");
+
+	Common::StackLock lock(_mutex);
+	Common::SeekableReadStream* stream = makeMidiStream(id);
+
+	stop();
+	if (!stream)
+		return;
+
+	if (stream->readUint32BE() != ID_MHWK) // MHWK tag again
+		error ("Could not find tag 'MHWK'");
+
+	// This size value has 3 more bytes then actual size, ignore
+	stream->readUint32BE();
+
+	if (stream->readUint32BE() != ID_MIDI)
+		error ("Could not find tag 'MIDI'");
+
+	uint32 midiSize = stream->size() - stream->pos();
+
+	_midiData = reinterpret_cast<uint8 *>(malloc(midiSize));
+	if (_midiData) {
+		stream->read(_midiData, midiSize);
+
+		syncVolume();
+
+		_parser = MidiParser::createParser_SMF();
+		_parser->loadMusic(_midiData, midiSize);
+		_parser->setTrack(0);
+		_parser->setMidiDriver(this);
+		_parser->setTimerRate(_driver->getBaseTempo());
+		_isLooping = true;
+		_isPlaying = true;
+	}
+}
+
+void MidiPlayer::pause(bool p) {
+	_paused = p;
+
+	for (int i = 0; i < kNumChannels; ++i) {
+		if (_channelsTable[i]) {
+			_channelsTable[i]->volume(_paused ? 0 : _channelsVolume[i] * _masterVolume / 255);
+		}
+	}
+}
+
+void MidiPlayer::onTimer() {
+	Common::StackLock lock(_mutex);
+
+	if (!_paused && _isPlaying && _parser) {
+		_parser->onTimer();
+	}
+}
+
+void MidiPlayer::sendToChannel(byte channel, uint32 b) {
+	if (!_channelsTable[channel]) {
+		_channelsTable[channel] = (channel == 9) ? _driver->getPercussionChannel() : _driver->allocateChannel();
+		// If a new channel is allocated during the playback, make sure
+		// its volume is correctly initialized.
+		if (_channelsTable[channel])
+			_channelsTable[channel]->volume(_channelsVolume[channel] * _masterVolume / 255);
+	}
+
+	if (_channelsTable[channel])
+		_channelsTable[channel]->send(b);
+}
+
+Common::SeekableReadStream *MidiPlayer::makeMidiStream(uint16 id) {
+	return _vm->getResource(ID_TMID, id);
 }
 
 } // End of namespace Mohawk

@@ -24,6 +24,18 @@
 
 #include "gui/debugger.h"
 
+#ifdef ENABLE_ZOOMBINI
+
+#include "mohawk/zoombini_resource.h"
+
+namespace Graphics {
+
+class Surface;
+
+} // End of namespace Graphics
+
+#endif
+
 namespace Mohawk {
 
 class MohawkEngine_LivingBooks;
@@ -128,6 +140,57 @@ private:
 	bool Cmd_ChangeScene(int argc, const char **argv);
 	bool Cmd_CaseVariable(int argc, const char **argv);
 	bool Cmd_InvItem(int argc, const char **argv);
+};
+
+#endif
+
+#ifdef ENABLE_ZOOMBINI
+
+class MohawkEngine_Zoombini;
+enum class ZmbArchiveKind : uint16;
+
+class ZoombiniConsole : public GUI::Debugger {
+public:
+	explicit ZoombiniConsole(MohawkEngine_Zoombini *vm);
+	~ZoombiniConsole() override;
+
+private:
+	MohawkEngine_Zoombini *_vm;
+
+	bool parseInt(const char *str, int32 &result);
+	bool parseResourceId(const char *str, ZmbResource &outRes);
+	bool Cmd_PlaySound(int argc, const char **argv);
+	bool Cmd_StopSound(int argc, const char **argv);
+#if 0
+	bool Cmd_DumpSound(int argc, const char **argv);
+#endif
+	bool Cmd_PlayMidi(int argc, const char **argv);
+	bool Cmd_StopMidi(int argc, const char **argv);
+	bool Cmd_DumpMidi(int argc, const char **argv);
+	bool Cmd_DrawCursor(int argc, const char **argv);
+	bool Cmd_DrawImage(int argc, const char **argv);
+	bool Cmd_DumpImage(int argc, const char **argv);
+	bool Cmd_DrawShape(int argc, const char **argv);
+	bool Cmd_DrawShapes(int argc, const char **argv);
+	bool Cmd_DumpShapes(int argc, const char **argv);
+	bool Cmd_PrintFeature(int argc, const char **argv);
+	bool Cmd_PrintFeatures(int argc, const char **argv);
+	bool Cmd_DrawFeature(int argc, const char **argv);
+	bool Cmd_DumpFeature(int argc, const char **argv);
+	bool Cmd_DumpFeatures(int argc, const char **argv);
+	bool Cmd_PrintSnoidScript(int argc, const char **argv);
+	bool Cmd_PrintSnoidScripts(int argc, const char **argv);
+	bool Cmd_DumpSnoidScript(int argc, const char **argv);
+	bool Cmd_DumpSnoidScripts(int argc, const char **argv);
+	bool Cmd_PlotPoint(int argc, const char **argv);
+	bool Cmd_PlotLine(int argc, const char **argv);
+	bool Cmd_PlotRect(int argc, const char **argv);
+	bool Cmd_DumpAllResources(int argc, const char **argv);
+	bool Cmd_GoXfer(int argc, const char **argv);
+	/**
+	 * @return True if an export was successful.
+	 */
+	bool exportSurfaceToBMP(const Common::String &filename, const Graphics::Surface *surface, const byte *palette);
 };
 
 #endif

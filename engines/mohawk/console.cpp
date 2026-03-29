@@ -50,6 +50,18 @@
 #include "mohawk/riven_stacks/domespit.h"
 #endif
 
+#ifdef ENABLE_ZOOMBINI
+#include "common/file.h"
+#include "graphics/paletteman.h"
+#include "image/bmp.h"
+
+#include "mohawk/zoombini.h"
+#include "mohawk/zoombini_sound.h"
+#include "mohawk/zoombini_graphics.h"
+#include "mohawk/zoombini_page.h"
+#include "mohawk/zoombini_debug.h"
+#endif
+
 namespace Mohawk {
 
 #ifdef ENABLE_MYST
@@ -927,5 +939,1200 @@ bool CSTimeConsole::Cmd_InvItem(int argc, const char **argv) {
 }
 
 #endif // ENABLE_CSTIME
+
+#ifdef ENABLE_ZOOMBINI
+
+ZoombiniConsole::ZoombiniConsole(MohawkEngine_Zoombini *vm) : GUI::Debugger(), _vm(vm) {
+	registerCmd("playSound",			WRAP_METHOD(ZoombiniConsole, Cmd_PlaySound));
+	registerCmd("stopSound",			WRAP_METHOD(ZoombiniConsole, Cmd_StopSound));
+#if 0
+	registerCmd("dumpSound",			WRAP_METHOD(ZoombiniConsole, Cmd_DumpSound));
+#endif
+	registerCmd("playMidi",				WRAP_METHOD(ZoombiniConsole, Cmd_PlayMidi));
+	registerCmd("stopMidi",				WRAP_METHOD(ZoombiniConsole, Cmd_StopMidi));
+	registerCmd("dumpMidi",				WRAP_METHOD(ZoombiniConsole, Cmd_DumpMidi));
+	registerCmd("drawCursor",			WRAP_METHOD(ZoombiniConsole, Cmd_DrawCursor));
+	registerCmd("drawImage",			WRAP_METHOD(ZoombiniConsole, Cmd_DrawImage));
+	registerCmd("dumpImage",			WRAP_METHOD(ZoombiniConsole, Cmd_DumpImage));
+	registerCmd("drawShape",			WRAP_METHOD(ZoombiniConsole, Cmd_DrawShape));
+	registerCmd("drawShapes",			WRAP_METHOD(ZoombiniConsole, Cmd_DrawShapes));
+	registerCmd("dumpShapes",			WRAP_METHOD(ZoombiniConsole, Cmd_DumpShapes));
+	registerCmd("printFeature",			WRAP_METHOD(ZoombiniConsole, Cmd_PrintFeature));
+	registerCmd("printFeatures",		WRAP_METHOD(ZoombiniConsole, Cmd_PrintFeatures));
+	registerCmd("drawFeature",			WRAP_METHOD(ZoombiniConsole, Cmd_DrawFeature));
+	registerCmd("dumpFeature",			WRAP_METHOD(ZoombiniConsole, Cmd_DumpFeature));
+	registerCmd("dumpFeatures",			WRAP_METHOD(ZoombiniConsole, Cmd_DumpFeatures));
+	registerCmd("printSnoidScript",		WRAP_METHOD(ZoombiniConsole, Cmd_PrintSnoidScript));
+	registerCmd("printSnoidScripts",	WRAP_METHOD(ZoombiniConsole, Cmd_PrintSnoidScripts));
+	registerCmd("dumpSnoidScript",		WRAP_METHOD(ZoombiniConsole, Cmd_DumpSnoidScript));
+	registerCmd("dumpSnoidScripts",		WRAP_METHOD(ZoombiniConsole, Cmd_DumpSnoidScripts));
+	registerCmd("plotPoint",			WRAP_METHOD(ZoombiniConsole, Cmd_PlotPoint));
+	registerCmd("plotLine",				WRAP_METHOD(ZoombiniConsole, Cmd_PlotLine));
+	registerCmd("plotRect",				WRAP_METHOD(ZoombiniConsole, Cmd_PlotRect));
+	registerCmd("dumpAllResources",		WRAP_METHOD(ZoombiniConsole, Cmd_DumpAllResources));
+	registerCmd("goXfer",				WRAP_METHOD(ZoombiniConsole, Cmd_GoXfer));
+}
+
+ZoombiniConsole::~ZoombiniConsole() {
+}
+
+bool ZoombiniConsole::parseInt(const char *str, int32 &result) {
+	bool success = ZmbResource::parseInt(str, result);
+	if (!success)
+		debugPrintf("Cannot parse resourceId(%s), try <archive>:<UINT16> pattern (hex supported with 0x prefix)\n", str);
+	return success;
+}
+
+bool ZoombiniConsole::parseResourceId(const char *str, ZmbResource &outRes) {
+	bool success = ZmbResource::parse(str, outRes);
+	if (!success)
+		debugPrintf("Cannot parse resourceId(%s), try <archive>:<UINT16> pattern (hex supported with 0x prefix)\n", str);
+	return success;
+}
+
+bool ZoombiniConsole::Cmd_PlaySound(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Usage: playSound <value>\n");
+		return true;
+	}
+
+	ZmbResource resource;
+	if (!parseResourceId(argv[1], resource))
+		return true;
+	
+	if (!_vm->hasResource(ID_TWAV, resource)) {
+		debugPrintf("Cannot find resource tWAV(%s)\n", argv[1]);
+		return true;
+	}
+
+	_vm->_sound->stopSound();
+	_vm->_sound->playZmbSound(resource, Audio::Mixer::kSFXSoundType);
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_StopSound(int argc, const char **argv) {
+	debugPrintf("Stopping Sound\n");
+
+	_vm->_sound->stopSound();
+	return true;
+}
+
+#if 0
+bool ZoombiniConsole::Cmd_DumpSound(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Usage: dumpSound <value>\n");
+		return true;
+	}
+
+	ZmbArchiveKind archiveKind = ZmbArchiveKind::kPage;
+	uint16 resid = 0;
+	if (!parseResourceId(argv[1], archiveKind, resid))
+		return true;
+	
+	if (!_vm->hasResource(archiveKind, ID_TWAV, resid)) {
+		debugPrintf("Cannot find resource tWAV(%s)\n", argv[1]);
+		return true;
+	}
+
+	Common::SeekableReadStream *wavStream = _vm->getResource(archiveKind, ID_TWAV, resid);
+	if (!wavStream) {
+		debugPrintf("Failed to read tWAV resource(%s)\n", argv[1]);
+		return true;
+	}
+
+	char chArchive = (archiveKind == ZmbArchiveKind::kCommon) ? 'c' : 'p';
+	Common::String filename = Common::String::format("ZOOMBINI_tWAV_%c%04u.wav", chArchive, resid);
+	Common::String filepath = "dumps/" + filename;
+
+	Common::DumpFile out;
+	if (!out.open(Common::Path(filepath, '/'), true)) {
+		debugPrintf("Failed to open file for writing: %s\n", filepath.c_str());
+		delete wavStream;
+		return true;
+	}
+
+	// Copy the entire stream to the file
+	uint32 size = wavStream->size();
+	byte *buffer = new byte[size];
+	wavStream->read(buffer, size);
+	out.write(buffer, size);
+	delete[] buffer;
+	delete wavStream;
+	out.close();
+
+	debugPrintf("Successfully exported tWAV to %s\n", filename.c_str());
+	return true;
+}
+#endif
+
+bool ZoombiniConsole::Cmd_PlayMidi(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Usage: playMidi <value>\n");
+		return true;
+	}
+
+	// MIDI resources are always in the page archive
+	errno = 0;
+	uint16 resid = static_cast<uint16>(strtoul(argv[1], nullptr, 10));
+	if (errno != 0) {
+		debugPrintf("Cannot parse argument %s\n", argv[1]);
+		return true;
+	}
+	
+	if (!_vm->hasResource(ID_MIDI, ZmbResource(ZmbArchiveKind::kPage, resid))) {
+		debugPrintf("Cannot find resource MIDI(%u)\n", resid);
+		return true;
+	}
+
+	_vm->_midi->stop();
+	_vm->_midi->playMidi(resid);
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_StopMidi(int argc, const char **argv) {
+	debugPrintf("Stopping Midi\n");
+
+	_vm->_midi->stop();
+	return true;
+}
+
+bool ZoombiniConsole::Cmd_DumpMidi(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Usage: dumpMidi <value>\n");
+		return true;
+	}
+
+	// MIDI resources are always in the page archive MIDIMPC.MHK.
+	errno = 0;
+	uint16 resid = static_cast<uint16>(strtoul(argv[1], nullptr, 10));
+	if (errno != 0) {
+		debugPrintf("Cannot parse argument %s\n", argv[1]);
+		return true;
+	}
+	
+	if (!_vm->hasResource(ID_MIDI, ZmbResource(ZmbArchiveKind::kPage, resid))) {
+		debugPrintf("Cannot find resource MIDI(%s)\n", argv[1]);
+		return true;
+	}
+
+	Common::SeekableReadStream *midiStream = _vm->getResource(ID_MIDI, ZmbResource(ZmbArchiveKind::kPage, resid));
+	if (!midiStream) {
+		debugPrintf("Failed to read MIDI resource(%s)\n", argv[1]);
+		return true;
+	}
+
+	Common::String filename = Common::String::format("ZOOMBINI_MIDI_p%04u.mid", resid);
+	Common::String filepath = "dumps/" + filename;
+
+	Common::DumpFile out;
+	if (!out.open(Common::Path(filepath, '/'), true)) {
+		debugPrintf("Failed to open file for writing: %s\n", filepath.c_str());
+		delete midiStream;
+		return true;
+	}
+
+	// Copy the entire stream to the file
+	uint32 size = midiStream->size();
+	byte *buffer = new byte[size];
+	midiStream->read(buffer, size);
+	out.write(buffer, size);
+	delete[] buffer;
+	delete midiStream;
+	out.close();
+
+	debugPrintf("Successfully exported MIDI to %s\n", filename.c_str());
+	return true;
+}
+
+bool ZoombiniConsole::Cmd_DrawCursor(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Usage: drawCursor <cursorId>\n");
+		return true;
+	}
+
+	// Cursor is always in system ZOOMBINI.MHK
+	errno = 0;
+	uint16 cursorId = static_cast<uint16>(strtoul(argv[1], nullptr, 10));
+	if (errno != 0) {
+		debugPrintf("Cannot parse argument %s\n", argv[1]);
+		return true;
+	}
+
+	if (!_vm->hasResource(ID_CURS, ZmbResource(ZmbArchiveKind::kSystem, cursorId))) {
+		debugPrintf("Cannot find resource CURS(%s)\n", argv[1]);
+		return true;
+	}
+		
+	ZoombiniDebugCommand cmd;
+	cmd.setDrawCursor(ZmbResource(ZmbArchiveKind::kSystem, cursorId));
+	_vm->openDebugDialog(cmd);
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_DrawImage(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Usage: drawImage <imageId>\n");
+		return true;
+	}
+
+	// There is no palette resource in system ZOOMBINI.MHK
+	errno = 0;
+	uint16 imageId = static_cast<uint16>(strtoul(argv[1], nullptr, 10));
+	if (errno != 0) {
+		debugPrintf("Cannot parse argument %s\n", argv[1]);
+		return true;
+	}
+
+	if (!_vm->hasResource(ID_SHPL, ZmbResource(ZmbArchiveKind::kPage, imageId))) // palette
+		debugPrintf("Cannot find resource SHPL(%s), maybe the bitmap is a compound shape?\n", argv[1]);
+	
+	if (!_vm->hasResource(ID_TBMP, ZmbResource(ZmbArchiveKind::kPage, imageId))) { // background bitmap
+		debugPrintf("Cannot find resource tBMP(%s)\n", argv[1]);
+		return true;
+	}
+
+	ZoombiniDebugCommand cmd;
+	cmd.setDrawImage(ZmbResource(ZmbArchiveKind::kPage, imageId));
+	_vm->openDebugDialog(cmd);
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_DumpImage(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Usage: dumpImage <imageId>\n");
+		return true;
+	}
+
+	// There is no palette resource in system ZOOMBINI.MHK
+	errno = 0;
+	uint16 imageId = static_cast<uint16>(strtoul(argv[1], nullptr, 10));
+	if (errno != 0) {
+		debugPrintf("Cannot parse argument %s\n", argv[1]);
+		return true;
+	}
+
+	// In DumpImage, SHPL (palette) resource must exist in the page archive
+	if (!_vm->hasResource(ID_SHPL, ZmbResource(ZmbArchiveKind::kPage, imageId))) {
+		debugPrintf("Cannot find resource SHPL(%s)\n", argv[1]);
+		return true;
+	}
+
+	if (!_vm->hasResource(ID_TBMP, ZmbResource(ZmbArchiveKind::kPage, imageId))) {
+		debugPrintf("Cannot find resource tBMP(%s)\n", argv[1]);
+		return true;
+	}
+
+	// Read palette
+	byte palette[3 * 256];
+	memset(palette, 0, ARRAYSIZE(palette));
+	{
+		uint16 palColorStart = 0;
+		uint16 palColorCount = 0;
+		byte rawPalette[3 * 256] = { 0, };
+		if (!_vm->_gfx->readPalette(imageId, rawPalette, ARRAYSIZE(rawPalette), palColorStart, palColorCount)) {
+			debugPrintf("Failed to load palette from SHPL %04u\n", imageId);
+			return true;
+		}
+
+		assert(palColorStart < 256);
+		assert(3 * palColorCount <= ARRAYSIZE(palette));
+		memcpy(palette + 3 * palColorStart, rawPalette, 3 * palColorCount);
+	}
+
+	// Read image surface
+	MohawkSurface *imgSurface = _vm->_gfx->findImage(ZmbResource(ZmbArchiveKind::kPage, imageId));
+	if (!imgSurface) {
+		debugPrintf("Failed to load image %u\n", imageId);
+		return true;
+	}
+	Graphics::Surface *surface = imgSurface->getSurface();
+	if (!surface || surface->h == 0 || surface->w == 0) {
+		debugPrintf("Invalid surface for image %u\n", imageId);
+		return true;
+	}
+
+	// Export to BMP
+	Common::String filename = Common::String::format("ZOOMBINI_tBMP_p%04u.BMP", imageId);
+	if (exportSurfaceToBMP(filename, surface, palette)) {
+		debugPrintf("Successfully exported image %u to %s\n", imageId, filename.c_str());
+	} else {
+		debugPrintf("Failed to export image %u to BMP\n", imageId);
+	}
+
+	return true;
+}
+
+bool ZoombiniConsole::Cmd_DrawShape(int argc, const char **argv) {
+	if (argc != 3) {
+		debugPrintf("Usage: drawShape <imageId> <shapeIdx>\n");
+		return true;
+	}
+
+	ZmbResource resource;
+	if (!parseResourceId(argv[1], resource))
+		return true;
+	
+	if (!_vm->hasResource(ID_TBMP, resource)) {
+		debugPrintf("Cannot find resource tBMP(%s)\n", argv[1]);
+		return true;
+	}
+
+	errno = 0;
+	uint16 shapeIdx = static_cast<uint16>(strtoul(argv[2], nullptr, 10));
+	if (errno != 0) {
+		debugPrintf("Cannot parse argument %s\n", argv[2]);
+		return true;
+	}
+
+	ZoombiniDebugCommand cmd;
+	cmd.setDrawShape(resource, shapeIdx);
+	_vm->openDebugDialog(cmd);
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_DrawShapes(int argc, const char **argv) {
+	if (!(2 <= argc && argc <= 3)) {
+		debugPrintf("Usage: drawShapes <imageId> [startShapeIdx]\n");
+		return true;
+	}
+
+	ZmbResource resource;
+	if (!parseResourceId(argv[1], resource))
+		return true;
+	uint16 startShapeIdx = 1;
+	if (argc == 3) {
+		errno = 0;
+		startShapeIdx = static_cast<uint16>(strtoul(argv[2], nullptr, 10));
+		if (errno != 0) {
+			debugPrintf("Cannot parse argument %s\n", argv[2]);
+			return true;
+		}
+		if (startShapeIdx < 1) {
+			debugPrintf("[startShapeId] is 1-based idx!\n");
+			return true;
+		}
+	}
+
+	if (!_vm->hasResource(ID_TBMP, resource)) {
+		debugPrintf("Cannot find resource tBMP(%s)\n", argv[1]);
+		return true;
+	}
+	
+	uint32 shapeCount = _vm->_gfx->getShapeCount(resource);
+	if (shapeCount < startShapeIdx) {
+		debugPrintf("startShapeIdx exceeded shape count %u\n", shapeCount);
+		return true;
+	}
+
+	ZoombiniDebugCommand cmd;
+	cmd.setDrawShapes(resource, startShapeIdx);
+	_vm->openDebugDialog(cmd);
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_DumpShapes(int argc, const char **argv) {
+	if (!(2 <= argc && argc <= 3)) {
+		debugPrintf("Usage: dumpShapes <imageId> [shplId]\n");
+		return true;
+	}
+
+	ZmbResource resource;
+	if (!parseResourceId(argv[1], resource))
+		return true;
+	uint16 shplId = 0;
+	if (argc == 3) {
+		errno = 0;
+		shplId = static_cast<uint16>(strtoul(argv[2], nullptr, 10));
+		if (errno != 0) {
+			debugPrintf("Cannot parse argument %s!\n", argv[2]);
+			return true;
+		}
+		if (shplId < 1) {
+			debugPrintf("[shplId] must be larger then 0!\n");
+			return true;
+		}
+	}
+
+	// Collect palette
+	Common::String palLogStr;
+	byte palette[3 * 256];
+	memset(palette, 0, ARRAYSIZE(palette));
+	if (shplId == 0) { // Read current palette
+		_vm->_system->getPaletteManager()->grabPalette(palette, 0, 256);
+		palLogStr = "with current palettes";
+	} else { // Read palette from a SHPL resource
+		// There is no SHPL resources in common ZOOMBINI.MHK
+		if (!_vm->hasResource(ID_SHPL, ZmbResource(ZmbArchiveKind::kPage, shplId))) {
+			debugPrintf("Cannot find resource SHPL %04u\n", shplId);
+			return true;
+		}
+
+		uint16 palColorStart = 0;
+		uint16 palColorCount = 0;
+		byte rawPalette[3 * 256] = { 0, };
+		if (!_vm->_gfx->readPalette(shplId, rawPalette, ARRAYSIZE(rawPalette), palColorStart, palColorCount)) {
+			debugPrintf("Failed to load palette from SHPL %04u\n", shplId);
+			return true;
+		}
+
+		assert(palColorStart < 256);
+		assert(3 * palColorCount <= ARRAYSIZE(palette));
+		memcpy(palette + 3 * palColorStart, rawPalette, 3 * palColorCount);
+
+		palLogStr = Common::String::format("with SHPL %04u palettes", shplId);
+	}
+	
+	// Read the shape data
+	if (!_vm->hasResource(ID_TBMP, resource)) {
+		debugPrintf("Cannot find resource tBMP(%s)\n", argv[1]);
+		return true;
+	}
+	
+	uint32 shapeCount = _vm->_gfx->getShapeCount(resource);
+	
+	// Export shape bitmaps
+	uint16 exportedCount = 0;
+	for (uint16 shapeIdx = 1; shapeIdx <= shapeCount; shapeIdx++) {
+		MohawkSurface *shapeSurface = _vm->_gfx->findShape(resource, shapeIdx);
+		if (!shapeSurface) {
+			debugPrintf("Warning: Failed to load shape %u\n", shapeIdx);
+			continue;
+		}
+
+		Graphics::Surface *surface = shapeSurface->getSurface();
+		if (!surface || surface->h == 0 || surface->w == 0) {
+			debugPrintf("Warning: Invalid surface for shape %u\n", shapeIdx);
+			continue;
+		}
+
+		// Export to BMP
+		Common::String filename = Common::String::format("ZOOMBINI_tBMP_%s_shape_%03u.BMP", resource.toString().c_str(), shapeIdx);
+		if (exportSurfaceToBMP(filename, surface, palette)) {
+			exportedCount++;
+			debugPrintf("Successfully exported image %s to %s\n", resource.toString().c_str(), filename.c_str());
+		} else {
+			debugPrintf("Failed to export image %s to BMP\n", resource.toString().c_str());
+		}
+	}
+
+	debugPrintf("Successfully exported %03u of %03u shapes from image %s %s\n", exportedCount, shapeCount, resource.toString().c_str(), palLogStr.c_str());
+	return true;
+}
+
+bool ZoombiniConsole::Cmd_PrintFeature(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Usage: printFeature <scrbId>\n");
+		return true;
+	}
+
+	ZmbResource resource;
+	if (!parseResourceId(argv[1], resource))
+		return true;
+
+	if (!_vm->hasResource(ID_SCRB, resource)) {
+		debugPrintf("Cannot find resource SCRB(%s)\n", argv[1]);
+		return true;
+	}
+
+	// Dump feature directly
+	Common::SeekableReadStream *scrbStream = _vm->getResource(ID_SCRB, resource);
+
+	ZmbFeature *feature = new ZmbFeature(_vm, resource._id, 0, 0, resource);
+	feature->parseStream(scrbStream);
+	debugPrintf("SCRB_%04u: FrameCount(%u) MaxFrameIdx(%u)\n", resource._id, feature->getFrameCount(), feature->getMaxFrameIdx());
+
+	for (auto it = feature->begin(); it != feature->end(); it++) {
+		ZmbHotspotGroup *hsGroup = it->_value;
+
+		for (auto git = hsGroup->begin(); git != hsGroup->end(); git++) {
+			ZmbHotspot hs = *git;
+			debugPrintf("  Frame(%u): Hotspot ID(%u) at (%u, %u)\n", hs._frame, hs._shapeIdx, hs._x, hs._y);
+		}
+	}
+
+	delete feature;
+	return true;
+}
+
+bool ZoombiniConsole::Cmd_PrintFeatures(int argc, const char **argv) {
+	if (argc != 1) {
+		debugPrintf("Print all features from the active page\n");
+		debugPrintf("Usage: printFeatures\n");
+		return true;
+	}
+
+	// Get all SCRB resource IDs from the active page
+	Common::Array<uint16> resIds = _vm->getResourceIDList(ZmbArchiveKind::kPage, ID_SCRB);
+	if (resIds.empty()) {
+		debugPrintf("No SCRB resources found in current page\n");
+		return true;
+	}
+	
+	// Dump each feature
+	for (uint i = 0; i < resIds.size(); i++) {
+		uint16 scrbId = resIds[i];
+		ZmbResource resource = ZmbResource(ZmbArchiveKind::kPage, scrbId);
+		Common::SeekableReadStream *scrbStream = _vm->getResource(ID_SCRB, resource);
+
+		ZmbFeature *feature = new ZmbFeature(_vm, resource._id, 0, 0, resource);
+		feature->parseStream(scrbStream);
+		debugPrintf("SCRB_%04u: FrameCount(%u) MaxFrameIdx(%u)\n", resource._id, feature->getFrameCount(), feature->getMaxFrameIdx());
+
+		for (auto it = feature->begin(); it != feature->end(); it++) {
+			ZmbHotspotGroup *hsGroup = it->_value;
+
+			for (auto git = hsGroup->begin(); git != hsGroup->end(); git++) {
+				ZmbHotspot hs = *git;
+				debugPrintf("  Frame(%u): Hotspot ID(%u) at (%u, %u)\n", hs._frame, hs._shapeIdx, hs._x, hs._y);
+			}
+		}
+
+		delete feature;
+	}
+
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_DrawFeature(int argc, const char **argv) {
+	if (argc != 3) {
+		debugPrintf("Usage: drawFeature <imageId> <scrbId>\n");
+		return true;
+	}
+
+	ZmbResource resource;
+	if (!parseResourceId(argv[1], resource))
+		return true;
+
+	if (!_vm->hasResource(ID_TBMP, resource)) {
+		debugPrintf("Cannot find resource tBMP(%s)\n", argv[1]);
+		return true;
+	}
+
+	errno = 0;
+	uint16 scrbId = static_cast<uint16>(strtoul(argv[2], nullptr, 10));
+	if (errno != 0) {
+		debugPrintf("Cannot parse argument %s!\n", argv[2]);
+		return true;
+	}
+
+	if (!_vm->hasResource(ID_SCRB, ZmbResource(resource._archiveKind, scrbId))) {
+		debugPrintf("Cannot find resource SCRB(%s)\n", argv[2]);
+		return true;
+	}
+
+	ZoombiniDebugCommand cmd;
+	cmd.setDrawFeature(resource, scrbId);
+	_vm->openDebugDialog(cmd);
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_DumpFeature(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Usage: dumpFeature <scrbId>\n");
+		return true;
+	}
+
+	ZmbResource resource;
+	if (!parseResourceId(argv[1], resource))
+		return true;
+
+	if (!_vm->hasResource(ID_SCRB, resource)) {
+		debugPrintf("Cannot find resource SCRB(%s)\n", argv[1]);
+		return true;
+	}
+
+	// Create output file
+	ZoombiniPage *activePage = _vm->getActivePage();
+	Common::String filename = Common::String::format("ZOOMBINI_page%02u_SCRB_%s.txt", static_cast<uint32>(activePage->getPageType()), resource.toString().c_str());
+	Common::String filepath = "dumps/" + filename;
+
+	Common::DumpFile out;
+	if (!out.open(Common::Path(filepath, '/'), true)) {
+		debugPrintf("Failed to open file for writing: %s\n", filepath.c_str());
+		return true;
+	}
+
+	// Dump feature to file
+	Common::SeekableReadStream *scrbStream = _vm->getResource(ID_SCRB, resource);
+
+	ZmbFeature *feature = new ZmbFeature(_vm, resource._id, 0, 0, resource);
+	feature->parseStream(scrbStream);
+
+	Common::String lineBuffer = Common::String::format("SCRB_%s: FrameCount(%u) MaxFrameIdx(%u)\n", resource.toString().c_str(), feature->getFrameCount(), feature->getMaxFrameIdx());
+	out.write(lineBuffer.c_str(), lineBuffer.size());
+
+	for (auto it = feature->begin(); it != feature->end(); it++) {
+		ZmbHotspotGroup *hsGroup = it->_value;
+
+		for (auto git = hsGroup->begin(); git != hsGroup->end(); git++) {
+			ZmbHotspot hs = *git;
+			lineBuffer = Common::String::format("  Frame(%u): Hotspot ID(%u) at (%u, %u)\n", hs._frame, hs._shapeIdx, hs._x, hs._y);
+			out.write(lineBuffer.c_str(), lineBuffer.size());
+		}
+	}
+
+	delete feature;
+	out.close();
+	debugPrintf("Successfully exported SCRB feature to %s\n", filename.c_str());
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_DumpFeatures(int argc, const char **argv) {
+	if (argc != 1) {
+		debugPrintf("Usage: dumpFeatures\n");
+		return true;
+	}
+
+	// Get all SCRB resource IDs from the active page
+	Common::Array<uint16> resIds = _vm->getResourceIDList(ZmbArchiveKind::kPage, ID_SCRB);
+	if (resIds.empty()) {
+		debugPrintf("No SCRB resources found in current page\n");
+		return true;
+	}
+
+	// Create output file
+	ZoombiniPage *activePage = _vm->getActivePage();
+	Common::String filename = Common::String::format("ZOOMBINI_page%02u_SCRB_features.txt", static_cast<uint32>(activePage->getPageType()));
+	Common::String filepath = "dumps/" + filename;
+
+	Common::DumpFile out;
+	if (!out.open(Common::Path(filepath, '/'), true)) {
+		debugPrintf("Failed to open file for writing: %s\n", filepath.c_str());
+		return true;
+	}
+
+	// Dump each feature to file
+	for (uint i = 0; i < resIds.size(); i++) {
+		uint16 scrbId = resIds[i];
+		ZmbResource resId = ZmbResource(ZmbArchiveKind::kPage, scrbId);
+		Common::SeekableReadStream *scrbStream = _vm->getResource(ID_SCRB, resId);
+
+		ZmbFeature *feature = new ZmbFeature(_vm, scrbId, 0, 0, resId);
+		feature->parseStream(scrbStream);
+
+		Common::String lineBuffer = Common::String::format("SCRB_%u: FrameCount(%u) MaxFrameIdx(%u)\n", scrbId, feature->getFrameCount(), feature->getMaxFrameIdx());
+		out.write(lineBuffer.c_str(), lineBuffer.size());
+
+		for (auto it = feature->begin(); it != feature->end(); it++) {
+			ZmbHotspotGroup *hsGroup = it->_value;
+
+			for (auto git = hsGroup->begin(); git != hsGroup->end(); git++) {
+				ZmbHotspot hs = *git;
+				lineBuffer = Common::String::format("  Frame(%u): Hotspot ID(%u) at (%u, %u)\n", hs._frame, hs._shapeIdx, hs._x, hs._y);
+				out.write(lineBuffer.c_str(), lineBuffer.size());
+			}
+		}
+
+		delete feature;
+	}
+
+	out.close();
+	debugPrintf("Successfully exported SCRB features to %s\n", filename.c_str());
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_PrintSnoidScript(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Print a single SCRS (Snoid Script) resource\n");
+		debugPrintf("Usage: printSnoidScript <scrsId>\n");
+		return true;
+	}
+
+	ZmbResource resource;
+	if (!parseResourceId(argv[1], resource))
+		return true;
+
+	if (!_vm->hasResource(ID_SCRS, resource)) {
+		debugPrintf("Cannot find resource SCRS(%s)\n", argv[1]);
+		return true;
+	}
+
+	Common::SeekableReadStream *scrsStream = _vm->getResource(ID_SCRS, resource);
+
+	ZmbSnoid *snoid = new ZmbSnoid(_vm, resource._id, ZmbFeature::FLAG_00000001_TYPE_SNOID);
+	snoid->parseScrsStream(scrsStream);
+	debugPrintf("SCRS_%04u: Variant(%u) FrameCount(%u) MaxFrameIdx(%u)\n", resource._id, snoid->getVariant(), snoid->getFrameCount(), snoid->getMaxFrameIdx());
+
+	for (auto it = snoid->begin(); it != snoid->end(); it++) {
+		ZmbHotspotGroup *hsGroup = it->_value;
+
+		for (auto git = hsGroup->begin(); git != hsGroup->end(); git++) {
+			ZmbHotspot hs = *git;
+			debugPrintf("  Frame(%u): Hotspot ID(%u) at (%d, %d)\n", hs._frame, hs._shapeIdx, hs._x, hs._y);
+		}
+	}
+
+	delete snoid;
+	return true;
+}
+
+bool ZoombiniConsole::Cmd_PrintSnoidScripts(int argc, const char **argv) {
+	if (argc != 1) {
+		debugPrintf("Print all SCRS resources from the active page\n");
+		debugPrintf("Usage: printSnoidScripts\n");
+		return true;
+	}
+
+	Common::Array<uint16> resIds = _vm->getResourceIDList(ZmbArchiveKind::kPage, ID_SCRS);
+	if (resIds.empty()) {
+		debugPrintf("No SCRS resources found in current page\n");
+		return true;
+	}
+
+	for (uint i = 0; i < resIds.size(); i++) {
+		uint16 scrsId = resIds[i];
+		ZmbResource resource = ZmbResource(ZmbArchiveKind::kPage, scrsId);
+		Common::SeekableReadStream *scrsStream = _vm->getResource(ID_SCRS, resource);
+
+		ZmbSnoid *snoid = new ZmbSnoid(_vm, resource._id, ZmbFeature::FLAG_00000001_TYPE_SNOID);
+		snoid->parseScrsStream(scrsStream);
+		debugPrintf("SCRS_%04u: Variant(%u) FrameCount(%u) MaxFrameIdx(%u)\n", resource._id, snoid->getVariant(), snoid->getFrameCount(), snoid->getMaxFrameIdx());
+
+		for (auto it = snoid->begin(); it != snoid->end(); it++) {
+			ZmbHotspotGroup *hsGroup = it->_value;
+
+			for (auto git = hsGroup->begin(); git != hsGroup->end(); git++) {
+				ZmbHotspot hs = *git;
+				debugPrintf("  Frame(%u): Hotspot ID(%u) at (%d, %d)\n", hs._frame, hs._shapeIdx, hs._x, hs._y);
+			}
+		}
+
+		delete snoid;
+	}
+
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_DumpSnoidScript(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Usage: dumpSnoidScript <scrsId>\n");
+		return true;
+	}
+
+	ZmbResource resource;
+	if (!parseResourceId(argv[1], resource))
+		return true;
+
+	if (!_vm->hasResource(ID_SCRS, resource)) {
+		debugPrintf("Cannot find resource SCRS(%s)\n", argv[1]);
+		return true;
+	}
+
+	ZoombiniPage *activePage = _vm->getActivePage();
+	Common::String filename = Common::String::format("ZOOMBINI_page%02u_SCRS_%s.txt", static_cast<uint32>(activePage->getPageType()), resource.toString().c_str());
+	Common::String filepath = "dumps/" + filename;
+
+	Common::DumpFile out;
+	if (!out.open(Common::Path(filepath, '/'), true)) {
+		debugPrintf("Failed to open file for writing: %s\n", filepath.c_str());
+		return true;
+	}
+
+	Common::SeekableReadStream *scrsStream = _vm->getResource(ID_SCRS, resource);
+
+	ZmbSnoid *snoid = new ZmbSnoid(_vm, resource._id, ZmbFeature::FLAG_00000001_TYPE_SNOID);
+	snoid->parseScrsStream(scrsStream);
+
+	Common::String lineBuffer = Common::String::format("SCRS_%s: Variant(%u) FrameCount(%u) MaxFrameIdx(%u)\n", resource.toString().c_str(), snoid->getVariant(), snoid->getFrameCount(), snoid->getMaxFrameIdx());
+	out.write(lineBuffer.c_str(), lineBuffer.size());
+
+	for (auto it = snoid->begin(); it != snoid->end(); it++) {
+		ZmbHotspotGroup *hsGroup = it->_value;
+
+		for (auto git = hsGroup->begin(); git != hsGroup->end(); git++) {
+			ZmbHotspot hs = *git;
+			lineBuffer = Common::String::format("  Frame(%u): Hotspot ID(%u) at (%d, %d)\n", hs._frame, hs._shapeIdx, hs._x, hs._y);
+			out.write(lineBuffer.c_str(), lineBuffer.size());
+		}
+	}
+
+	delete snoid;
+	out.close();
+	debugPrintf("Successfully exported SCRS snoid script to %s\n", filename.c_str());
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_DumpSnoidScripts(int argc, const char **argv) {
+	if (argc != 1) {
+		debugPrintf("Usage: dumpSnoidScripts\n");
+		return true;
+	}
+
+	Common::Array<uint16> resIds = _vm->getResourceIDList(ZmbArchiveKind::kPage, ID_SCRS);
+	if (resIds.empty()) {
+		debugPrintf("No SCRS resources found in current page\n");
+		return true;
+	}
+
+	ZoombiniPage *activePage = _vm->getActivePage();
+	Common::String filename = Common::String::format("ZOOMBINI_page%02u_SCRS_snoidscripts.txt", static_cast<uint32>(activePage->getPageType()));
+	Common::String filepath = "dumps/" + filename;
+
+	Common::DumpFile out;
+	if (!out.open(Common::Path(filepath, '/'), true)) {
+		debugPrintf("Failed to open file for writing: %s\n", filepath.c_str());
+		return true;
+	}
+
+	for (uint i = 0; i < resIds.size(); i++) {
+		uint16 scrsId = resIds[i];
+		ZmbResource resId = ZmbResource(ZmbArchiveKind::kPage, scrsId);
+		Common::SeekableReadStream *scrsStream = _vm->getResource(ID_SCRS, resId);
+
+		ZmbSnoid *snoid = new ZmbSnoid(_vm, scrsId, ZmbFeature::FLAG_00000001_TYPE_SNOID);
+		snoid->parseScrsStream(scrsStream);
+
+		Common::String lineBuffer = Common::String::format("SCRS_%u: Variant(%u) FrameCount(%u) MaxFrameIdx(%u)\n", scrsId, snoid->getVariant(), snoid->getFrameCount(), snoid->getMaxFrameIdx());
+		out.write(lineBuffer.c_str(), lineBuffer.size());
+
+		for (auto it = snoid->begin(); it != snoid->end(); it++) {
+			ZmbHotspotGroup *hsGroup = it->_value;
+
+			for (auto git = hsGroup->begin(); git != hsGroup->end(); git++) {
+				ZmbHotspot hs = *git;
+				lineBuffer = Common::String::format("  Frame(%u): Hotspot ID(%u) at (%d, %d)\n", hs._frame, hs._shapeIdx, hs._x, hs._y);
+				out.write(lineBuffer.c_str(), lineBuffer.size());
+			}
+		}
+
+		delete snoid;
+	}
+
+	out.close();
+	debugPrintf("Successfully exported SCRS snoid scripts to %s\n", filename.c_str());
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_PlotPoint(int argc, const char **argv) {
+	if (argc < 3 || argc > 4) {
+		debugPrintf("Usage: plotPoint <x> <y> [color]\n");
+		debugPrintf("  x, y: coordinates (0-based, hex supported with 0x prefix)\n");
+		debugPrintf("  color: color value (8-bit palette index, default: %u)\n", ZoombiniGraphics::kColor0A_White);
+		return true;
+	}
+
+	int32 xVal = 0, yVal = 0, colorVal = 0;
+	if (!parseInt(argv[1], xVal) || !parseInt(argv[2], yVal))
+		return true;
+
+	uint32 color = static_cast<uint32>(ZoombiniGraphics::kColor0A_White);
+	if (argc == 4) {
+		if (!parseInt(argv[3], colorVal))
+			return true;
+		if (colorVal < 0 || colorVal > 0xFF) {
+			debugPrintf("Error: Color must be 0-255\n");
+			return true;
+		}
+		color = static_cast<uint32>(colorVal);
+	}
+
+	int16 x = static_cast<int16>(xVal);
+	int16 y = static_cast<int16>(yVal);
+
+	Graphics::Surface *screen = _vm->_gfx->getScreen(ZoombiniGraphics::kShapeScreen);
+	if (x < 0 || x >= screen->w || y < 0 || y >= screen->h) {
+		debugPrintf("Coordinates out of bounds (screen size: %d x %d)\n", screen->w, screen->h);
+		return true;
+	}
+
+	ZoombiniDebugCommand cmd;
+	cmd.setPlotPoint(x, y, color);
+	_vm->openDebugDialog(cmd);
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_PlotLine(int argc, const char **argv) {
+	if (argc < 5 || argc > 6) {
+		debugPrintf("Usage: plotLine <x0> <y0> <x1> <y1> [color]\n");
+		debugPrintf("  x0, y0: start coordinates (0-based, hex supported with 0x prefix)\n");
+		debugPrintf("  x1, y1: end coordinates (0-based, hex supported with 0x prefix)\n");
+		debugPrintf("  color: color value (8-bit palette index, default: %u)\n", ZoombiniGraphics::kColor0A_White);
+		return true;
+	}
+
+	int32 x0Val = 0, y0Val = 0, x1Val = 0, y1Val = 0, colorVal = 0;
+	if (!parseInt(argv[1], x0Val) || !parseInt(argv[2], y0Val) ||
+	    !parseInt(argv[3], x1Val) || !parseInt(argv[4], y1Val))
+		return true;
+
+	uint32 color = static_cast<uint32>(ZoombiniGraphics::kColor0A_White);
+	if (argc == 6) {
+		if (!parseInt(argv[5], colorVal))
+			return true;
+		if (colorVal < 0 || colorVal > 0xFF) {
+			debugPrintf("Error: Color must be 0-255\n");
+			return true;
+		}
+		color = static_cast<uint32>(colorVal);
+	}
+
+	int16 x0 = static_cast<int16>(x0Val);
+	int16 y0 = static_cast<int16>(y0Val);
+	int16 x1 = static_cast<int16>(x1Val);
+	int16 y1 = static_cast<int16>(y1Val);
+
+	ZoombiniDebugCommand cmd;
+	cmd.setPlotLine(x0, y0, x1, y1, color);
+	_vm->openDebugDialog(cmd);
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_PlotRect(int argc, const char **argv) {
+	if (argc < 5 || argc > 6) {
+		debugPrintf("Usage: plotRect <x1> <y1> <x2> <y2> [color]\n");
+		debugPrintf("  x1, y1: top-left corner coordinates (0-based, hex supported with 0x prefix)\n");
+		debugPrintf("  x2, y2: bottom-right corner coordinates (0-based, hex supported with 0x prefix)\n");
+		debugPrintf("  color: color value (8-bit palette index, default: %u)\n", ZoombiniGraphics::kColor0A_White);
+		return true;
+	}
+
+	int32 x1Val = 0, y1Val = 0, x2Val = 0, y2Val = 0, colorVal = 0;
+	if (!parseInt(argv[1], x1Val) || !parseInt(argv[2], y1Val) ||
+	    !parseInt(argv[3], x2Val) || !parseInt(argv[4], y2Val))
+		return true;
+
+	uint32 color = static_cast<uint32>(ZoombiniGraphics::kColor0A_White);
+	if (argc == 6) {
+		if (!parseInt(argv[5], colorVal))
+			return true;
+		if (colorVal < 0 || colorVal > 0xFF) {
+			debugPrintf("Error: Color must be 0-255\n");
+			return true;
+		}
+		color = static_cast<uint32>(colorVal);
+	}
+
+	int16 x1 = static_cast<int16>(x1Val);
+	int16 y1 = static_cast<int16>(y1Val);
+	int16 x2 = static_cast<int16>(x2Val);
+	int16 y2 = static_cast<int16>(y2Val);
+
+	if (x2 <= x1 || y2 <= y1) {
+		debugPrintf("Invalid rectangle coordinates\n");
+		return true;
+	}
+
+	ZoombiniDebugCommand cmd;
+	cmd.setPlotRect(x1, y1, x2, y2, color);
+	_vm->openDebugDialog(cmd);
+	return false;
+}
+
+bool ZoombiniConsole::Cmd_DumpAllResources(int argc, const char **argv) {
+	if (argc > 2) {
+		debugPrintf("Dump all raw resources from currently loaded page and/or system archives\n");
+		debugPrintf("Usage: dumpAllResources [page|system|all]\n");
+		return true;
+	}
+
+	bool dumpPage = true;
+	bool dumpSystem = true;
+	if (argc == 2) {
+		if (strcmp(argv[1], "page") == 0) {
+			dumpSystem = false;
+		} else if (strcmp(argv[1], "system") == 0) {
+			dumpPage = false;
+		} else if (strcmp(argv[1], "all") != 0) {
+			debugPrintf("Usage: dumpAllResources [page|system|all]\n");
+			return true;
+		}
+	}
+
+	ZoombiniPage *activePage = _vm->getActivePage();
+	uint32 pageType = (activePage != nullptr) ? static_cast<uint32>(activePage->getPageType()) : 0;
+
+	uint32 totalExported = 0;
+
+	if (dumpPage) {
+		uint archiveCount = _vm->getArchiveCount(ZmbArchiveKind::kPage);
+		if (archiveCount == 0) {
+			debugPrintf("No page archives loaded\n");
+		} else {
+			Common::String dumpDir = Common::String::format("dumps/ZOOMBINI_dump_page%02u", pageType);
+			uint32 globalIndex = 0;
+
+			for (uint archiveIdx = 0; archiveIdx < archiveCount; archiveIdx++) {
+				Archive *archive = _vm->getArchive(ZmbArchiveKind::kPage, archiveIdx);
+				Common::Array<uint32> types = archive->getResourceTypeList();
+
+				for (uint32 tag : types) {
+					Common::Array<uint16> ids = archive->getResourceIDList(tag);
+
+					for (uint16 resId : ids) {
+						Common::SeekableReadStream *stream = archive->getResource(tag, resId);
+						if (!stream) {
+							debugPrintf("Warning: Failed to read %s %u from page archive %u\n", tag2str(tag), resId, archiveIdx);
+							continue;
+						}
+
+						Common::String filename = Common::String::format("%04u_%02u_%s_%u.bin",
+							globalIndex, archiveIdx, tag2str(tag), resId);
+						Common::String filepath = dumpDir + "/" + filename;
+
+						Common::DumpFile out;
+						if (!out.open(Common::Path(filepath, '/'), true)) {
+							debugPrintf("Warning: Failed to open %s for writing\n", filepath.c_str());
+							delete stream;
+							continue;
+						}
+
+						uint32 size = stream->size();
+						byte *buffer = new byte[size];
+						stream->read(buffer, size);
+						out.write(buffer, size);
+						delete[] buffer;
+						delete stream;
+						out.close();
+
+						globalIndex++;
+						totalExported++;
+					}
+				}
+			}
+
+			debugPrintf("Dumped %u page resources to %s/\n", globalIndex, dumpDir.c_str());
+		}
+	}
+
+	if (dumpSystem) {
+		Archive *sysArchive = _vm->getArchive(ZmbArchiveKind::kSystem, 0);
+		if (!sysArchive) {
+			debugPrintf("System archive not available\n");
+		} else {
+			Common::String dumpDir = "dumps/ZOOMBINI_dump_sys";
+			Common::Array<uint32> types = sysArchive->getResourceTypeList();
+			uint32 globalIndex = 0;
+
+			for (uint32 tag : types) {
+				Common::Array<uint16> ids = sysArchive->getResourceIDList(tag);
+
+				for (uint16 resId : ids) {
+					Common::SeekableReadStream *stream = sysArchive->getResource(tag, resId);
+					if (!stream) {
+						debugPrintf("Warning: Failed to read %s %u from system archive\n", tag2str(tag), resId);
+						continue;
+					}
+
+					Common::String filename = Common::String::format("%04u_00_%s_%u.bin",
+						globalIndex, tag2str(tag), resId);
+					Common::String filepath = dumpDir + "/" + filename;
+
+					Common::DumpFile out;
+					if (!out.open(Common::Path(filepath, '/'), true)) {
+						debugPrintf("Warning: Failed to open %s for writing\n", filepath.c_str());
+						delete stream;
+						continue;
+					}
+
+					uint32 size = stream->size();
+					byte *buffer = new byte[size];
+					stream->read(buffer, size);
+					out.write(buffer, size);
+					delete[] buffer;
+					delete stream;
+					out.close();
+
+					globalIndex++;
+					totalExported++;
+				}
+			}
+
+			debugPrintf("Dumped %u system resources to %s/\n", globalIndex, dumpDir.c_str());
+		}
+	}
+
+	debugPrintf("Full dump complete. Total: %u resources exported.\n", totalExported);
+	return true;
+}
+
+bool ZoombiniConsole::Cmd_GoXfer(int argc, const char **argv) {
+	static const struct {
+		const char *name;
+		ZMB_SI_PAGE siPage;
+		const char *desc;
+	} xferRoutes[] = {
+		{ "picker",    ZMB_SI_PICKER_01,     "Picker -> Bridge (From Isle)" },
+		{ "bridge",    ZMB_SI_BRIDGE_02,     "Bridge -> Tunnels (Big Bad & Hungry)" },
+		{ "tunnels",   ZMB_SI_TUNNELS_03,    "Tunnels -> Pizza (Big Bad & Hungry)" },
+		{ "pizza",     ZMB_SI_PIZZA_04,      "Pizza -> Basecamp1 (Big Bad & Hungry)" },
+		{ "bc1north",  ZMB_SI_BC1_NORTH_05,  "Basecamp1 North -> Ferry (Who's Bayou)" },
+		{ "bc1south",  ZMB_SI_BC1_SOUTH_06,  "Basecamp1 South -> Lilly (Who's Bayou)" },
+		{ "ferry",     ZMB_SI_FERRY_07,      "Ferry -> Slides (Who's Bayou)" },
+		{ "lilly",     ZMB_SI_LILLY_08,      "Lilly -> Basecamp2 (Who's Bayou)" },
+		{ "slides",    ZMB_SI_SLIDES_09,     "Slides -> Fleens (Deep Dark Forest)" },
+		{ "fleens",    ZMB_SI_FLEENS_10,     "Fleens -> Hotel (Deep Dark Forest)" },
+		{ "hotel",     ZMB_SI_HOTEL_11,      "Hotel -> Net (Deep Dark Forest)" },
+		{ "net",       ZMB_SI_NET_12,        "Net -> Basecamp2 (Deep Dark Forest)" },
+		{ "bc2",       ZMB_SI_BASECAMP2_13,  "Basecamp2 -> Caves (Mountain of Despair)" },
+		{ "caves",     ZMB_SI_CAVES_14,      "Caves -> Smoke (Mountain of Despair)" },
+		{ "smoke",     ZMB_SI_SMOKE_15,      "Smoke -> Maze (Mountain of Despair)" },
+		{ "maze",      ZMB_SI_MAZE_16,       "Maze -> Town (To Town)" },
+	};
+
+	if (argc != 2) {
+		debugPrintf("Jump to the xfer (transition) page with a chosen route.\n");
+		debugPrintf("Usage: goXfer <route>\n");
+		debugPrintf("Available routes:\n");
+		for (uint i = 0; i < ARRAYSIZE(xferRoutes); i++) {
+			debugPrintf("  %-10s  SI %2d  %s\n", xferRoutes[i].name,
+				(int)xferRoutes[i].siPage, xferRoutes[i].desc);
+		}
+		return true;
+	}
+
+	// Match by name (case-insensitive) or SI page number
+	ZMB_SI_PAGE targetSi = ZMB_SI_MINUS1;
+	int32 numVal;
+	if (ZmbResource::parseInt(argv[1], numVal)) {
+		// Numeric: treat as SI page index
+		for (uint i = 0; i < ARRAYSIZE(xferRoutes); i++) {
+			if ((int16)numVal == xferRoutes[i].siPage) {
+				targetSi = xferRoutes[i].siPage;
+				break;
+			}
+		}
+	} else {
+		// Name match
+		for (uint i = 0; i < ARRAYSIZE(xferRoutes); i++) {
+			if (scumm_stricmp(argv[1], xferRoutes[i].name) == 0) {
+				targetSi = xferRoutes[i].siPage;
+				break;
+			}
+		}
+	}
+
+	if (targetSi == ZMB_SI_MINUS1) {
+		debugPrintf("Unknown route '%s'. Use goXfer without arguments to see available routes.\n", argv[1]);
+		return true;
+	}
+
+	// Generate 16 random snoids as the active pack (same as practice mode)
+	_vm->_state->generateRandomPack();
+
+	// Close the current page and queue the xfer transition
+	_vm->_xferSrcSiPage = targetSi;
+	_vm->setNextPage(ZoombiniPageType::kXfer);
+	if (_vm->getActivePage())
+		_vm->getActivePage()->close();
+
+	debugPrintf("Generated 16 random snoids in active pack\n");
+	debugPrintf("Jumping to xfer with source SI page %d\n", (int)targetSi);
+	return false; // Close the debugger console
+}
+
+bool ZoombiniConsole::exportSurfaceToBMP(const Common::String &filename, const Graphics::Surface *surface, const byte *palette) {
+	Common::String filepath = "dumps/" + filename;
+
+	Common::DumpFile out;
+	if (!out.open(Common::Path(filepath, '/'), true)) {
+		debugPrintf("Failed to open file %s for writing\n", filepath.c_str());
+		return false;
+	}
+
+	// Image::writeBMP() expects that palette buffer has 256 colors (768 bytes)
+	return Image::writeBMP(out, *surface, palette);
+}
+
+#endif
 
 } // End of namespace Mohawk

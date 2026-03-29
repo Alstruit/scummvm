@@ -1,0 +1,609 @@
+/* ScummVM - Graphic Adventure Engine
+ *
+ * ScummVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the COPYRIGHT
+ * file distributed with this source distribution.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
+#include "mohawk/zoombini_resource.h"
+
+#include "common/archive.h"
+#include "common/config-manager.h"
+#include "common/debug.h"
+#include "common/error.h"
+#include "common/events.h"
+#include "common/fs.h"
+#include "common/system.h"
+#include "common/textconsole.h"
+#include "graphics/cursorman.h"
+
+#include "mohawk/console.h"
+#include "mohawk/cursors.h"
+#include "mohawk/resource.h"
+#include "mohawk/sound.h"
+#include "mohawk/video.h"
+
+#include "mohawk/zoombini.h"
+#include "mohawk/zoombini_debug.h"
+#include "mohawk/zoombini_graphics.h"
+#include "mohawk/zoombini_page.h"
+#include "mohawk/zoombini_pages/basecamp1.h"
+#include "mohawk/zoombini_pages/basecamp2.h"
+#include "mohawk/zoombini_pages/dialog_credits.h"
+#include "mohawk/zoombini_pages/dialog_debug.h"
+#include "mohawk/zoombini_pages/dialog_help.h"
+#include "mohawk/zoombini_pages/dialog_msgbox.h"
+#include "mohawk/zoombini_pages/dialog_options.h"
+#include "mohawk/zoombini_pages/dialog_saveload.h"
+#include "mohawk/zoombini_pages/rodmap.h"
+#include "mohawk/zoombini_pages/picker.h"
+#include "mohawk/zoombini_pages/bridge.h"
+#include "mohawk/zoombini_pages/caves.h"
+#include "mohawk/zoombini_pages/pizza.h"
+#include "mohawk/zoombini_pages/ferry.h"
+#include "mohawk/zoombini_pages/lilly.h"
+#include "mohawk/zoombini_pages/net.h"
+#include "mohawk/zoombini_pages/fleens.h"
+#include "mohawk/zoombini_pages/hotel.h"
+#include "mohawk/zoombini_pages/slides.h"
+#include "mohawk/zoombini_pages/tunnels.h"
+#include "mohawk/zoombini_pages/smoke.h"
+#include "mohawk/zoombini_pages/maze.h"
+#include "mohawk/zoombini_pages/town.h"
+#include "mohawk/zoombini_pages/transition_logo.h"
+#include "mohawk/zoombini_pages/transition_xfer.h"
+#include "mohawk/zoombini_random.h"
+#include "mohawk/zoombini_sound.h"
+#include "mohawk/zoombini_state.h"
+#include "mohawk/zoombini_text.h"
+
+namespace Mohawk {
+
+MohawkEngine_Zoombini::MohawkEngine_Zoombini(OSystem *syst, const MohawkGameDescription *gamedesc) : MohawkEngine(syst, gamedesc) {
+	DebugMan.addDebugChannel(kZmbDebugSaveLoad, "SaveLoad", "Track Save/Load Function");
+	DebugMan.addDebugChannel(kZmbDebugPage, "Page", "Track Page Execution");
+	DebugMan.addDebugChannel(kZmbDebugResource, "Resource", "Track Resource Parsing");
+	DebugMan.addDebugChannel(kZmbDebugScript, "Script", "Track Script Execution");
+	DebugMan.addDebugChannel(kZmbDebugRender, "Render", "Track Rendering");
+}
+
+MohawkEngine_Zoombini::~MohawkEngine_Zoombini() {
+	delete _activePage;
+	delete _sysMhk;
+	delete _snoidShapeRegs;
+	delete _smallSnoidShapeRegs;
+
+	delete _midi;
+	delete _sound;
+	delete _video;
+	delete _gfx;
+	delete _rnd;
+	delete _state;
+	delete _text;
+}
+
+Common::Error MohawkEngine_Zoombini::run() {
+	MohawkEngine::run();
+
+	if (!_mixer->isReady()) {
+		return Common::kAudioDeviceInitFailed;
+	}
+
+	setDebugger(new ZoombiniConsole(this));
+
+	_language = getLanguage();
+
+	_gfx = new ZoombiniGraphics(this);
+	_video = new VideoManager(this);
+	_sound = new ZoombiniSound(this);
+	_midi = new ZoombiniMidiPlayer(this);
+	_rnd = new ZoombiniRandom("zoombini");
+	_state = new ZoombiniGameState(this, _saveFileMan);
+	_text = new ZoombiniText(this, _language);
+
+	_cursor = new ZoombiniCursorManager(this);
+	_cursor->setDefaultCursor();
+	_cursor->showCursor();
+
+	// Load ZOOMBINI.MHK
+	_sysMhk = loadSystemArchive();
+
+	// Load global registration-point offsets for snoid body-part shapes.
+	// IDA: dword_4B731C (X) and dword_4B7320 (Y) loaded from REGS 100+101 in ZOOMBINI.MHK.
+	_snoidShapeRegs = new ZmbRegs();
+	_snoidShapeRegs->parseStreams(this, ZmbArchiveKind::kSystem, 100, 101);
+
+	// Load REGS offsets for small snoid shapes (resource 0xC80=3200/0xC81=3201).
+	// IDA: sub_4572C5(0) loads these after swapping body-part tables.
+	_smallSnoidShapeRegs = new ZmbRegs();
+	_smallSnoidShapeRegs->parseStreams(this, ZmbArchiveKind::kSystem, 3200, 3201);
+
+	// Load a roster of game saves
+	_state->loadRoster();
+
+	// Load default page
+	setActiveResourceKind(ZmbArchiveKind::kPage);
+	setNextPage(ZoombiniPageType::kLogo);
+	loadNextPage();
+
+	// Main game loop
+	while (!mustQuit()) {
+		doFrame();
+	}
+
+	return Common::kNoError;
+}
+
+void MohawkEngine_Zoombini::resetFidgetActivity() {
+	// IDA: currentFrameCounter_46084A — reset threshold to default and
+	// restart the idle timer so the halving logic in doFrame() begins fresh.
+	_lastActivityFrame = _system->getMillis() / static_cast<uint32>(kAnimateFrameTimeMs);
+	if (_fidgetThreshold)
+		_fidgetThreshold = 64;
+}
+
+void MohawkEngine_Zoombini::processEvents(ZoombiniPage *page) {
+	Common::Event event;
+
+	// If fading, defer event processing until fade is done
+	if (_gfx->isFading()) {
+		// pollEvent() must be called to keep the mouse cursor moving
+		while (_system->getEventManager()->pollEvent(event))
+			_deferredEventQueue.push(event);
+
+		return;
+	}
+
+	// Process deferred events first
+	while (!_deferredEventQueue.empty()) {
+		event = _deferredEventQueue.front();
+		_deferredEventQueue.pop();
+		processEvent(page, event);
+	}
+
+	// Process new events
+	while (_system->getEventManager()->pollEvent(event))
+		processEvent(page, event);
+}
+
+void MohawkEngine_Zoombini::processEvent(ZoombiniPage *page, const Common::Event &event) {
+	// IDA: currentFrameCounter_46084A is called on user input to reset fidget
+	// threshold and idle timer.  We call it on any mouse/keyboard event.
+	switch (event.type) {
+	case Common::EVENT_LBUTTONDOWN:
+	case Common::EVENT_LBUTTONUP:
+	case Common::EVENT_MOUSEMOVE:
+	case Common::EVENT_KEYDOWN:
+	case Common::EVENT_KEYUP:
+		resetFidgetActivity();
+		break;
+	default:
+		break;
+	}
+
+	switch (event.type) {
+	case Common::EVENT_LBUTTONDOWN:
+		page->onLButtonDown(event.mouse, event.relMouse);
+		break;
+	case Common::EVENT_LBUTTONUP:
+		page->onLButtonUp(event.mouse, event.relMouse);
+		break;
+	case Common::EVENT_WHEELUP:
+		page->onWheelUp(event.mouse);
+		break;
+	case Common::EVENT_WHEELDOWN:
+		page->onWheelDown(event.mouse);
+		break;
+	case Common::EVENT_MOUSEMOVE:
+		page->onMouseMove(event.mouse, event.relMouse);
+		break;
+	case Common::EVENT_KEYDOWN:
+		page->onKeyDown(event.kbd, event.kbdRepeat);
+		break;
+	case Common::EVENT_KEYUP:
+		page->onKeyUp(event.kbd, event.kbdRepeat);
+		break;
+	case Common::EVENT_QUIT:
+	case Common::EVENT_RETURN_TO_LAUNCHER:
+		page->onQuit();
+		page->close();
+
+		if (page != _activePage) {
+			_activePage->onQuit();
+			_activePage->close();
+		}
+
+		if (_quitEventState == kQuitEventNone) {
+			_quitEventState = kQuitEventRunning;
+			_gfx->setMouseCursor(ZoombiniGraphics::kResCursor01_Watch);
+		}
+		break;
+	default:
+		break;
+	}
+}
+
+void MohawkEngine_Zoombini::doFrame() {
+	// Update background running things
+	uint32 frameStartTime = _system->getMillis();
+
+	_sound->updateSoundQueue();
+
+	// IDA: gameMainLoop_45DDD4 — when idle > 3600 ticks (~60s at 60fps),
+	// halve the fidget threshold (minimum 1) to increase fidget frequency.
+	if (_fidgetThreshold) {
+		uint32 curFrame = frameStartTime / static_cast<uint32>(kAnimateFrameTimeMs);
+		if (curFrame - _lastActivityFrame > 3600) {
+			_lastActivityFrame = curFrame;
+			_fidgetThreshold /= 2;
+			if (!_fidgetThreshold)
+				_fidgetThreshold = 1;
+		}
+	}
+
+	bool isDialogOpened = !_dialogPageStack.empty();
+	ZoombiniPage *page = nullptr;
+	if (isDialogOpened)
+		page = _dialogPageStack.top();
+	else
+		page = _activePage;
+
+	// Debugger console is spawned in pollEvent() if requested.
+	processEvents(page);
+
+	// Page frame update
+	page->onFrame();
+
+	// Update the screen once per frame
+	_gfx->flushScreens();
+	bool inFade = _gfx->applyFadeEffect(frameStartTime);
+	_system->updateScreen();
+
+	// Process cursor animation
+	if (_gfx->isMouseCursorEyeAnimationActive()) {
+		if (inFade)
+			_gfx->runMouseCursorEyeAnimationFrame(frameStartTime);
+		else
+			_gfx->stopMouseCursorEyeAnimation();
+	}
+
+	// Check if page is finished
+	if (!inFade && page->isClosed()) {	
+		if (isDialogOpened) {
+			closeActiveDialog();
+		} else {
+			loadNextPage();
+		}
+		page = nullptr;
+	}
+
+	// Cut down on CPU usage
+	uint32 loopElapsed = _system->getMillis() - frameStartTime;
+	if (loopElapsed < kTargetFrameTimeMs)
+		_system->delayMillis(kTargetFrameTimeMs - loopElapsed);
+}
+
+void MohawkEngine_Zoombini::delayRunningFrames(uint32 ms) {
+	uint32 startTime = _system->getMillis();
+
+	while (_system->getMillis() < startTime + ms && !mustQuit()) {
+		doFrame();
+	}
+}
+
+MohawkArchive *MohawkEngine_Zoombini::loadSystemArchive() {
+	MohawkArchive *mhkArchive = new MohawkArchive();
+	if (!mhkArchive->openFile(Common::Path(ZMB_MHK_ZOOMBINI))) {
+		error("Cannot open resource file '%s'", ZMB_MHK_ZOOMBINI);
+	}
+
+	return mhkArchive;
+}
+
+void MohawkEngine_Zoombini::loadNextPage() {
+	if (_quitEventState == kQuitEventRunning) {
+		_quitEventState = kQuitEventDone;
+		return;
+	}
+
+	if (_activePage) {
+		delete _activePage;
+		_activePage = nullptr;
+	}
+	_gfx->clearScreens();
+	_gfx->clearCache();
+
+	assert(!_pageQueue.empty());
+	ZoombiniPageType nextPageType = _pageQueue.pop();
+
+	ZoombiniPage *page;
+	switch (nextPageType) {
+	case ZoombiniPageType::kLogo:
+		page = new ZoombiniTransitionLogo(this);
+		break;
+	case ZoombiniPageType::kRodMap:
+		page = new ZoombiniInteractiveRodMap(this);
+		break;
+	case ZoombiniPageType::kXfer:
+		page = new ZoombiniTransitionXfer(this);
+		break;
+	case ZoombiniPageType::kPicker:
+		page = new ZoombiniInteractivePicker(this);
+		break;
+	case ZoombiniPageType::kBasecamp1:
+		page = new ZoombiniInteractiveBasecampOne(this);
+		break;
+	case ZoombiniPageType::kTown:
+		page = new ZoombiniInteractiveTown(this);
+		break;
+	case ZoombiniPageType::kBasecamp2:
+		page = new ZoombiniInteractiveBasecampTwo(this);
+		break;
+	case ZoombiniPageType::kBridge:
+		page = new ZoombiniInteractiveBridge(this);
+		break;
+	case ZoombiniPageType::kCaves:
+		page = new ZoombiniInteractiveCaves(this);
+		break;
+	case ZoombiniPageType::kPizza:
+		page = new ZoombiniInteractivePizza(this);
+		break;
+	case ZoombiniPageType::kFerry:
+		page = new ZoombiniInteractiveFerry(this);
+		break;
+	case ZoombiniPageType::kLilly:
+		page = new ZoombiniInteractiveLilly(this);
+		break;
+	case ZoombiniPageType::kSlides:
+		page = new ZoombiniInteractiveSlides(this);
+		break;
+	case ZoombiniPageType::kFleens:
+		page = new ZoombiniInteractiveFleens(this);
+		break;
+	case ZoombiniPageType::kHotel:
+		page = new ZoombiniInteractiveHotel(this);
+		break;
+	case ZoombiniPageType::kNet:
+		page = new ZoombiniInteractiveNet(this);
+		break;
+	case ZoombiniPageType::kTunnels:
+		page = new ZoombiniInteractiveTunnels(this);
+		break;
+	case ZoombiniPageType::kSmoke:
+		page = new ZoombiniInteractiveSmoke(this);
+		break;
+	case ZoombiniPageType::kMaze:
+		page = new ZoombiniInteractiveMaze(this);
+		break;
+	default:
+		error("Not implemented page: %d", static_cast<int32>(nextPageType));
+		break;
+	}
+
+	_activePage = page;
+	if (page->getPageCategory() == ZoombiniPageCategory::kInteractive)
+		_state->_f.setCurrentPageType(nextPageType);
+
+	page->open();
+	page->setBackgroundMusic();
+	page->setBackgroundBitmap();
+	page->loadFeatures();
+	page->onFadeIn();
+}
+
+void MohawkEngine_Zoombini::addPageArchive(Archive *archive) {
+	_mhk.push_back(archive);
+	debugC(kZmbDebugPage, "addArchive: added page archive %p, now size: %u", reinterpret_cast<void *>(archive), _mhk.size());
+}
+
+void MohawkEngine_Zoombini::removePageArchive(Archive *archive) {
+	debugC(kZmbDebugPage,"trying to remove page archive %p, now size: %u", reinterpret_cast<void *>(archive), _mhk.size());
+	for (uint i = 0; i < _mhk.size(); i++) {
+		if (archive != _mhk[i])
+			continue;
+		_mhk.remove_at(i);
+		delete archive;
+		debugC(kZmbDebugPage,"removeArchive removed and deleted archive %p, now size: %u", reinterpret_cast<void *>(archive), _mhk.size());
+		return;
+	}
+
+	error("removeArchive didn't find archive %p, now size: %u", reinterpret_cast<void *>(archive), _mhk.size());
+}
+
+void MohawkEngine_Zoombini::clearPageArchives() {
+	MohawkEngine::closeAllArchives();
+}
+
+Common::Language MohawkEngine_Zoombini::getLanguage() const {
+	Common::Language language = MohawkEngine::getLanguage();
+	if (language == Common::UNK_LANG)
+		language = Common::EN_ANY;
+	return language;
+}
+
+void MohawkEngine_Zoombini::setNextPage(ZoombiniPageType type) {
+	_pageQueue.clear();
+	_pageQueue.push(type);
+}
+
+bool MohawkEngine_Zoombini::hasDialogOpened() const {
+	return !_dialogPageStack.empty();
+}
+
+void MohawkEngine_Zoombini::openOptionsDialog() {
+	ZoombiniDialog *dialogPage = new ZoombiniDialogOptions(this);
+	loadModalDialog(dialogPage);
+}
+
+ZoombiniDialogResult MohawkEngine_Zoombini::openSaveDialog() {
+	ZoombiniDialog *dialogPage = new ZoombiniDialogSaveLoad(this, ZoombiniDialogSaveLoad::kSaveMode);
+	return loadModalDialog(dialogPage);
+}
+
+ZoombiniDialogResult MohawkEngine_Zoombini::openLoadDialog(bool newGameMode) {
+	if (_state->_r._saveCount1 == 0) {
+		openMsgBoxDialog(ZoombiniMsgBoxType::kAlertNoSavedGame);
+		return ZoombiniDialogResult::kNo;
+	}
+
+	ZoombiniDialogSaveLoad::SaveLoadMode mode = newGameMode ? ZoombiniDialogSaveLoad::kLoadOrNewMode : ZoombiniDialogSaveLoad::kLoadMode;
+	ZoombiniDialog *dialogPage = new ZoombiniDialogSaveLoad(this, mode);
+	return loadModalDialog(dialogPage);
+}
+
+ZoombiniDialogResult MohawkEngine_Zoombini::openMsgBoxDialog(ZoombiniMsgBoxType type) {
+	ZoombiniDialog *dialogPage = new ZoombiniDialogMsgBox(this, type);
+	return loadModalDialog(dialogPage);
+}
+
+void MohawkEngine_Zoombini::openCreditsDialog() {
+	ZoombiniDialog *dialogPage = new ZoombiniDialogCredits(this);
+	loadModalDialog(dialogPage);
+}
+
+void MohawkEngine_Zoombini::openHelpDialog(ZoombiniPageType forPage) {
+	ZoombiniDialog *dialogPage = new ZoombiniDialogHelp(this, forPage);
+	loadModalDialog(dialogPage);
+}
+
+void MohawkEngine_Zoombini::openDebugDialog(const ZoombiniDebugCommand &cmd) {
+	ZoombiniDialog *dialogPage = new ZoombiniDialogDebug(this, cmd);
+	loadModalDialog(dialogPage);
+}
+
+ZoombiniDialogResult MohawkEngine_Zoombini::loadModalDialog(ZoombiniDialog *dialogPage) {
+	if (_dialogPageStack.empty())
+		_mixer->pauseAll(true);
+
+	dialogPage->open();
+	dialogPage->setBackgroundBitmap();
+	dialogPage->loadFeatures();
+	_dialogPageStack.push(dialogPage);
+
+	// Loop on a dialog page until the dialog is closed.
+	// Do not loop on DebugDialog, as looping here make a debugger console blocking the screen.
+	if (dialogPage->getPageType() != ZoombiniPageType::kDialogDebug) {
+		uint32 dialogStackSize = _dialogPageStack.size();
+		while (!mustQuit() && _dialogPageStack.size() == dialogStackSize)
+			doFrame();
+	}
+
+	ZoombiniDialogResult result = _lastDialogResult;
+	_lastDialogResult = ZoombiniDialogResult::kNone;
+	return result;
+}
+
+void MohawkEngine_Zoombini::closeActiveDialog() {
+	if (_dialogPageStack.empty())
+		error("There is no modal dialog opened");
+
+	ZoombiniDialog *dialogPage = _dialogPageStack.pop();
+	_lastDialogResult = dialogPage->getResult();
+	assert(dialogPage != nullptr);
+	delete dialogPage;
+
+	if (_dialogPageStack.empty())
+		_mixer->pauseAll(false);
+}
+
+ZmbArchiveKind MohawkEngine_Zoombini::setActiveResourceKind(ZmbArchiveKind kind) {
+	ZmbArchiveKind lastKind = _activeResourceKind;
+	_activeResourceKind = kind;
+	return lastKind;
+}
+
+Common::SeekableReadStream *MohawkEngine_Zoombini::getResource(uint32 tag, uint16 id) {
+	return getResource(tag, ZmbResource(_activeResourceKind, id));
+}
+
+Common::SeekableReadStream *MohawkEngine_Zoombini::getResource(uint32 tag, ZmbResource res) {
+	switch (res._archiveKind) {
+	case ZmbArchiveKind::kSystem:
+		return _sysMhk->getResource(tag, res._id);
+	case ZmbArchiveKind::kPage:
+		return MohawkEngine::getResource(tag, res._id);
+	default:
+		error("Invalid ZmbArchiveKind: %u", static_cast<uint32>(res._archiveKind));
+		break;
+	}
+	return nullptr;
+}
+
+bool MohawkEngine_Zoombini::hasResource(uint32 tag, ZmbResource res) {
+	switch (res._archiveKind) {
+	case ZmbArchiveKind::kSystem:
+		return _sysMhk->hasResource(tag, res._id);
+	case ZmbArchiveKind::kPage:
+		return MohawkEngine::hasResource(tag, res._id);
+	default:
+		error("Invalid ZmbResourceKind: %u", static_cast<uint32>(res._archiveKind));
+		break;
+	}
+	return false;
+}
+
+Common::Array<uint16> MohawkEngine_Zoombini::getResourceIDList(ZmbArchiveKind kind, uint32 tag) const {
+	Common::Array<uint16> ids;
+
+	switch (kind) {
+	case ZmbArchiveKind::kSystem:
+		ids.push_back(_sysMhk->getResourceIDList(tag));
+		break;
+	case ZmbArchiveKind::kPage:
+		for (Mohawk::Archive *mhk : _mhk)
+			ids.push_back(mhk->getResourceIDList(tag));
+		break;
+	default:
+		error("Invalid ZmbResourceKind: %u", static_cast<uint32>(kind));
+		break;
+	}
+
+	return ids;
+}
+
+uint MohawkEngine_Zoombini::getArchiveCount(ZmbArchiveKind kind) const {
+	switch (kind) {
+	case ZmbArchiveKind::kSystem:
+		return 1;
+	case ZmbArchiveKind::kPage:
+		return _mhk.size();
+	default:
+		error("Invalid ZmbArchiveKind: %u", static_cast<uint32>(kind));
+	}
+	return 0;
+}
+
+Archive *MohawkEngine_Zoombini::getArchive(ZmbArchiveKind kind, uint archiveIdx) const {
+	switch (kind) {
+	case ZmbArchiveKind::kSystem:
+		assert(archiveIdx == 0);
+		return _sysMhk;
+	case ZmbArchiveKind::kPage:
+		assert(archiveIdx < _mhk.size());
+		return _mhk[archiveIdx];
+	default:
+		error("Invalid ZmbArchiveKind: %u", static_cast<uint32>(kind));
+	}
+	return nullptr;
+}
+
+bool MohawkEngine_Zoombini::mustQuit() const {
+	// When there is a scheduled quit event, wait until the fadeOut is done.
+	return shouldQuit() && _quitEventState == kQuitEventDone;
+}
+
+} // End of namespace Mohawk

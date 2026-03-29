@@ -54,6 +54,10 @@
 #include "mohawk/riven_saveload.h"
 #endif
 
+#ifdef ENABLE_ZOOMBINI
+#include "mohawk/zoombini.h"
+#endif
+
 #include "mohawk/detection.h"
 
 namespace Mohawk {
@@ -200,7 +204,7 @@ SaveStateList MohawkMetaEngine::listSaves(const char *target) const {
 	Common::String gameId = ConfMan.get("gameid", target);
 	SaveStateList saveList;
 
-	// Loading games is only supported in Myst/Riven currently.
+	// Loading games with ScummVM GUI is only supported in Myst/Riven currently.
 #ifdef ENABLE_MYST
 	if (gameId == "myst") {
 		saveList = listSavesForPrefix("myst", "mys");
@@ -315,6 +319,13 @@ Common::Error MohawkMetaEngine::createInstance(OSystem *syst, Engine **engine, c
 		break;
 #else
 		return Common::Error(Common::kUnsupportedGameidError, _s("CSTime support not compiled in"));
+#endif
+	case Mohawk::GType_ZOOMBINI:
+#ifdef ENABLE_ZOOMBINI
+		*engine = new Mohawk::MohawkEngine_Zoombini(syst, gd);
+		break;
+#else
+		return Common::Error(Common::kUnsupportedGameidError, _s("Zoombini support not compiled in"));
 #endif
 	default:
 		return Common::kUnsupportedGameidError;

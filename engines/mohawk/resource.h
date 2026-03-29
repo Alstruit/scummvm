@@ -77,7 +77,7 @@ namespace Mohawk {
 #define ID_SCRS MKTAG('S','C','R','S') // Snoid Script
 #define ID_NODE MKTAG('N','O','D','E') // Walk Node
 #define ID_PATH MKTAG('P','A','T','H') // Walk Path
-#define ID_SHPL MKTAG('S','H','P','L') // Shape List
+#define ID_SHPL MKTAG('S','H','P','L') // Standard Mohawk Palette
 
 // Living Books Resource FourCC's
 #define ID_TCUR MKTAG('t','C','U','R') // Cursor

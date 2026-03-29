@@ -59,7 +59,8 @@ enum MohawkGameFeatures {
 	GF_25TH           = (1 << 1), // Myst and Riven 25th Anniversary
 	GF_DVD            = (1 << 2),
 	GF_DEMO           = (1 << 3),
-	GF_LB_10          = (1 << 4)  // very early Living Books 1.0 games
+	GF_LB_10          = (1 << 4), // very early Living Books 1.0 games
+	GF_ZMB_TLC        = (1 << 5), // 2.0 release of Logical Journey of Zoombinis by The Learning Company
 };
 
 struct MohawkGameDescription {

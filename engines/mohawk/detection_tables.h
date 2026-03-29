@@ -762,14 +762,16 @@ static const MohawkGameDescription gameDescriptions[] = {
 		0
 	},
 
+	// Logical Journey of the Zoombinis
+	// English Windows, v1.1
 	{
 		{
 			"zoombini",
-			MetaEngineDetection::GAME_NOT_IMPLEMENTED, // Reason for being unsupported,
+			"v1.1",
 			AD_ENTRY1("ZOOMBINI.MHK", "98b758fec55104c096cfd129048be9a6"),
 			Common::EN_ANY,
 			Common::kPlatformWindows,
-			ADGF_UNSUPPORTED,
+			ADGF_UNSTABLE,
 			GUIO1(GUIO_NOASPECT)
 		},
 		GType_ZOOMBINI,
@@ -792,18 +794,38 @@ static const MohawkGameDescription gameDescriptions[] = {
 		0
 	},
 
+	// Logical Journey of the Zoombinis
+	// Korean Windows, v1.11 (Arisumedia)
+	// From joveler
 	{
 		{
 			"zoombini",
-			MetaEngineDetection::GAME_NOT_IMPLEMENTED, // Reason for being unsupported // "v2.0",
-			AD_ENTRY1("ZOOMBINI.MHK", "506b1122ffa740e2566cf0b583d24478"),
-			Common::EN_ANY,
+			"v1.11",
+			AD_ENTRY1("ZOOMBINI.MHK", "1f243bf988a37f3a701005d587c8f77b"),
+			Common::KO_KOR,
 			Common::kPlatformWindows,
-			ADGF_UNSUPPORTED,
+			ADGF_UNSTABLE,
 			GUIO1(GUIO_NOASPECT)
 		},
 		GType_ZOOMBINI,
 		0,
+		0
+	},
+
+	// Logical Journey of the Zoombinis
+	// English Windows, v2.0
+	{
+		{
+			"zoombini",
+			"v2.0",
+			AD_ENTRY1("ZOOMBINI.MHK", "506b1122ffa740e2566cf0b583d24478"),
+			Common::EN_ANY,
+			Common::kPlatformWindows,
+			ADGF_UNSTABLE,
+			GUIO1(GUIO_NOASPECT)
+		},
+		GType_ZOOMBINI,
+		GF_ZMB_TLC,
 		0
 	},
 	{
@@ -817,7 +839,7 @@ static const MohawkGameDescription gameDescriptions[] = {
 			GUIO1(GUIO_NOASPECT)
 		},
 		GType_ZOOMBINI,
-		0,
+		GF_ZMB_TLC,
 		0
 	},
 	{
@@ -831,7 +853,7 @@ static const MohawkGameDescription gameDescriptions[] = {
 			GUIO1(GUIO_NOASPECT)
 		},
 		GType_ZOOMBINI,
-		0,
+		GF_ZMB_TLC,
 		0
 	},
 	{

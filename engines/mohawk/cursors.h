@@ -23,6 +23,7 @@
 #define MOHAWK_CURSORS_H
 
 #include "common/scummsys.h"
+#include "common/rect.h"
 
 namespace Common {
 class MacResManager;
@@ -151,6 +152,35 @@ public:
 private:
 	MohawkArchive *_sysArchive;
 };
+
+#ifdef ENABLE_ZOOMBINI
+
+class MohawkEngine_Zoombini;
+enum class ZmbArchiveKind : uint16;
+
+/**
+ * The cursor manager for Zoombini resources
+ */
+class ZoombiniCursorManager : public CursorManager {
+public:
+	explicit ZoombiniCursorManager(MohawkEngine_Zoombini *vm);
+	~ZoombiniCursorManager() override;
+
+	/**
+	 * Load cursor from the system CURS resource.
+	 */
+	void setCursor(uint16 id) override;
+	/**
+	 * Load cursor from the page/system tBMP resource.
+	 * (e.g. for scroll button hover cursor on basecamps)
+	 */
+	void setShapeCursor(ZmbArchiveKind archiveKind, uint16 imageId, uint16 shapeIdx, const Common::Point &minusREGS = Common::Point());
+	bool hasSource() const override { return _vm != nullptr; }
+private:
+	MohawkEngine_Zoombini *_vm;
+};
+
+#endif
 
 // The cursor manager for Windows EXE's
 class WinCursorManager : public CursorManager {
