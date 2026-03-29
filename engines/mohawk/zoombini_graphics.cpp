@@ -535,62 +535,53 @@ Common::Array<Common::U32String> ZoombiniGraphics::prepareTextLines(const Common
 }
 
 Common::Point ZoombiniGraphics::getTextLinesBounds(const Graphics::Font *font, bool outlineEffect, const Common::Array<Common::U32String> &lines) {
-	// Calculate total draw height and max draw width
-	int16 drawTotalHeight = 0; // Height of will-be-drawn area
+	// Use font->getFontHeight() for line height, matching GDI DrawTextA with DT_EXTERNALLEADING.
+	// getFontHeight() = ascender + descender + lineGap (tmHeight + tmExternalLeading in GDI terms).
+	const int16 lineHeight = font->getFontHeight();
+	int16 drawTotalHeight = 0;
 	Common::Point boundSize;
 	for (const Common::U32String &line : lines) {
-		// Check bounding box for each line
 		Common::Rect bbox = font->getBoundingBox(line, 0, 0, _screenRect.width(), Graphics::kTextAlignLeft);
-		if (outlineEffect) { // When outlineEffect is set, 2 more x/y pixels are drawen.
-			bbox.right += 2;
-			bbox.bottom += 2;
-		}
 
-		// Expand drawRect (virtualize GDI DT_NOCLIP)
-		drawTotalHeight += bbox.height();
-		boundSize.x = MAX(boundSize.x, bbox.width());
+		drawTotalHeight += lineHeight;
+		boundSize.x = MAX(boundSize.x, static_cast<int16>(bbox.width()));
 		boundSize.y = MAX(boundSize.y, drawTotalHeight);
 	}
-	return boundSize;
 
-#if 0
-	// Calculate total draw height and max draw width
-	int16 drawTotalHeight = 0; // Height of will-be-drawn area
-	for (const Common::U32String &line : lines) {
-		// Check bounding box for each line
-		Common::Rect bbox = font->getBoundingBox(line, 0, 0, _screenRect.width(), Graphics::kTextAlignLeft);
-		if (outlineEffect) { // When outlineEffect is set, 2 more x/y pixels are drawen.
-			bbox.right += 2;
-			bbox.bottom += 2;
-		}
-
-		// Expand drawRect (virtualize GDI DT_NOCLIP)
-		drawTotalHeight += bbox.height();
-		drawRect.setWidth(MAX(drawRect.width(), bbox.width()));	
-		drawRect.setHeight(MAX(drawRect.height(), drawTotalHeight));
+	if (outlineEffect) {
+		// Outline adds 1 pixel in each direction (L/U/R/D)
+		boundSize.x += 2;
+		boundSize.y += 2;
 	}
-	return drawTotalHeight;
-#endif
+
+	return boundSize;
 }
 
 void ZoombiniGraphics::drawTextLines(ScreenKind screenKind, const Graphics::Font *font, const Common::Array<Common::U32String> &lines, const Common::Rect &destRect, uint32 palette, Graphics::TextAlign hAlign, uint32 fillBackgroundColor) {
+	// Use font->getFontHeight() for line advancement, matching GDI DrawTextA with DT_EXTERNALLEADING.
+	const int lineHeight = font->getFontHeight();
 	Common::Rect drawRect = destRect;
+	Graphics::Surface *screen = _vm->_gfx->getScreen(screenKind);
+
 	for (uint32 i = 0; i < lines.size(); i++) {
 		const Common::U32String &line = lines[i];
+
+		// Clip: skip lines whose top is below the dest rect bottom (matching GDI IntersectClipRect)
+		if (drawRect.top >= destRect.bottom)
+			break;
 
 		// Background is for debug purposes, Zoombini game itself does not use this feature
 		if (fillBackgroundColor != kTransparentKey) {
 			const Common::Rect &bbox = font->getBoundingBox(line, drawRect.left, drawRect.top, drawRect.width(), hAlign);
-			_vm->_gfx->getScreen(screenKind)->fillRect(bbox, fillBackgroundColor);
+			screen->fillRect(bbox, fillBackgroundColor);
 		}
 
-		// Draw the text line by line
-		font->drawString(_vm->_gfx->getScreen(screenKind), line, drawRect.left, drawRect.top, drawRect.width(), palette, hAlign);
+		// Draw the text line by line, clipped to destRect width
+		font->drawString(screen, line, drawRect.left, drawRect.top, drawRect.width(), palette, hAlign);
 
 		if (i + 1 < lines.size()) {
-			const Common::Rect &bbox = font->getBoundingBox(line, 0, 0, _screenRect.width(), Graphics::kTextAlignLeft);
-			drawRect.top += bbox.height();
-			drawRect.bottom += bbox.height();
+			drawRect.top += lineHeight;
+			drawRect.bottom += lineHeight;
 		}
 	}
 }
