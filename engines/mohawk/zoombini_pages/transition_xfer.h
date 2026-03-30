@@ -98,7 +98,7 @@ protected:
 	uint16 _scrsTriggerIdx = 0;        ///< Index of next snoid to trigger (0..snoidCount-1)
 	bool _scrsTriggerPhase1 = false;   ///< True once the first snoid trigger has fired (XFER_0: enables env SCRB branch)
 	uint16 _xferSnoidCount = 0;        ///< Total snoids loaded for this XFER (for trigger indexing)
-	uint16 _scrsResIdBase = 5200;      ///< SCRS resource ID for snoid trigger (XFER_0: 5200, XFER_5: 6200)
+	uint16 _scrsResIdBase = 5199;      ///< SCRS resource base for foot-trait offset (XFER_0: 5199, XFER_5: 6199)
 
 	// SCRB animation callback state (XFER_0 and XFER_5 only)
 	// IDA: xfer_scrbAnimCallback_467DD4 — handles SCRS event codes during playback.

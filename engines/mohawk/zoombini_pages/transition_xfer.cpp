@@ -752,11 +752,11 @@ void ZoombiniTransitionXfer::loadFeatures() {
 	if (isFromIsle) {
 		// IDA: dword_4B97BC = currentFrame + 30 * rand(3,6) — delay first trigger.
 		_scrsNextTriggerFrame = getCurrentFrameCounter() + 30 * _vm->_rnd->getRandomNumber(3, 6);
-		_scrsResIdBase = 5200;
+		_scrsResIdBase = 5199;
 	} else if (isToTown) {
 		// IDA: dword_4B97BC starts at 0 → first trigger fires immediately.
 		_scrsNextTriggerFrame = 0;
-		_scrsResIdBase = 6200;
+		_scrsResIdBase = 6199;
 	}
 
 	// Play voice sound for this xfer route.
@@ -860,9 +860,14 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 					uint16 snoidId = static_cast<uint16>(kSnoidPackBase) + _scrsTriggerIdx;
 					ZmbSnoid *snoid = getSnoid(snoidId);
 					if (snoid && snoid->getAnimState() == kSnoidAnimIdle) {
+						// IDA 0x4676B3: SCRS resource = foot trait + 5199.
+						// Each foot type (1-5) gets a different walk animation path.
+						uint16 scrsId = _scrsResIdBase + snoid->_trait._foot;
 						Common::SeekableReadStream *scrsStream =
-							_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, _scrsResIdBase));
+							_vm->getResource(ID_SCRS, ZmbResource(ZmbArchiveKind::kPage, scrsId));
 						if (scrsStream) {
+							// IDA 0x4676A2: chIsFacingLeft = 0 before SCRS playback.
+							snoid->setFacingLeft(false);
 							snoid->startScrsPlayback(scrsStream, true /* hideOnComplete */, true /* rejectState */);
 						}
 					}
@@ -875,7 +880,7 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 		// XFER_5: periodic SCRS trigger — same structure as XFER_0.
 		// IDA: wXferView == 5 branch.
 		// Timer: 40 * rand(3,6) = 120-240 frames between triggers.
-		// 100% snoid triggers (no env SCRB split), using SCRS 6200.
+		// SCRS resource per-snoid: foot trait + 6199 (IDA 0x4677E2).
 		// -------------------------------------------------------------------
 		if (_xferView == XFER_ROUTE_TO_TOWN && _xferSnoidCount > 0) {
 			_scrsNextTriggerFrame = getCurrentFrameCounter() + 40 * _vm->_rnd->getRandomNumber(3, 6);
@@ -884,9 +889,13 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 				uint16 snoidId = static_cast<uint16>(kSnoidPackBase) + _scrsTriggerIdx;
 				ZmbSnoid *snoid = getSnoid(snoidId);
 				if (snoid && snoid->getAnimState() == kSnoidAnimIdle) {
+					// IDA 0x4677E2: SCRS resource = foot trait + 6199.
+					uint16 scrsId = _scrsResIdBase + snoid->_trait._foot;
 					Common::SeekableReadStream *scrsStream =
-						_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, _scrsResIdBase));
+						_vm->getResource(ID_SCRS, ZmbResource(ZmbArchiveKind::kPage, scrsId));
 					if (scrsStream) {
+						// IDA 0x4677D8: chIsFacingLeft = 0 before SCRS playback.
+						snoid->setFacingLeft(false);
 						snoid->startScrsPlayback(scrsStream, true /* hideOnComplete */, true /* rejectState */);
 					}
 				}
@@ -972,17 +981,16 @@ void ZoombiniTransitionXfer::onFeatureAnimEvent(ZmbFeature *feature, int16 event
 	} else if (eventCode == 0) {
 		// ---------------------------------------------------------------
 		// Event 0: Toggle visibility, apply pending arrangement, inc cycle.
-		// IDA: *(callbackData+290) = *(callbackData+290) == 0 — toggle render.
+		// IDA 0x467E92: *(callbackData+290) = *(callbackData+290) == 0.
+		// Offset 290 = CFeatureRunner307 offset 0x122 = FeatureCore259 offset 0xF2
+		// = chIsFacingLeft. This toggles facing direction, NOT render visibility.
 		// IDA: if word_4B97E0: setAnimShape(word_4B97E0 - 1), clear override.
 		// IDA: ++*(callbackData+288) — increment cycle counter.
 		// IDA: if XFER_0 && cycleCount == 2: linkFeatureRunner(word_4B97E2, 1, idx).
 		// ---------------------------------------------------------------
 		if (snoid) {
-			// Toggle render visibility.
-			if (snoid->isRenderActivated())
-				snoid->deactivateRender();
-			else
-				snoid->activateRender();
+			// Toggle facing direction (left ↔ right).
+			snoid->setFacingLeft(!snoid->isFacingLeft());
 
 			// Apply pending body arrangement override (set by events 240-243).
 			if (_bodyArrangementOverride != 0) {
@@ -990,10 +998,10 @@ void ZoombiniTransitionXfer::onFeatureAnimEvent(ZmbFeature *feature, int16 event
 				_bodyArrangementOverride = 0;
 			}
 
-			// Increment per-snoid SCRS cycle counter.
+			// Increment per-snoid SCRS facing-toggle counter.
 			snoid->_scrsAnimCycleCount++;
 
-			// XFER_0: after 2 visibility cycles, link snoid after the env overlay.
+			// XFER_0: after 2 facing toggles, link snoid after the env overlay.
 			// IDA: linkFeatureRunner(word_4B97E2, 1, runnerIdx) — link snoid after env overlay.
 			// In ScummVM, removing OVERLAY moves the snoid from overlayList into entityList
 			// (merged after normalList where env overlay 5100 resides), achieving the "in front" effect.
