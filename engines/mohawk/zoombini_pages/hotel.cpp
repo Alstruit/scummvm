@@ -174,6 +174,43 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 		}
 	}
 
+	// --- Puzzle-specific feature runners ---
+
+	// IDA: word_4AB750 = runner_registerAndAllocate(..., 6, introScrb+5750, standard, standard, 0x108000)
+	// Intro animation runner — SCRB adjusted by difficulty
+	{
+		int16 introAdjust = (_difficultyLevel >= 2) ? _difficultyLevel - 1 : _difficultyLevel;
+		_introAnimFeature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 8000), 5750 + introAdjust, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE);
+	}
+
+	// IDA: word_4AB742 = runner_registerAndAllocate(..., 6, roomAnimType+7000, standard, standard, 0x8108000)
+	// Room animation runner — SCRB depends on difficulty and puzzle flags
+	{
+		int16 roomAnimType = 0;
+		switch (_difficultyLevel) {
+		case 1: roomAnimType = 4; break;
+		case 2: roomAnimType = 5; break;
+		case 3: roomAnimType = 6; break;
+		default:
+			// diff=0: type 0 on first play, random on subsequent plays
+			// TODO: Implement random selection from puzzle flag for subsequent plays
+			roomAnimType = 0;
+			break;
+		}
+		_roomAnimFeature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 8000), 7000 + roomAnimType, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+			ZmbFeature::FLAG_08000000_REGION_TRACK);
+	}
+
+	// IDA: word_4AB752 = runner_registerAndAllocate(..., 6, 0x2E18, standard, standard, 0x100000)
+	// Room SCRB runner (SCRB 11800)
+	_roomScrbFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 8000), 11800, 6,
+		ZmbFeature::FLAG_00100000_PLAY_ONCE);
+
 	// Load Zoombinis from active pack at 20 pedestal positions
 	// IDA: zmb_assignPedestalPositions(1, posData, 20)
 	loadZoombinisFromPack();

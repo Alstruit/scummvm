@@ -224,7 +224,7 @@ Common::U32String ZoombiniText::toU32String(const char *str) const {
 Common::U32String ZoombiniText::toU32String(const char *str, int32 len) const {
 	// Create a temporary null-terminated buffer to avoid warning of
 	// "WARNING: Adding \0 to String. This is permitted, but can have unwanted consequences"
-	char* buf = new char[len + 1];
+	char *buf = new char[len + 1];
 	memcpy(buf, str, len);
 	buf[len] = '\0';
 	const Common::U32String &u32str = Common::String(buf).decode(_codePage);

@@ -26,6 +26,9 @@
 #include "mohawk/zoombini_resource.h"
 #include "mohawk/zoombini_state.h"
 
+#include "common/array.h"
+#include "graphics/surface.h"
+
 namespace Mohawk {
 
 class ZoombiniTransitionXfer : public ZoombiniTransition {
@@ -161,6 +164,97 @@ protected:
 	 * IDA: word_4B9802 — runner for SCRB 6105 (town count display).
 	 */
 	uint16 _xfer5EventScrbId = 0;
+
+	// -----------------------------------------------------------------------
+	// Route Path Flood-Fill State (XFER_1-4 only)
+	// IDA: xfer_onPostRenderRoutePath (0x468457) — post-render flood-fill animation.
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Route Path animation counter (IDA: dword_4B9808).
+	 * Increments by 7 per frame, wraps at 1000. Controls flood-fill expansion rate.
+	 */
+	uint32 _routePathCounter = 0;
+
+	/**
+	 * Frame-interval gate for route path flood-fill (IDA: dNextRenderFrame).
+	 * In the original engine, runner_preRenderStandard (0x4619A1) only sets
+	 * chGetDrawnRect=1 when dNextRenderFrame <= scrb_dwFrameRenderTime,
+	 * then advances dNextRenderFrame += dFrameInterval. The post-render
+	 * callback only runs flood-fill when chGetDrawnRect is set.
+	 * We replicate this by checking _currentFrameCounter >= _routePathNextFrame,
+	 * then advancing _routePathNextFrame += feature->getFrameInterval().
+	 */
+	uint32 _routePathNextFrame = 0;
+
+	/**
+	 * Route band position (IDA: word_4B9804).
+	 * 1-4 based on which crossing within the current route.
+	 * Used for shape selection and seed index.
+	 */
+	uint16 _routePathLevel = 1;
+
+	/**
+	 * Route color level (IDA: word_4B97FA).
+	 * 1-4 based on the puzzle difficulty / route progression level.
+	 * Determines the flood-fill color string ("10/.", "3210", "5432", "7654").
+	 * Separate from _routePathLevel because band position and color level differ:
+	 * e.g. first traversal always uses level 1 colors for all bands.
+	 */
+	uint16 _routePathColorLevel = 1;
+
+	/**
+	 * Pointer to the route path overlay feature for callback.
+	 */
+	ZmbFeature *_routePathFeature = nullptr;
+
+	/**
+	 * Working pixel buffer for flood-fill (copied from shape pixels).
+	 * Allocated on first post-render call; dimensions match the path overlay shape.
+	 */
+	byte *_routePathPixels = nullptr;
+	uint16 _routePathWidth = 0;
+	uint16 _routePathHeight = 0;
+
+	/**
+	 * BFS queue for flood-fill expansion.
+	 * IDA: byte_4B9880[24] (active flags), word_4B9820/4B9822 (x/y coords).
+	 */
+	static constexpr int kRoutePathQueueSize = 24;
+	bool _routePathQueueActive[kRoutePathQueueSize] = {};
+	int16 _routePathQueueX[kRoutePathQueueSize] = {};
+	int16 _routePathQueueY[kRoutePathQueueSize] = {};
+
+	/**
+	 * Flood-fill progress tracking.
+	 * IDA: dword_4B980C (total replaceable), dword_4B9810 (remaining to fill).
+	 */
+	uint32 _routePathTotalPixels = 0;
+	uint32 _routePathRemainingPixels = 0;
+
+	/**
+	 * Color values for flood-fill (IDA: byte_4B989C-4B989F).
+	 * mark1/mark2: intermediate colors set during init.
+	 * replace1/replace2: final colors set during expansion.
+	 */
+	byte _routePathMark1 = 0;
+	byte _routePathMark2 = 0;
+	byte _routePathReplace1 = 0;
+	byte _routePathReplace2 = 0;
+
+	/**
+	 * Screen position where the route path overlay was rendered.
+	 */
+	Common::Rect _routePathScreenRect;
+
+	// Route path methods
+	void computeRoutePathLevel();
+	void computeRoutePathColorLevel();
+	void routePath_selectBand(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
+	void routePath_onPostRender(ZmbFeature *feature);
+	void routePath_initGrid(int16 seedX, int16 seedY, byte mark1, byte mark2, byte replace1, byte replace2);
+	void routePath_expandFloodFill(uint32 counter);
+	void routePath_reserveSlot(int16 y, int16 x, byte *pixel);
 
 	// Helper: activate a deferred env SCRB feature by ID.
 	void activateEnvScrb(uint16 scrbId);

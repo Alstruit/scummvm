@@ -53,8 +53,19 @@ private:
 
 	static const Common::Point kSnoidPositions[16];
 
+	/** Raft DRAW_ON_REG position. IDA: dword_4A1028 */
+	static const Common::Point kRaftPosition;
+
 	/** Route difficulty level. IDA: fleens_routeLevel */
 	int16 _difficultyLevel = 0;
+
+	// Puzzle-specific feature runners
+	/** Animation runner (SCRB 1000). IDA: word_4AB1A4 */
+	ZmbFeature *_animFeature = nullptr;
+	/** Raft DRAW_ON_REG runner (SCRB 1100). IDA: scrb_drawOnRegRunnerIdxArr[0] */
+	ZmbFeature *_raftFeature = nullptr;
+	/** 7 overlay runners (SCRB 1200-1206). IDA: word_4AA848[] */
+	ZmbFeature *_overlayFeatures[7] = {};
 };
 
 } // End of namespace Mohawk

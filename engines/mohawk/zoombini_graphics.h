@@ -373,6 +373,54 @@ public:
 		kColor2D_Black = 0x2D,
 	};
 
+	enum XferRoutePathLevelColor : uint32 {
+		// Route path animation palette colors (XFER/RODMAP flood-fill overlay).
+		// These form a gradient used by the route path flood-fill animation.
+		// Original pixel values 1 and 2 in the shape are replaced with
+		// these palette indices during the animation.
+		// RGB values extracted from XFER SHPL_1000-4000 palettes.
+		/**
+		 * #D6A55A ~ #E7AD5A (warm tan, varies per view)
+		 */
+		kRoutePathColor2E_LevelOneBack1 = 0x2E,
+		/**
+		 * #D6AD9C ~ #FAB375 (peachy/salmon, varies per view)
+		 */
+		kRoutePathColor2F_LevelOneBack2 = 0x2F,
+		/**
+		 * #005F41 (dark teal green)
+		 */
+		kRoutePathColor30_LevelOneColor1 = 0x30,
+		/**
+		 * #579984 (medium teal)
+		 */
+		kRoutePathColor31_LevelOneColor2 = 0x31,
+		/**
+		 * #F4A200 (bright orange)
+		 */
+		kRoutePathColor32_LevelTwoColor1 = 0x32,
+		/**
+		 * #FFC863 (golden yellow)
+		 */
+		kRoutePathColor33_LevelTwoColor2 = 0x33,
+		/**
+		 * #FF5711 (bright red-orange)
+		 */
+		kRoutePathColor34_LevelThreeColor1 = 0x34,
+		/**
+		 * #FF9569 (coral/salmon)
+		 */
+		kRoutePathColor35_LevelThreeColor2 = 0x35,
+		/**
+		 * #BF0218 (dark red)
+		 */
+		kRoutePathColor36_LevelFourColor1 = 0x36,
+		/**
+		 * #E25161 (salmon red)
+		 */
+		kRoutePathColor37_LevelFourColor2 = 0x37,
+	};
+
 	// [*] Draw TrueType Text
 	struct TextConf {
 		ZoombiniFontUsage _fontUsage = ZoombiniFontUsage::kFontText;

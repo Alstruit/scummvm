@@ -249,6 +249,14 @@ void ZoombiniInteractiveTown::loadFeatures() {
 						   hooks);
 	}
 
+	// IDA 0x4581d9: SCRB 6000 memorial statue feature
+	// Originally created with TYPE_SNOID|LOOP_ANIM then bitmask overwritten to
+	// TYPE_TOWN_ENTITY|LOOP_ANIM, with onPreRenderShapeFunc = town_preRenderMemorialStatue
+	// TODO: Add preRenderMemorialStatue callback for town development level filtering
+	_memorialStatueFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), kResScrb6000_Zodiac, 6,
+		ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY | ZmbFeature::FLAG_00008000_LOOP_ANIM);
+
 	// Determine sound to play based on difficulty
 	ZMB_DIFFICULTY_ID difficultyId = ZMB_DIFFICULTY_NOTVISITED_00;
 	if (f._townScrollCol != 0) {

@@ -123,12 +123,21 @@ void ZoombiniInteractiveNet::loadFeatures() {
 	}
 
 	// Register virtual render feature
-	// IDA: runner_registerAndAllocate with net_invalidateVisualRects2 / fleens_renderAllAttrSlots
+	// IDA: runner_registerAndAllocate(0, 0, 0, 0, 0, net_invalidateVisualRects2, fleens_renderAllAttrSlots_436785, 0x1000)
+	// Virtual feature for attribute slot rendering (TOPMOST)
+	// TODO: Implement net_invalidateVisualRects2 / fleens_renderAllAttrSlots callbacks
+	{
+		ZmbFeature::EventHooks attrSlotHooks;
+		loadVirtualFeature(100, 0, ZmbFeature::FLAG_00001000_TOPMOST, attrSlotHooks);
+	}
 
 	// Load Zoombinis at 16 pedestal positions
 	// IDA: zmb_assignPedestalPositions(1, v12, 16)
 	// IDA: SHPL_copyPaletteSrcToDst(236, 10)
 	loadZoombinisFromPack();
+
+	// IDA: net_registerAllSCRBRunners(v10, &unk_4A28AC) — registers all puzzle SCRB runners
+	// TODO: Implement net_registerAllSCRBRunners (gameplay code for column/slot runners)
 
 	// Layout and stagger walk-in with walkDelay=30
 	// IDA: zmb_layoutStaticAndWalkInGroups(0)

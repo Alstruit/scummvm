@@ -36,6 +36,16 @@ const Common::Point ZoombiniInteractiveCaves::kSnoidPositions[20] = {
 	Common::Point( 20, 137), Common::Point( 10, 167), Common::Point( 20,  90), Common::Point( 20, 116),
 };
 
+// IDA: DRAW_ON_REG positions at off_4A09BC+1 thru +20 for SCRB 7000-7019
+// Cave entrance positions forming a spiral path through the cave system
+const Common::Point ZoombiniInteractiveCaves::kCaveEntrancePositions[20] = {
+	Common::Point(254, 140), Common::Point(296, 148), Common::Point(340, 146), Common::Point(373, 163),
+	Common::Point(364, 187), Common::Point(337, 212), Common::Point(316, 234), Common::Point(301, 263),
+	Common::Point(314, 292), Common::Point(346, 311), Common::Point(388, 316), Common::Point(429, 301),
+	Common::Point(458, 281), Common::Point(482, 261), Common::Point(521, 247), Common::Point(556, 263),
+	Common::Point(567, 290), Common::Point(543, 314), Common::Point(529, 342), Common::Point(554, 359),
+};
+
 ZoombiniInteractiveCaves::ZoombiniInteractiveCaves(MohawkEngine_Zoombini *vm) : ZoombiniInteractive(vm, ZoombiniPageType::kCaves) {
 }
 
@@ -138,6 +148,97 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 				  13000 + i,
 				  ZmbFeature::FLAG_00000001_TYPE_SNOID | ZmbFeature::FLAG_00020000_SKIP_RENDER);
 	}
+
+	// === Additional feature runners from IDA caves_funcInit ===
+
+	// IDA: word_4AB078 — entrance animation SCRB 6000, interval=6
+	_entranceAnimFeatures[0] = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 11000), 6000, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: word_4AB07A — entrance animation SCRB 6001, interval=6
+	_entranceAnimFeatures[1] = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 11000), 6001, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: word_4AB07C — entrance animation SCRB 6002, interval=8
+	_entranceAnimFeatures[2] = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 11000), 6002, 8,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: 4x cave entrance DRAW_ON_REG — SCRB 7000-7003, interval=7
+	// IDA: scrb_drawOnRegRunnerIdxArr[0..3] from dword_4A09C0
+	for (uint16 i = 0; i < 4; i++) {
+		_doorDrawOnRegFeatures[i] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 11000), 7000 + i, 7,
+			kCaveEntrancePositions[i],
+			ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
+			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER |
+			ZmbFeature::FLAG_04000000_OVERLAY);
+	}
+
+	// IDA: loop v2=5..11 — SCRB 7004-7010 DRAW_ON_REG + glyph overlays SCRB 9004-9010
+	for (uint16 i = 0; i < 7; i++) {
+		_glyphOverlayFeatures[i] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 11000), 9004 + i, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+			ZmbFeature::FLAG_04000000_OVERLAY);
+
+		// TODO: no-op placeholder runner (word_4AB04C[5+i]) for render ordering
+
+		_doorDrawOnRegFeatures[4 + i] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 11000), 7004 + i, 7,
+			kCaveEntrancePositions[4 + i],
+			ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
+			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER |
+			ZmbFeature::FLAG_04000000_OVERLAY);
+	}
+
+	// IDA: door panel animations SCRB 9014-9011 (created in reverse order) + glyph DRAW_ON_REG SCRB 7011-7014
+	// IDA: word_4AB010 (9014), word_4AB00E (9013), word_4AB00C (9012), word_4AB00A (9011)
+	for (uint16 i = 0; i < 4; i++) {
+		_doorPanelFeatures[3 - i] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 11000), 9014 - i, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+			ZmbFeature::FLAG_04000000_OVERLAY);
+
+		// TODO: no-op placeholder runner (word_4AB064[3-i]) for render ordering
+	}
+
+	// IDA: word_4B7B60[0..3] — glyph DRAW_ON_REG SCRB 7011-7014 from corePosUnion
+	for (uint16 i = 0; i < 4; i++) {
+		_doorDrawOnRegFeatures[11 + i] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 11000), 7011 + i, 7,
+			kCaveEntrancePositions[11 + i],
+			ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
+			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER |
+			ZmbFeature::FLAG_04000000_OVERLAY);
+	}
+
+	// TODO: runner_linkRelativeToParent(word_4AB064[i], 1, word_4B7B60[i]) for render ordering
+
+	// IDA: loop v2=16..20 — SCRB 7015-7019 DRAW_ON_REG + glyph overlays SCRB 9015-9019
+	for (uint16 i = 0; i < 5; i++) {
+		_extraGlyphOverlayFeatures[i] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 11000), 9015 + i, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+			ZmbFeature::FLAG_04000000_OVERLAY);
+
+		// TODO: no-op placeholder runner (word_4AB04C[16+i]) for render ordering
+
+		_doorDrawOnRegFeatures[15 + i] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 11000), 7015 + i, 7,
+			kCaveEntrancePositions[15 + i],
+			ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
+			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER |
+			ZmbFeature::FLAG_04000000_OVERLAY);
+	}
+
+	// TODO: Overlay SCRB 6012 (word_4AB080), REGION_TRACK runner, virtual glyph renderer (unk_4A090C)
+	// These require caves_initDifficultyParams and caves_glyphSetupDispatch gameplay code
 
 	// Load Zoombinis from active pack at 20 pedestal positions
 	// IDA: zmb_assignPedestalPositions(1, posTable, 20)

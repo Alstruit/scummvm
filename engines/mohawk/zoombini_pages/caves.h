@@ -53,8 +53,24 @@ private:
 
 	static const Common::Point kSnoidPositions[20];
 
+	/** DRAW_ON_REG positions for cave entrance features (SCRB 7000-7019). IDA: off_4A09BC+1..+20 */
+	static const Common::Point kCaveEntrancePositions[20];
+
 	/** Route difficulty level + 1 (1-4). IDA: word_4AAF00 */
 	int16 _difficultyLevel = 0;
+
+	/** 3 entrance animation features. IDA: word_4AB078/7A/7C */
+	ZmbFeature *_entranceAnimFeatures[3] = {};
+	/** 20 DRAW_ON_REG features for cave doors. IDA: scrb_drawOnRegRunnerIdxArr[0..19] + word_4B7B60[0..3] */
+	ZmbFeature *_doorDrawOnRegFeatures[20] = {};
+	/** 4 door panel animation features (SCRB 9011-9014). IDA: word_4AB00A-4AB010 */
+	ZmbFeature *_doorPanelFeatures[4] = {};
+	/** Glyph overlay features for slots 5-11 (SCRB 9004-9010). IDA: word_4AAFF2[5-11] */
+	ZmbFeature *_glyphOverlayFeatures[7] = {};
+	/** Extra glyph overlay features for slots 16-20 (SCRB 9015-9019). IDA: word_4AAFF2[16-20] */
+	ZmbFeature *_extraGlyphOverlayFeatures[5] = {};
+	/** SCRB 9014 — main glyph panel animation. IDA: word_4AB010 */
+	ZmbFeature *_mainGlyphPanelFeature = nullptr;
 };
 
 } // End of namespace Mohawk

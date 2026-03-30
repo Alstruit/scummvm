@@ -377,7 +377,7 @@ ZmbHotspotGroup *ZmbFeature::getHotspotGroup(int32 frameId) {
 	Common::HashMap<int32, ZmbHotspotGroup *>::iterator it = _hsFrameMap.find(frameId);
 	if (it != _hsFrameMap.end())
 		hsGroup = it->_value;
-	
+
 	if (!hsGroup)
 		return nullptr;
 
@@ -619,7 +619,6 @@ bool ZmbFeature::isEndOfAnimationCycle() const {
 	return _lastFrameIdx == _frameIdxMax;
 }
 
-
 void ZmbFeature::runSubFeature(ZoombiniPage *page) {
 	assert(hasFlag(ZmbFeature::FLAG_00040000_CHAIN_SCRIPT));
 
@@ -688,8 +687,7 @@ void ZmbSnoid::startScrsPlayback(Common::SeekableReadStream *scrsStream, bool hi
 			if (hotspots[i]._shapeIdx > 0) {
 				setPointLoc(Common::Point(
 					_scrsOrigPointLoc.x - hotspots[i]._x,
-					_scrsOrigPointLoc.y - hotspots[i]._y
-				));
+					_scrsOrigPointLoc.y - hotspots[i]._y));
 				break;
 			}
 		}
@@ -792,15 +790,20 @@ static void calcPathSpeed(int16 dx, int16 dy, int16 &speedX, int16 &speedY) {
 	// dir 4 (≥1409): mostly downward        → sx=5,  sy=15
 	int16 sx, sy;
 	if (slope <= -1409) {
-		sx = 5;  sy = -15;
+		sx = 5;
+		sy = -15;
 	} else if (slope <= -332) {
-		sx = 13; sy = -10;
+		sx = 13;
+		sy = -10;
 	} else if (slope < 332) {
-		sx = 16; sy = 8;
+		sx = 16;
+		sy = 8;
 	} else if (slope < 1409) {
-		sx = 13; sy = 10;
+		sx = 13;
+		sy = 10;
 	} else {
-		sx = 5;  sy = 15;
+		sx = 5;
+		sy = 15;
 	}
 
 	// Dominant-axis clamping: IDA snoidPath_stepAndComputeVelocity_4548DF
@@ -1067,14 +1070,17 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 						int32 ddx = wps[i].x - _animTargetPos.x;
 						int32 ddy = wps[i].y - _animTargetPos.y;
 						int32 dist = ddx * ddx + ddy * ddy;
-						if (dist <= minDestDist) { minDestDist = dist; v16 = (uint8)(i + 1); }
+						if (dist <= minDestDist) {
+							minDestDist = dist;
+							v16 = (uint8)(i + 1);
+						}
 					}
 
 					// Step 2: find best path + starting position (snoidPath_initRoute_454CA9 inner scan)
 					int bestPath = -1;
-					int bestV2   = 0;  // 0-indexed position in path of nearest-to-curPos member
-					int bestK    = 0;  // 0-indexed position in path of v16
-					int bestDir  = 1;
+					int bestV2 = 0; // 0-indexed position in path of nearest-to-curPos member
+					int bestK = 0;  // 0-indexed position in path of v16
+					int bestDir = 1;
 					int32 bestCurDist = INT32_MAX; // v13
 
 					for (int j = 0; j < (int)node->_paths.size(); j++) {
@@ -1082,7 +1088,10 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 						// Find k: position of v16 in this path
 						int k = -1;
 						for (int idx = 0; idx < (int)path.size() && path[idx] != 0; idx++) {
-							if (path[idx] == v16) { k = idx; break; }
+							if (path[idx] == v16) {
+								k = idx;
+								break;
+							}
 						}
 						if (k < 0)
 							continue; // v16 not in this path
@@ -1096,9 +1105,9 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 							if (dist <= bestCurDist) {
 								bestCurDist = dist;
 								bestPath = j;
-								bestV2   = v2;
-								bestK    = k;
-								bestDir  = 1;
+								bestV2 = v2;
+								bestK = k;
+								bestDir = 1;
 								// IDA: if (k != 0 && v2 >= k) dir = -1
 								if (k != 0 && v2 >= k)
 									bestDir = -1;
@@ -1126,7 +1135,10 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 						int32 ddx = wps[i].x - curPos.x;
 						int32 ddy = wps[i].y - curPos.y;
 						int32 dist = ddx * ddx + ddy * ddy;
-						if (dist < minStartDist) { minStartDist = dist; iStart = i; }
+						if (dist < minStartDist) {
+							minStartDist = dist;
+							iStart = i;
+						}
 					}
 					// Find waypoint nearest to final destination (exit from the path)
 					uint32 iEnd = 0;
@@ -1135,7 +1147,10 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 						int32 ddx = wps[i].x - _animTargetPos.x;
 						int32 ddy = wps[i].y - _animTargetPos.y;
 						int32 dist = ddx * ddx + ddy * ddy;
-						if (dist < minEndDist) { minEndDist = dist; iEnd = i; }
+						if (dist < minEndDist) {
+							minEndDist = dist;
+							iEnd = i;
+						}
 					}
 					if (iStart <= iEnd) {
 						for (uint32 i = iStart; i <= iEnd; i++)
@@ -1160,11 +1175,11 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 			const Common::Point curPos = getPointLoc();
 			const Common::Point nextWp = (!_pathWaypoints.empty()) ? _pathWaypoints[0] : _animTargetPos;
 			int16 initDx = nextWp.x - curPos.x;
-			int16 initDy = curPos.y - nextWp.y;  // curY - targetY (IDA convention)
+			int16 initDy = curPos.y - nextWp.y; // curY - targetY (IDA convention)
 			_walkDirBucket = computeWalkDirBucket(initDx, initDy);
 			calcPathSpeed(initDx, initDy, _animSpeedX, _animSpeedY);
-            // Ensure facing direction is set before first walk frame
-            _isFacingLeft = (initDx < 0);
+			// Ensure facing direction is set before first walk frame
+			_isFacingLeft = (initDx < 0);
 		}
 		updateWalkHotspots(page, _walkDirBucket, 0);
 		// Fall through: apply first movement step in this same tick (IDA LABEL_20 fallthrough).
@@ -1204,7 +1219,7 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 			subTarget = _pathWaypoints[_pathWaypointIdx];
 
 		int16 dx = subTarget.x - pos.x;
-		int16 dy = pos.y - subTarget.y;  // IDA convention: curY - targetY
+		int16 dy = pos.y - subTarget.y; // IDA convention: curY - targetY
 
 		if (dx == 0 && dy == 0) {
 			if (_pathWaypointIdx < _pathWaypoints.size()) {
@@ -1334,10 +1349,10 @@ void ZmbSnoid::setupIdleHotspots() {
 	// Index 0 is unused (TRAIT_NONE); traits are 1-indexed.
 	// Source: wArrZmbBodyFoot_4A4770, wArrZmbBodyNose_4A477C,
 	//         wArrZmbBodyEye_4A4788,  wArrZmbBodyHead_4A4794
-	static const uint16 kFootTable[6] = { 0, 191, 246, 335, 360, 411 };
-	static const uint16 kNoseTable[6] = { 0, 171, 175, 179, 183, 187 };
-	static const uint16 kEyeTable[6]  = { 0,  91, 107, 123, 139, 155 };
-	static const uint16 kHeadTable[6] = { 0,  11,  27,  43,  59,  75 };
+	static const uint16 kFootTable[6] = {0, 191, 246, 335, 360, 411};
+	static const uint16 kNoseTable[6] = {0, 171, 175, 179, 183, 187};
+	static const uint16 kEyeTable[6] = {0, 91, 107, 123, 139, 155};
+	static const uint16 kHeadTable[6] = {0, 11, 27, 43, 59, 75};
 
 	// rawShapeFromData = 2: corresponds to SCRS_101 (index 1 in zmbAnimHotspotArr_4B7094),
 	// which is the idle/seated pose selected by animateZoombini_455E76 for wAnimKind==3.
@@ -1347,21 +1362,25 @@ void ZmbSnoid::setupIdleHotspots() {
 
 	uint8 foot = _trait._foot;
 	uint8 nose = _trait._nose;
-	uint8 eye  = _trait._eye;
+	uint8 eye = _trait._eye;
 	uint8 head = _trait._head;
 
-	if (foot < 1 || foot > 5) foot = 1;
-	if (nose < 1 || nose > 5) nose = 1;
-	if (eye  < 1 || eye  > 5) eye  = 1;
-	if (head < 1 || head > 5) head = 1;
+	if (foot < 1 || foot > 5)
+		foot = 1;
+	if (nose < 1 || nose > 5)
+		nose = 1;
+	if (eye < 1 || eye > 5)
+		eye = 1;
+	if (head < 1 || head > 5)
+		head = 1;
 
 	Common::Array<ZmbHotspot> hotspots;
 	// Layer order matching IDA's zmbRunner_setAnimShape_456785 sub-kind=0:
 	// slot 0=foot, slot 1=body(0), slot 2=nose, slot 3=eye, slot 4=head
 	hotspots.push_back(ZmbHotspot(0, kFootTable[foot] + kRawShapeIdle, 0, 0, 0));
-	hotspots.push_back(ZmbHotspot(1, 0 + kRawShapeIdle,                0, 0, 0)); // body anchor
+	hotspots.push_back(ZmbHotspot(1, 0 + kRawShapeIdle, 0, 0, 0)); // body anchor
 	hotspots.push_back(ZmbHotspot(2, kNoseTable[nose] + kRawShapeIdle, 0, 0, 0));
-	hotspots.push_back(ZmbHotspot(3, kEyeTable[eye]  + kRawShapeIdle, 0, 0, 0));
+	hotspots.push_back(ZmbHotspot(3, kEyeTable[eye] + kRawShapeIdle, 0, 0, 0));
 	hotspots.push_back(ZmbHotspot(4, kHeadTable[head] + kRawShapeIdle, 0, 0, 0));
 
 	_usesVirtualHotspots = true;
@@ -1374,29 +1393,33 @@ void ZmbSnoid::setupSmallIdleHotspots() {
 	// IDA: sub_4572C5(0) swaps global wArrZmbBody* tables to these values.
 	// Used with SHPL resource 3200 (0xC80) in the System/Common MHK.
 	// Trait value (1-5) → combined shapeIdx base offset into resource 3200.
-	static const uint16 kSmallFootTable[6] = { 0, 131, 174, 227, 235, 278 };
-	static const uint16 kSmallNoseTable[6] = { 0, 111, 115, 119, 123, 127 };
-	static const uint16 kSmallEyeTable[6]  = { 0,  91,  95,  99, 103, 107 };
-	static const uint16 kSmallHeadTable[6] = { 0,  11,  27,  43,  59,  75 };
+	static const uint16 kSmallFootTable[6] = {0, 131, 174, 227, 235, 278};
+	static const uint16 kSmallNoseTable[6] = {0, 111, 115, 119, 123, 127};
+	static const uint16 kSmallEyeTable[6] = {0, 91, 95, 99, 103, 107};
+	static const uint16 kSmallHeadTable[6] = {0, 11, 27, 43, 59, 75};
 
 	// Same idle rawShape as normal: index 2 = SCRS_101 idle pose.
 	static constexpr uint16 kRawShapeIdle = 2;
 
 	uint8 foot = _trait._foot;
 	uint8 nose = _trait._nose;
-	uint8 eye  = _trait._eye;
+	uint8 eye = _trait._eye;
 	uint8 head = _trait._head;
 
-	if (foot < 1 || foot > 5) foot = 1;
-	if (nose < 1 || nose > 5) nose = 1;
-	if (eye  < 1 || eye  > 5) eye  = 1;
-	if (head < 1 || head > 5) head = 1;
+	if (foot < 1 || foot > 5)
+		foot = 1;
+	if (nose < 1 || nose > 5)
+		nose = 1;
+	if (eye < 1 || eye > 5)
+		eye = 1;
+	if (head < 1 || head > 5)
+		head = 1;
 
 	Common::Array<ZmbHotspot> hotspots;
 	hotspots.push_back(ZmbHotspot(0, kSmallFootTable[foot] + kRawShapeIdle, 0, 0, 0));
-	hotspots.push_back(ZmbHotspot(1, 0 + kRawShapeIdle,                     0, 0, 0));
+	hotspots.push_back(ZmbHotspot(1, 0 + kRawShapeIdle, 0, 0, 0));
 	hotspots.push_back(ZmbHotspot(2, kSmallNoseTable[nose] + kRawShapeIdle, 0, 0, 0));
-	hotspots.push_back(ZmbHotspot(3, kSmallEyeTable[eye]  + kRawShapeIdle, 0, 0, 0));
+	hotspots.push_back(ZmbHotspot(3, kSmallEyeTable[eye] + kRawShapeIdle, 0, 0, 0));
 	hotspots.push_back(ZmbHotspot(4, kSmallHeadTable[head] + kRawShapeIdle, 0, 0, 0));
 
 	_usesVirtualHotspots = true;
@@ -1405,23 +1428,23 @@ void ZmbSnoid::setupSmallIdleHotspots() {
 
 int16 ZmbSnoid::getBodyLayerBaseOffset(uint8 layer, uint8 layerShift) const {
 	// General trait tables (IDA: wArrZmbBody*_4A4770-4A4794, animKind != 9)
-	static const int16 kFootTable[6] = { 0, 191, 246, 335, 360, 411 };
-	static const int16 kNoseTable[6] = { 0, 171, 175, 179, 183, 187 };
-	static const int16 kEyeTable[6]  = { 0,  91, 107, 123, 139, 155 };
-	static const int16 kHeadTable[6] = { 0,  11,  27,  43,  59,  75 };
+	static const int16 kFootTable[6] = {0, 191, 246, 335, 360, 411};
+	static const int16 kNoseTable[6] = {0, 171, 175, 179, 183, 187};
+	static const int16 kEyeTable[6] = {0, 91, 107, 123, 139, 155};
+	static const int16 kHeadTable[6] = {0, 11, 27, 43, 59, 75};
 
 	// NORMAL-specific trait tables (IDA: wArrZmbBody*_4A47A0-4A47C4, animKind == 9)
-	static const int16 kNormalFootTable[6] = { 0, 288, 306, 324, 342, 360 };
-	static const int16 kNormalNoseTable[6] = { 0, 198, 216, 234, 252, 270 };
-	static const int16 kNormalEyeTable[6]  = { 0, 108, 126, 144, 162, 180 };
-	static const int16 kNormalHeadTable[6] = { 0,  18,  72,  36,  54,  90 };
+	static const int16 kNormalFootTable[6] = {0, 288, 306, 324, 342, 360};
+	static const int16 kNormalNoseTable[6] = {0, 198, 216, 234, 252, 270};
+	static const int16 kNormalEyeTable[6] = {0, 108, 126, 144, 162, 180};
+	static const int16 kNormalHeadTable[6] = {0, 18, 72, 36, 54, 90};
 
 	// Small-snoid tables (IDA: word_4A48B8..DC, installed by sub_4572C5(0))
 	// Used when general tables are swapped to small variants (XFER_0).
-	static const int16 kSmallFootTable[6] = { 0, 131, 174, 227, 235, 278 };
-	static const int16 kSmallNoseTable[6] = { 0, 111, 115, 119, 123, 127 };
-	static const int16 kSmallEyeTable[6]  = { 0,  91,  95,  99, 103, 107 };
-	static const int16 kSmallHeadTable[6] = { 0,  11,  27,  43,  59,  75 };
+	static const int16 kSmallFootTable[6] = {0, 131, 174, 227, 235, 278};
+	static const int16 kSmallNoseTable[6] = {0, 111, 115, 119, 123, 127};
+	static const int16 kSmallEyeTable[6] = {0, 91, 95, 99, 103, 107};
+	static const int16 kSmallHeadTable[6] = {0, 11, 27, 43, 59, 75};
 
 	// Apply IDA p_wUnk00C2 shift: for NORMAL scripts when first shape > 18,
 	// the trait offset array is shifted by 1 (layer 0 = no offset).
@@ -1431,7 +1454,7 @@ int16 ZmbSnoid::getBodyLayerBaseOffset(uint8 layer, uint8 layerShift) const {
 
 	uint8 foot = (_trait._foot >= 1 && _trait._foot <= 5) ? _trait._foot : 1;
 	uint8 nose = (_trait._nose >= 1 && _trait._nose <= 5) ? _trait._nose : 1;
-	uint8 eye  = (_trait._eye  >= 1 && _trait._eye  <= 5) ? _trait._eye  : 1;
+	uint8 eye = (_trait._eye >= 1 && _trait._eye <= 5) ? _trait._eye : 1;
 	uint8 head = (_trait._head >= 1 && _trait._head <= 5) ? _trait._head : 1;
 
 	// Table selection based on animation state, not variant.
@@ -1443,17 +1466,17 @@ int16 ZmbSnoid::getBodyLayerBaseOffset(uint8 layer, uint8 layerShift) const {
 	if (_animState == kSnoidAnimScriptNormal) {
 		footTbl = kNormalFootTable;
 		noseTbl = kNormalNoseTable;
-		eyeTbl  = kNormalEyeTable;
+		eyeTbl = kNormalEyeTable;
 		headTbl = kNormalHeadTable;
 	} else if (_useSmallShapeRegs) {
 		footTbl = kSmallFootTable;
 		noseTbl = kSmallNoseTable;
-		eyeTbl  = kSmallEyeTable;
+		eyeTbl = kSmallEyeTable;
 		headTbl = kSmallHeadTable;
 	} else {
 		footTbl = kFootTable;
 		noseTbl = kNoseTable;
-		eyeTbl  = kEyeTable;
+		eyeTbl = kEyeTable;
 		headTbl = kHeadTable;
 	}
 
@@ -1465,32 +1488,50 @@ int16 ZmbSnoid::getBodyLayerBaseOffset(uint8 layer, uint8 layerShift) const {
 	switch (_variant) {
 	case 1:
 		switch (effectiveLayer) {
-		case 0: return footTbl[foot];
-		case 1: return noseTbl[nose];
-		case 2: return 0; // body
-		case 3: return eyeTbl[eye];
-		case 4: return headTbl[head];
-		default: return 0;
+		case 0:
+			return footTbl[foot];
+		case 1:
+			return noseTbl[nose];
+		case 2:
+			return 0; // body
+		case 3:
+			return eyeTbl[eye];
+		case 4:
+			return headTbl[head];
+		default:
+			return 0;
 		}
 		break;
 	case 2:
 		switch (effectiveLayer) {
-		case 0: return 0; // body
-		case 1: return eyeTbl[eye];
-		case 2: return noseTbl[nose];
-		case 3: return footTbl[foot];
-		case 4: return headTbl[head];
-		default: return 0;
+		case 0:
+			return 0; // body
+		case 1:
+			return eyeTbl[eye];
+		case 2:
+			return noseTbl[nose];
+		case 3:
+			return footTbl[foot];
+		case 4:
+			return headTbl[head];
+		default:
+			return 0;
 		}
 		break;
 	default: // variant 0 (most common)
 		switch (effectiveLayer) {
-		case 0: return footTbl[foot];
-		case 1: return 0; // body
-		case 2: return noseTbl[nose];
-		case 3: return eyeTbl[eye];
-		case 4: return headTbl[head];
-		default: return 0;
+		case 0:
+			return footTbl[foot];
+		case 1:
+			return 0; // body
+		case 2:
+			return noseTbl[nose];
+		case 3:
+			return eyeTbl[eye];
+		case 4:
+			return headTbl[head];
+		default:
+			return 0;
 		}
 		break;
 	}
@@ -1503,8 +1544,7 @@ int16 ZmbSnoid::getVoiceResId(int16 voiceGroup) const {
 	// Group 17: fixed SND resource 99.
 	static const int16 kVoiceGroupBase[16] = {
 		100, 125, 150, 175, 200, 225, 250, 275,
-		300, 325, 350, 375, 400, 475, 450, 425
-	};
+		300, 325, 350, 375, 400, 475, 450, 425};
 
 	int16 base = 0;
 	bool applyTraitOffset = true;
@@ -1528,11 +1568,20 @@ int16 ZmbSnoid::getVoiceResId(int16 voiceGroup) const {
 		// Head encodes gender: heads 1–3 = male, 4–5 = female → distinct SND block offsets.
 		uint8 head = _trait._head;
 		switch (head) {
-		case 2: base += 5; break;
-		case 3: base += 20; break;
-		case 4: base += 15; break;
-		case 5: base += 10; break;
-		default: break; // head 0, 1: no additional offset
+		case 2:
+			base += 5;
+			break;
+		case 3:
+			base += 20;
+			break;
+		case 4:
+			base += 15;
+			break;
+		case 5:
+			base += 10;
+			break;
+		default:
+			break; // head 0, 1: no additional offset
 		}
 		// IDA disasm 0x4570fa: movsx edx, byte ptr [ebx+0BEh] → add traits._nose (offset 0xBE).
 		base += static_cast<int16>(_trait._nose) - 1;
@@ -1552,10 +1601,14 @@ static int computeWalkDirBucket(int16 dx, int16 dy) {
 	} else {
 		slope = (dy >= 0) ? 1410 : -1410;
 	}
-	if (slope <= -1409) return 0;
-	if (slope <= -332)  return 1;
-	if (slope <  332)   return 2;
-	if (slope <  1409)  return 3;
+	if (slope <= -1409)
+		return 0;
+	if (slope <= -332)
+		return 1;
+	if (slope < 332)
+		return 2;
+	if (slope < 1409)
+		return 3;
 	return 4;
 }
 
@@ -1564,26 +1617,26 @@ void ZmbSnoid::updateWalkHotspots(ZoombiniPage *page, int dirBucket, int phase) 
 		return;
 
 	// Normal-size body-part tables (wArrZmbBodyFoot_4A4770 etc.)
-	static const uint16 kFootTable[6] = { 0, 191, 246, 335, 360, 411 };
-	static const uint16 kNoseTable[6] = { 0, 171, 175, 179, 183, 187 };
-	static const uint16 kEyeTable[6]  = { 0,  91, 107, 123, 139, 155 };
-	static const uint16 kHeadTable[6] = { 0,  11,  27,  43,  59,  75 };
+	static const uint16 kFootTable[6] = {0, 191, 246, 335, 360, 411};
+	static const uint16 kNoseTable[6] = {0, 171, 175, 179, 183, 187};
+	static const uint16 kEyeTable[6] = {0, 91, 107, 123, 139, 155};
+	static const uint16 kHeadTable[6] = {0, 11, 27, 43, 59, 75};
 
 	// Small-snoid tables (word_4A48B8..DC, installed by sub_4572C5(0)).
 	// Used when the snoid is walking with resource 3200 (XFER_0 picker-to-bridge).
-	static const uint16 kSmallFootTable[6] = { 0, 131, 174, 227, 235, 278 };
-	static const uint16 kSmallNoseTable[6] = { 0, 111, 115, 119, 123, 127 };
-	static const uint16 kSmallEyeTable[6]  = { 0,  91,  95,  99, 103, 107 };
-	static const uint16 kSmallHeadTable[6] = { 0,  11,  27,  43,  59,  75 };
+	static const uint16 kSmallFootTable[6] = {0, 131, 174, 227, 235, 278};
+	static const uint16 kSmallNoseTable[6] = {0, 111, 115, 119, 123, 127};
+	static const uint16 kSmallEyeTable[6] = {0, 91, 95, 99, 103, 107};
+	static const uint16 kSmallHeadTable[6] = {0, 11, 27, 43, 59, 75};
 
 	const uint16 *footTbl = _useSmallShapeRegs ? kSmallFootTable : kFootTable;
 	const uint16 *noseTbl = _useSmallShapeRegs ? kSmallNoseTable : kNoseTable;
-	const uint16 *eyeTbl  = _useSmallShapeRegs ? kSmallEyeTable  : kEyeTable;
+	const uint16 *eyeTbl = _useSmallShapeRegs ? kSmallEyeTable : kEyeTable;
 	const uint16 *headTbl = _useSmallShapeRegs ? kSmallHeadTable : kHeadTable;
 
 	uint8 foot = CLIP<uint8>(_trait._foot, 1, 5);
 	uint8 nose = CLIP<uint8>(_trait._nose, 1, 5);
-	uint8 eye  = CLIP<uint8>(_trait._eye,  1, 5);
+	uint8 eye = CLIP<uint8>(_trait._eye, 1, 5);
 	uint8 head = CLIP<uint8>(_trait._head, 1, 5);
 
 	const ZmbWalkAnim &anim = page->getWalkAnim(foot, dirBucket);
@@ -1601,8 +1654,8 @@ void ZmbSnoid::updateWalkHotspots(ZoombiniPage *page, int dirBucket, int phase) 
 	// at slot2 to match this fixed layout.  Do NOT swap based on anim.variant.
 	int16 traitBase[5];
 	traitBase[0] = static_cast<int16>(footTbl[foot]);
-	traitBase[1] = 0;                                    // slot 1 always = body base
-	traitBase[2] = static_cast<int16>(noseTbl[nose]);   // slot 2 always = nose base
+	traitBase[1] = 0;                                 // slot 1 always = body base
+	traitBase[2] = static_cast<int16>(noseTbl[nose]); // slot 2 always = nose base
 	traitBase[3] = static_cast<int16>(eyeTbl[eye]);
 	traitBase[4] = static_cast<int16>(headTbl[head]);
 
@@ -1618,14 +1671,14 @@ void ZmbSnoid::updateFidgetHotspots(ZoombiniPage *page, int fidgetSet, int varia
 	if (!page)
 		return;
 
-	static const uint16 kFootTable[6] = { 0, 191, 246, 335, 360, 411 };
-	static const uint16 kNoseTable[6] = { 0, 171, 175, 179, 183, 187 };
-	static const uint16 kEyeTable[6]  = { 0,  91, 107, 123, 139, 155 };
-	static const uint16 kHeadTable[6] = { 0,  11,  27,  43,  59,  75 };
+	static const uint16 kFootTable[6] = {0, 191, 246, 335, 360, 411};
+	static const uint16 kNoseTable[6] = {0, 171, 175, 179, 183, 187};
+	static const uint16 kEyeTable[6] = {0, 91, 107, 123, 139, 155};
+	static const uint16 kHeadTable[6] = {0, 11, 27, 43, 59, 75};
 
 	uint8 foot = CLIP<uint8>(_trait._foot, 1, 5);
 	uint8 nose = CLIP<uint8>(_trait._nose, 1, 5);
-	uint8 eye  = CLIP<uint8>(_trait._eye,  1, 5);
+	uint8 eye = CLIP<uint8>(_trait._eye, 1, 5);
 	uint8 head = CLIP<uint8>(_trait._head, 1, 5);
 
 	const ZmbWalkAnim &anim = page->getFidgetAnim(fidgetSet, variant);
@@ -1661,14 +1714,14 @@ void ZmbSnoid::updateHoldingHotspots(ZoombiniPage *page) {
 	// wAnimHotspotSetIdx = pZmb->footTrait + 45 → foot 1 → index 46 → SCRS 146
 	// Frame cycling: _holdingAnimPhase advances each tick in onSnoidAnimTick.
 	// IDA: wGroupFrameIdx0098 cycles through all frames, loops from 2 when >= frameCount.
-	static const uint16 kFootTable[6] = { 0, 191, 246, 335, 360, 411 };
-	static const uint16 kNoseTable[6] = { 0, 171, 175, 179, 183, 187 };
-	static const uint16 kEyeTable[6]  = { 0,  91, 107, 123, 139, 155 };
-	static const uint16 kHeadTable[6] = { 0,  11,  27,  43,  59,  75 };
+	static const uint16 kFootTable[6] = {0, 191, 246, 335, 360, 411};
+	static const uint16 kNoseTable[6] = {0, 171, 175, 179, 183, 187};
+	static const uint16 kEyeTable[6] = {0, 91, 107, 123, 139, 155};
+	static const uint16 kHeadTable[6] = {0, 11, 27, 43, 59, 75};
 
 	uint8 foot = CLIP<uint8>(_trait._foot, 1, 5);
 	uint8 nose = CLIP<uint8>(_trait._nose, 1, 5);
-	uint8 eye  = CLIP<uint8>(_trait._eye,  1, 5);
+	uint8 eye = CLIP<uint8>(_trait._eye, 1, 5);
 	uint8 head = CLIP<uint8>(_trait._head, 1, 5);
 
 	const ZmbWalkAnim &anim = page->getHoldingAnim(foot);

@@ -57,7 +57,7 @@ protected:
 	ZmbEventHandleResult pickerMatrix_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 
 	void pickerButtons_onPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
-	void pickerButtons_onPostRender(ZmbFeature * feature);
+	void pickerButtons_onPostRender(ZmbFeature *feature);
 	void pickerButtons_onButtonAction(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs);
 	ZmbEventHandleResult pickerButtons_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 	ZmbEventHandleResult pickerButtons_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);

@@ -35,6 +35,12 @@ const Common::Point ZoombiniInteractivePizza::kSnoidPositions[16] = {
 	Common::Point( 48, 396), Common::Point( 51, 440), Common::Point( 20, 416), Common::Point( 18, 457),
 };
 
+// IDA: stru_4A381C+8 — DRAW_ON_REG position for answer display
+const Common::Point ZoombiniInteractivePizza::kAnswerDisplayPosition = Common::Point(270, 334);
+
+// IDA: base SCRB IDs for topping features per difficulty level (diff 0-3)
+const uint16 ZoombiniInteractivePizza::kToppingScrbBase[4] = { 7005, 7015, 7027, 7041 };
+
 ZoombiniInteractivePizza::ZoombiniInteractivePizza(MohawkEngine_Zoombini *vm) : ZoombiniInteractive(vm, ZoombiniPageType::kPizza) {
 }
 
@@ -141,6 +147,65 @@ void ZoombiniInteractivePizza::loadFeatures() {
 				  13000 + i,
 				  ZmbFeature::FLAG_00000001_TYPE_SNOID | ZmbFeature::FLAG_00020000_SKIP_RENDER);
 	}
+
+	// IDA: answser display DRAW_ON_REG — SCRB 7063, interval=7
+	// IDA: scrb_drawOnRegRunnerIdxArr[0] = runner_registerAndAllocate(..., MEMORY[0x4A3824], 7, 7063, ..., 0x108A000)
+	_drawOnRegFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 6000), 7063, 7,
+		kAnswerDisplayPosition,
+		ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
+		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER);
+
+	// IDA: main tree/interaction animation — SCRB 7000, interval=6
+	// IDA: MEMORY[0x4B0CC0] = runner_registerAndAllocate(..., 6, 7000, ..., 0x188000)
+	// IDA: scrb_playFrameSounds(0, MEMORY[0x4B0CC0]); scrb_registerHotspotGroup(0, 0, 0, 0, ...)
+	_treeAnimFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 6000), 7000, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_00100000_PLAY_ONCE);
+
+	// IDA: topping display features (difficulty-dependent count and base SCRB)
+	// diff 0: 5 toppings (7005,7007,...,7013); diff 1: 6 (7015,...,7025)
+	// diff 2: 7 (7027,...,7039); diff 3: 8 (7041,...,7055)
+	{
+		_toppingCount = _difficultyLevel + 5;
+		uint16 scrbBase = kToppingScrbBase[_difficultyLevel];
+		for (uint16 i = 0; i < _toppingCount; i++) {
+			_toppingFeatures[i] = loadScrbFeature(
+				ZmbResource(ZmbArchiveKind::kPage, 6000), scrbBase + i * 2, 6,
+				ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+				ZmbFeature::FLAG_00100000_PLAY_ONCE);
+		}
+	}
+
+	// IDA: order display runners (conditional on difficulty)
+	// IDA: if pizza_order1State → SCRB 9034 (diff >= 1)
+	if (_difficultyLevel >= 1) {
+		_order1Feature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 6000), 9034, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+			ZmbFeature::FLAG_00100000_PLAY_ONCE);
+	}
+
+	// IDA: MEMORY[0x4B0CDE] = SCRB 8032 (always)
+	_orderBaseFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 6000), 8032, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_00100000_PLAY_ONCE);
+
+	// IDA: if pizza_order2State → SCRB 10038 (diff >= 2)
+	if (_difficultyLevel >= 2) {
+		_order2Feature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 6000), 10038, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+			ZmbFeature::FLAG_00100000_PLAY_ONCE);
+	}
+
+	// IDA: pizza_overlayBaseRunner — SCRB 8033, flags=0x4108000 (OVERLAY|PLAY_ONCE|LOOP_ANIM)
+	_overlayFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 6000), 8033, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_04000000_OVERLAY);
 
 	// Load Zoombinis from active pack at 16 pedestal positions
 	// IDA: zmb_assignPedestalPositions(1, stru_4A3834, 16)

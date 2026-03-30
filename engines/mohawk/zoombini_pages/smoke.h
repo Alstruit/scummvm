@@ -54,8 +54,44 @@ private:
 
 	static const Common::Point kSnoidPositions[20];
 
+	/** DRAW_ON_REG position for answer display. IDA: stru_4A400C */
+	static const Common::Point kDrawOnRegPosition;
+
 	/** Route difficulty level + 1 (1-4). IDA: smoke_difficultyLevel */
 	int16 _difficultyLevel = 0;
+
+	/** SCRB overlay animation (11013 or 11011). IDA: smoke_scrbOverlayAnim */
+	ZmbFeature *_overlayAnimFeature = nullptr;
+	/** SCRB 11076 — extra feature for diff 1/2 only. IDA: smoke_scrbLevel12Extra */
+	ZmbFeature *_level12ExtraFeature = nullptr;
+	/** SCRB 11006 — cliff left animation. IDA: smoke_scrbCliffLeft */
+	ZmbFeature *_cliffLeftFeature = nullptr;
+	/** SCRB 11007 — cliff right animation. IDA: smoke_scrbCliffRight */
+	ZmbFeature *_cliffRightFeature = nullptr;
+	/** Main animation (diff 1/2: 11024, diff 3/4: 11028). IDA: smoke_scrbMainAnim */
+	ZmbFeature *_mainAnimFeature = nullptr;
+	/** Smoke stack A animation. IDA: smoke_scrbSmokeStackA */
+	ZmbFeature *_smokeStackAFeature = nullptr;
+	/** Smoke stack B animation (diff 3/4 only). IDA: smoke_scrbSmokeStackB */
+	ZmbFeature *_smokeStackBFeature = nullptr;
+	/** Second animation. IDA: smoke_scrbSecondAnim */
+	ZmbFeature *_secondAnimFeature = nullptr;
+	/** SCRB 11018 — compare A animation. IDA: smoke_scrbCompareA */
+	ZmbFeature *_compareAFeature = nullptr;
+	/** SCRB 11019 — compare B animation. IDA: smoke_scrbCompareB */
+	ZmbFeature *_compareBFeature = nullptr;
+	/** SCRB 11009 — background overlay. IDA: smoke_scrbBgOverlay */
+	ZmbFeature *_bgOverlayFeature = nullptr;
+	/** SCRB 11036 — rejection animation. IDA: smoke_scrbRejection */
+	ZmbFeature *_rejectionFeature = nullptr;
+	/** SCRB 11008 — background. IDA: smoke_scrbBackground */
+	ZmbFeature *_backgroundFeature = nullptr;
+	/** SCRB 11002 — answer zone animation. IDA: smoke_scrbAnswerZone */
+	ZmbFeature *_answerZoneFeature = nullptr;
+	/** SCRB 11077 — holding area. IDA: smoke_scrbHoldingArea */
+	ZmbFeature *_holdingAreaFeature = nullptr;
+	/** SCRB 11001 — DRAW_ON_REG (diff < 3 only). IDA: scrb_drawOnRegRunnerIdxArr[0] */
+	ZmbFeature *_drawOnRegFeature = nullptr;
 };
 
 } // End of namespace Mohawk

@@ -146,9 +146,64 @@ void ZoombiniInteractiveMaze::loadFeatures() {
 
 	// IDA: SHPL_copyPaletteSrcToDst(236, 10)
 
+	// IDA 0x42ea74: word_4AF2FA - overlay anim feature
+	// SCRB 12001, interval=7, OVERLAY|LOOP_ANIM|DEFER_ANIM|PLAY_ONCE
+	_overlayAnimFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 5100), 12001, 7,
+		ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00008000_LOOP_ANIM |
+		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE);
+
 	// Load Zoombinis at 20 pedestal positions
 	// IDA: zmb_assignPedestalPositions(1, v31, 20)
 	loadZoombinisFromPack();
+
+	// TODO: Data-driven creature features based on maze_regsDataPtr (tREG config by difficulty).
+	// IDA 0x42eae0-0x42ee1b: Creature loops (type 1&3) → SCRB 9005+type
+	//   Grid position features → SCRB 7000+idx, OVERLAY|PLAY_ONCE|LOOP_ANIM
+	//   DRAW_ON_REG features → SCRB 7014+idx, with positions from word_4A1BD4[]
+	//   Obstacle features (cases 6-8) → complex switch with word_4A1CEC[], asc_4A1D0A[]
+	// IDA 0x42ee22-0x42ee82: word_4AF314 linking (SCRB 8005 or 8010)
+
+	// IDA 0x42eea8: word_4AF3F6[0] - creature base animation
+	// SCRB 9005, interval=7, DEFER_ANIM|PLAY_ONCE|LOOP_ANIM
+	_creatureBaseFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 5100), 9005, 7,
+		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_00008000_LOOP_ANIM);
+
+	// IDA 0x42eed2-0x42ef3c: NoOp runner layers (word_4AF45C[0..10])
+	// SCRB 8011, interval=0, noOp callbacks, OVERLAY|LOOP_ANIM
+	for (int i = 0; i < 11; i++) {
+		_noopFeatures[i] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 5100), 8011, 0,
+			ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00008000_LOOP_ANIM);
+	}
+
+	// TODO: Data-driven creature/obstacle features (second pass)
+	// IDA 0x42ef3e-0x42efa9: Creature loop 2 (type 2) → SCRB 9005+type, DEFER_ANIM|PLAY_ONCE
+	// IDA 0x42efab-0x42f2d0: Obstacle loop 2 (cases 3-5, 12-13, default) → complex switch
+	// IDA 0x42f2de-0x42f312: unk_4AF316 linking (SCRB 8001)
+	// IDA 0x42f321-0x42f355: word_4AF318 linking (SCRB 8008)
+
+	// IDA 0x42f378: final SCRB 8011, OVERLAY|LOOP_ANIM
+	loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 5100), 8011, 0,
+		ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00008000_LOOP_ANIM);
+
+	// IDA 0x42f399: SCRB 8004, OVERLAY
+	_finalOverlayA = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 5100), 8004, 0,
+		ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA 0x42f3ba: SCRB 8000, OVERLAY
+	_finalOverlayB = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 5100), 8000, 0,
+		ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA 0x42f3bf-0x42f3f4: NoOp runner 11, SCRB 8011, OVERLAY|LOOP_ANIM
+	_noopFeatures[11] = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 5100), 8011, 0,
+		ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00008000_LOOP_ANIM);
 
 	// Layout and stagger walk-in
 	// IDA: zmb_layoutStaticAndWalkInGroups(0)

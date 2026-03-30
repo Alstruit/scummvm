@@ -37,6 +37,9 @@ const Common::Point ZoombiniInteractiveSmoke::kSnoidPositions[20] = {
 	Common::Point(196,  78), Common::Point(150,  80), Common::Point(110,  78), Common::Point( 69,  79),
 };
 
+// IDA: DRAW_ON_REG position at stru_4A400C
+const Common::Point ZoombiniInteractiveSmoke::kDrawOnRegPosition = Common::Point(43, 258);
+
 ZoombiniInteractiveSmoke::ZoombiniInteractiveSmoke(MohawkEngine_Zoombini *vm) : ZoombiniInteractive(vm, ZoombiniPageType::kSmoke) {
 }
 
@@ -98,12 +101,133 @@ void ZoombiniInteractiveSmoke::loadFeatures() {
 				  ZmbFeature::FLAG_00000001_TYPE_SNOID | ZmbFeature::FLAG_00020000_SKIP_RENDER);
 	}
 
+	// === Additional feature runners from IDA smoke_init ===
+
+	// Difficulty-dependent SCRB IDs
+	uint16 scrbOverlayResId = (_difficultyLevel == 4) ? 11011 : 11013;
+	uint16 scrbAnimId0, scrbAnimId1, scrbSmokeStackResA;
+	if (_difficultyLevel <= 2) {
+		scrbAnimId0 = 11024;
+		scrbAnimId1 = 11025;
+		scrbSmokeStackResA = 11032;
+	} else {
+		scrbAnimId0 = 11028;
+		scrbAnimId1 = 11029;
+		scrbSmokeStackResA = 11033;
+	}
+
+	// IDA: smoke_scrbOverlayAnim — overlay animation, interval=10
+	_overlayAnimFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), scrbOverlayResId, 10,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: smoke_scrbLevel12Extra — SCRB 11076, diff 1/2 only, interval=10
+	if (_difficultyLevel <= 2) {
+		_level12ExtraFeature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 10000), 11076, 10,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+			ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_01000000_DEFER_RENDER |
+			ZmbFeature::FLAG_04000000_OVERLAY);
+	}
+
+	// IDA: smoke_scrbCliffLeft — SCRB 11006, interval=10
+	_cliffLeftFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), 11006, 10,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_01000000_DEFER_RENDER |
+		ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: smoke_scrbCliffRight — SCRB 11007, interval=10
+	_cliffRightFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), 11007, 10,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_01000000_DEFER_RENDER |
+		ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: smoke_scrbMainAnim — main animation, interval=6
+	_mainAnimFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), scrbAnimId0, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_01000000_DEFER_RENDER |
+		ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: smoke_scrbSmokeStackA — smoke stack animation, interval=6
+	_smokeStackAFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), scrbSmokeStackResA, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: smoke_scrbSmokeStackB — diff 3/4 only, SCRB 11034
+	if (_difficultyLevel >= 3) {
+		_smokeStackBFeature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 10000), 11034, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+			ZmbFeature::FLAG_04000000_OVERLAY);
+	}
+
+	// IDA: smoke_scrbSecondAnim — second animation, interval=6
+	_secondAnimFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), scrbAnimId1, 6,
+		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_01000000_DEFER_RENDER | ZmbFeature::FLAG_04000000_OVERLAY |
+		ZmbFeature::FLAG_08000000_REGION_TRACK);
+
+	// IDA: smoke_scrbCompareA — SCRB 11018, interval=6
+	_compareAFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), 11018, 6,
+		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_01000000_DEFER_RENDER | ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: smoke_scrbCompareB — SCRB 11019, interval=6
+	_compareBFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), 11019, 6,
+		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_01000000_DEFER_RENDER | ZmbFeature::FLAG_04000000_OVERLAY |
+		ZmbFeature::FLAG_08000000_REGION_TRACK);
+
+	// IDA: smoke_scrbBgOverlay — SCRB 11009, interval=6
+	_bgOverlayFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), 11009, 6,
+		ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: smoke_scrbRejection — SCRB 11036, interval=6
+	_rejectionFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), 11036, 6,
+		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_01000000_DEFER_RENDER | ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: smoke_scrbBackground — SCRB 11008, interval=0
+	_backgroundFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), 11008, 0,
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: smoke_scrbAnswerZone — SCRB 11002, interval=5
+	_answerZoneFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), 11002, 5,
+		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// IDA: smoke_scrbHoldingArea — SCRB 11077, interval=0
+	_holdingAreaFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), 11077, 0,
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_04000000_OVERLAY);
+
 	// Load Zoombinis at 20 pedestal positions
 	// IDA: zmb_assignPedestalPositions(1, pointsArr_4A4368, 20)
 	loadZoombinisFromPack();
 
 	// NOTE: Smoke does NOT call zmb_layoutStaticAndWalkInGroups.
 	// Uses smoke_buildRunnerStacks() for custom stack-based positioning.
+
+	// IDA: scrb_drawOnRegRunnerIdxArr[0] — SCRB 11001, diff < 3 only, interval=7
+	if (_difficultyLevel < 3) {
+		_drawOnRegFeature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 10000), 11001, 7,
+			kDrawOnRegPosition,
+			ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
+			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER);
+	}
 
 	// IDA: SHPL_copyPaletteSrcToDst(236, 10)
 

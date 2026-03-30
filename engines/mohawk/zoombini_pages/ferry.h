@@ -54,6 +54,20 @@ private:
 
 	/** Route difficulty level. IDA: word_4AB112 */
 	int16 _difficultyLevel = 0;
+
+	// Puzzle-specific feature runners
+	/** Landscape overlay runner (SCRB 1601). IDA: word_4AB13A */
+	ZmbFeature *_landscapeFeature = nullptr;
+	/** Boat animation runner (SCRB varies, default 1803). IDA: word_4AB17A */
+	ZmbFeature *_boatAnimFeature = nullptr;
+	/** Boat approach runner A (SCRB 1602). IDA: word_4AB13E — only if more-action enabled */
+	ZmbFeature *_boatApproachA = nullptr;
+	/** Boat approach runner B (SCRB 1603). IDA: word_4AB140 — only if more-action enabled */
+	ZmbFeature *_boatApproachB = nullptr;
+	/** Departure overlay runner (SCRB 1704). IDA: word_4AB142 */
+	ZmbFeature *_departOverlayFeature = nullptr;
+	/** 3 overlay SCRBs (1450-1452). IDA: word_4AB14C[] */
+	ZmbFeature *_overlayFeatures[3] = {};
 };
 
 } // End of namespace Mohawk

@@ -36,6 +36,14 @@ const Common::Point ZoombiniInteractiveTunnels::kSnoidPositions[16] = {
 	Common::Point(342, 459), Common::Point(310, 457), Common::Point(277, 457), Common::Point(245, 459),
 };
 
+// IDA: tunnel entry positions at 0x4A7674 (4 POINTS, each packed as DWORD = int16 x, int16 y)
+const Common::Point ZoombiniInteractiveTunnels::kTunnelEntryPositions[4] = {
+	Common::Point(98, 424), Common::Point(178, 415), Common::Point(453, 421), Common::Point(533, 430),
+};
+
+// IDA: door index mapping at 0x4A7684 — selects which of the 12 door SCRBs to use as entrance doors
+const int16 ZoombiniInteractiveTunnels::kDoorIndices[4] = { 1, 2, 0, 3 };
+
 ZoombiniInteractiveTunnels::ZoombiniInteractiveTunnels(MohawkEngine_Zoombini *vm) : ZoombiniInteractive(vm, ZoombiniPageType::kTunnels) {
 }
 
@@ -168,6 +176,56 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 				  8500 + i,
 				  ZmbFeature::FLAG_00000001_TYPE_SNOID | ZmbFeature::FLAG_00020000_SKIP_RENDER);
 	}
+
+	// --- Puzzle-specific feature runners ---
+	// IDA: word_4B7AE0 = runner_registerAndAllocate(..., 0, 9000, standard, standard, 0x8000)
+	// Feedback animation runner (SCRB 9000), interval=0, flags=LOOP_ANIM
+	_feedbackFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 400), 9000, 0,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM);
+
+	// IDA: 4× scrb_drawOnRegRunnerIdxArr[i] = runner_registerAndAllocate(..., &pos[i], 6, i+5000, standard, standard, 0x108A000)
+	// 4 tunnel entrance DRAW_ON_REG runners at predefined positions
+	for (int16 i = 0; i < 4; i++) {
+		_tunnelEntryFeatures[i] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 400), 5000 + i, 6,
+			kTunnelEntryPositions[i],
+			ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
+			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER);
+	}
+
+	// IDA: word_4B7AE6 = runner_registerAndAllocate(..., 0, 6, 7001, standard, standard, 0xC180000)
+	// Path effect runner (SCRB 7001)
+	_pathEffectFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 400), 7001, 6,
+		ZmbFeature::FLAG_08000000_REGION_TRACK | ZmbFeature::FLAG_04000000_OVERLAY |
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_00080000_DEFER_ANIM);
+
+	// IDA: 4× word_4B7A18[doorIdx] = runner_registerAndAllocate(..., 0, 6, doorIdx+6000, standard, standard, 0xC180000)
+	// Door animation runners — kDoorIndices maps iteration order to door SCRBs {1, 2, 0, 3}
+	for (int16 i = 0; i < 4; i++) {
+		int16 doorIdx = kDoorIndices[i];
+		_doorAnimFeatures[doorIdx] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 400), 6000 + doorIdx, 6,
+			ZmbFeature::FLAG_08000000_REGION_TRACK | ZmbFeature::FLAG_04000000_OVERLAY |
+			ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_00080000_DEFER_ANIM);
+	}
+
+	// IDA: 6× runner_registerAndAllocate(..., 0, 6, 9001+i, standard, standard, 0)
+	// Anonymous visual feedback runners (SCRB 9001-9006), flags=0
+	for (uint16 i = 0; i < 6; i++) {
+		loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 400), 9001 + i, 6,
+			ZmbFeature::FLAG_00000000_TYPE_SHAPES);
+	}
+
+	// IDA: word_4B7A16 = runner_registerAndAllocate(..., 0, 6, 7000, standard, standard, 0xD181000)
+	// Main path runner (SCRB 7000) — topmost overlay
+	_mainPathFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 400), 7000, 6,
+		ZmbFeature::FLAG_08000000_REGION_TRACK | ZmbFeature::FLAG_04000000_OVERLAY |
+		ZmbFeature::FLAG_01000000_DEFER_RENDER | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00001000_TOPMOST);
 
 	// IDA: SHPL_copyPaletteSrcToDst(236, 10)
 

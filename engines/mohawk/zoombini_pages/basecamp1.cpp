@@ -476,7 +476,8 @@ void ZoombiniInteractiveBasecampOne::scroll_postRender(ZmbFeature *feature) {
 			// Mirrors IDA: action 3 (RightOne = 1 step/frame) and action 4 (RightFour = 5 steps/frame).
 			// RightFour is suppressed if not mid-animation and fewer than 5 columns remain to the right.
 			int16 maxCol = _storageColumnCount - 5;
-			if (maxCol > 120) maxCol = 120;
+			if (maxCol > 120)
+				maxCol = 120;
 			int16 steps = (buttonIdx == kScrollButtons_RightFour) ? 5 : 1;
 			if (buttonIdx == kScrollButtons_RightFour &&
 			    !_storageMatrixInAnimation && _storageLeftmostColumnIdx + 5 > maxCol)
@@ -675,8 +676,10 @@ void ZoombiniInteractiveBasecampOne::calcStorageColumns() {
 	ZmbStateStoredChunk &chunk = _vm->_state->_f._storedChunkBC1;
 
 	_storageCapacity = 5 * ((_storageMaxCellIdx + 10) / 5);
-	if (_storageCapacity > 625) _storageCapacity = 625;
-	if (_storageCapacity < 50)  _storageCapacity = 50;
+	if (_storageCapacity > 625)
+		_storageCapacity = 625;
+	if (_storageCapacity < 50)
+		_storageCapacity = 50;
 	_storageColumnCount = _storageCapacity / 5;
 
 	int16 maxCol = _storageColumnCount - 5;

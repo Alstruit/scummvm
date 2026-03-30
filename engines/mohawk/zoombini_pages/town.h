@@ -166,6 +166,13 @@ protected:
 	 * Source: unk_4A7310 in the original binary.
 	 */
 	static const uint16 kInhabitantScrbIds[16];
+
+	/**
+	 * Memorial statue feature (SCRB 6000).
+	 * IDA 0x4581d9: standalone runner with TYPE_TOWN_ENTITY|LOOP_ANIM,
+	 * preRenderMemorialStatue callback.
+	 */
+	ZmbFeature *_memorialStatueFeature = nullptr;
 };
 
 } // End of namespace Mohawk

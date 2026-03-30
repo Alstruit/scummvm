@@ -399,7 +399,7 @@ public:
 	 * @param archiveKind The archive kind
 	 * @param shapeImageId The shape image identifier
 	 */
-	ZmbFeature(MohawkEngine_Zoombini* vm, uint16 scrbId, uint32 frameInterval, uint32 flags, ZmbResource imgResource);
+	ZmbFeature(MohawkEngine_Zoombini *vm, uint16 scrbId, uint32 frameInterval, uint32 flags, ZmbResource imgResource);
 	/**
 	 * Represents a full SCRB with a point of reference.
 	 * @param vm Pointer to the MohawkEngine_Zoombini instance
@@ -410,7 +410,7 @@ public:
 	 * @param archiveKind The archive kind
 	 * @param shapeImageId The shape image identifier
 	 */
-	ZmbFeature(MohawkEngine_Zoombini* vm, uint16 scrbId, uint32 frameInterval, const Common::Point &pointRef, uint32 flags, ZmbResource imgResource);
+	ZmbFeature(MohawkEngine_Zoombini *vm, uint16 scrbId, uint32 frameInterval, const Common::Point &pointRef, uint32 flags, ZmbResource imgResource);
 	/**
 	 * Represents a virtual SCRB with shapeImageId assigned, which is used to draw MapRect shapes.
 	 * @param vm Pointer to the MohawkEngine_Zoombini instance
@@ -419,7 +419,7 @@ public:
 	 * @param archiveKind The archive kind
 	 * @param shapeImageId The shape image identifier
 	 */
-	ZmbFeature(MohawkEngine_Zoombini* vm, uint16 scrbId, uint32 flags, ZmbResource imgResource);
+	ZmbFeature(MohawkEngine_Zoombini *vm, uint16 scrbId, uint32 flags, ZmbResource imgResource);
 	/**
 	 * Represents an empty virtual SCRB, which is used to run event hooks.
 	 * It also serves as a base constructor for ZmbSnoid.
@@ -427,7 +427,7 @@ public:
 	 * @param scrbId The SCRB identifier
 	 * @param flags Feature flags
 	 */
-	ZmbFeature(MohawkEngine_Zoombini* vm, uint16 scrbId, uint32 flags);
+	ZmbFeature(MohawkEngine_Zoombini *vm, uint16 scrbId, uint32 flags);
 	virtual ~ZmbFeature();
 public:
 
@@ -438,15 +438,15 @@ public:
 	typedef int32 (ZoombiniPage::*OnSelectRenderFrameFunc)(ZmbFeature *feature);
 	typedef void (ZoombiniPage::*OnPreRenderShapeFunc)(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
 	typedef ZmbRenderResult (ZoombiniPage::*OnRenderFunc)(ZmbFeature *feature);
-	typedef void (ZoombiniPage::*OnPostRenderFunc)(ZmbFeature* feature);
-	typedef ZmbEventHandleResult (ZoombiniPage::*OnMouseMoveFunc)(ZmbFeature* feature, const Common::Point &absPos, const Common::Point &relPos);
-	typedef ZmbEventHandleResult (ZoombiniPage::*OnLButtonDownFunc)(ZmbFeature* feature, const Common::Point &absPos, const Common::Point &relPos);
-	typedef ZmbEventHandleResult (ZoombiniPage::*OnLButtonUpFunc)(ZmbFeature* feature, const Common::Point &absPos, const Common::Point &relPos);
-	typedef ZmbEventHandleResult (ZoombiniPage::*OnKeyDownFunc)(ZmbFeature* feature, const Common::KeyState &kbd, bool kbdRepeat);
-	typedef ZmbEventHandleResult (ZoombiniPage::*OnKeyUpFunc)(ZmbFeature* feature, const Common::KeyState &kbd, bool kbdRepeat);
-	typedef ZmbEventHandleResult (ZoombiniPage::*OnWheelUpFunc)(ZmbFeature* feature, const Common::Point &absPos);
-	typedef ZmbEventHandleResult (ZoombiniPage::*OnWheelDownFunc)(ZmbFeature* feature, const Common::Point &absPos);
-	typedef ZmbEventHandleResult (ZoombiniPage::*OnQuitFunc)(ZmbFeature* feature);
+	typedef void (ZoombiniPage::*OnPostRenderFunc)(ZmbFeature *feature);
+	typedef ZmbEventHandleResult (ZoombiniPage::*OnMouseMoveFunc)(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
+	typedef ZmbEventHandleResult (ZoombiniPage::*OnLButtonDownFunc)(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
+	typedef ZmbEventHandleResult (ZoombiniPage::*OnLButtonUpFunc)(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
+	typedef ZmbEventHandleResult (ZoombiniPage::*OnKeyDownFunc)(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);
+	typedef ZmbEventHandleResult (ZoombiniPage::*OnKeyUpFunc)(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);
+	typedef ZmbEventHandleResult (ZoombiniPage::*OnWheelUpFunc)(ZmbFeature *feature, const Common::Point &absPos);
+	typedef ZmbEventHandleResult (ZoombiniPage::*OnWheelDownFunc)(ZmbFeature *feature, const Common::Point &absPos);
+	typedef ZmbEventHandleResult (ZoombiniPage::*OnQuitFunc)(ZmbFeature *feature);
 
 	/**
 	 * Event hooks for the feature script.
@@ -637,12 +637,12 @@ public:
 	ZmbResource getResource() const { return _imgResource; }
 	void setResource(ZmbResource res) { _imgResource = res; }
 
-	ZmbHotspotGroup* getHotspotGroup(int32 frameid);
+	ZmbHotspotGroup *getHotspotGroup(int32 frameid);
 	/**
 	 * Look up the hotspot group for the exact frame index, without falling back
 	 * to a previous non-empty frame. Returns nullptr if the frame has no entry.
 	 */
-	ZmbHotspotGroup* getHotspotGroupExact(int32 frameid) const;
+	ZmbHotspotGroup *getHotspotGroupExact(int32 frameid) const;
 	uint32 getHotspotTotalCount() const;
 	uint16 getHotspotIdCount() const;
 
@@ -779,7 +779,7 @@ protected:
 	void parseFrames(Common::SeekableReadStream *stream, uint16 frameCount);
 
 private:
-	MohawkEngine_Zoombini* _vm;
+	MohawkEngine_Zoombini *_vm;
 	int16 _id = 0;
 
 	ZmbFeature *_refSubFeature = nullptr;
@@ -908,7 +908,7 @@ enum SnoidAnimState : uint8 {
  */
 class ZmbSnoid : public ZmbFeature {
 public:
-	ZmbSnoid(MohawkEngine_Zoombini* vm, uint16 snoidId, uint32 flags);
+	ZmbSnoid(MohawkEngine_Zoombini *vm, uint16 snoidId, uint32 flags);
 	~ZmbSnoid() override;
 
 	/**
@@ -1097,7 +1097,7 @@ public:
 	bool _packIsOccupied = false;
 
 private:
-	MohawkEngine_Zoombini* _vm;
+	MohawkEngine_Zoombini *_vm;
 	int16 _id = 0;
 
 	/**

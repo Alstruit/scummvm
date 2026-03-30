@@ -163,7 +163,7 @@ struct ZmbStateStoredEntry {
 	byte _name[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 	void sync(Common::Serializer &s);
-	Common::U32String getU32Name(MohawkEngine_Zoombini* vm);
+	Common::U32String getU32Name(MohawkEngine_Zoombini *vm);
 };
 
 struct ZmbStateStoredChunk {
@@ -194,7 +194,7 @@ struct ZmbStateActiveEntry {
 	byte _name[10] = { 0, };
 
 	void sync(Common::Serializer &s);
-	Common::U32String getU32Name(MohawkEngine_Zoombini* vm);
+	Common::U32String getU32Name(MohawkEngine_Zoombini *vm);
 };
 
 struct ZmbStateActivePack {
@@ -313,9 +313,9 @@ struct ZmbStateFile { // Size: 44559 (0xAE0F)
 	uint16 _wPickerCaveBlinkState = 1;
 
 	// 0x0028: Page Flags (Guess: Increase on page visit?)
-	uint16 _pageFlagIsle = 0; 
-  	uint16 _pageFlagBridge = 0;
-  	uint16 _pageFlagTunnels = 0;
+	uint16 _pageFlagIsle = 0;
+	uint16 _pageFlagBridge = 0;
+	uint16 _pageFlagTunnels = 0;
 	uint16 _pageFlagPizza = 0;
 	uint16 _pageFlagBasecamp1 = 0;
 	uint16 _pageFlagFerry = 0;
@@ -425,12 +425,12 @@ struct ZmbRosterEntry {
 	byte _fileName[9] = { 0, };
 
 	void sync(Common::Serializer &r);
-	Common::U32String getSaveName(MohawkEngine_Zoombini* vm) const;
-	Common::U32String getFileName(MohawkEngine_Zoombini* vm) const;
+	Common::U32String getSaveName(MohawkEngine_Zoombini *vm) const;
+	Common::U32String getFileName(MohawkEngine_Zoombini *vm) const;
 	/**
 	 * Check if the given save name can fit in the save name field.
 	 */
-	static bool checkSaveNameSize(MohawkEngine_Zoombini* vm, const Common::U32String &uSaveName);
+	static bool checkSaveNameSize(MohawkEngine_Zoombini *vm, const Common::U32String &uSaveName);
 };
 
 struct ZmbRosterFile {

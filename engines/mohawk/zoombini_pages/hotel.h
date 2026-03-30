@@ -56,6 +56,14 @@ private:
 
 	/** Difficulty level. IDA: hotel difficulty */
 	int16 _difficultyLevel = 0;
+
+	// Puzzle-specific feature runners
+	/** Intro animation runner (SCRB 5750+adj). IDA: word_4AB750 */
+	ZmbFeature *_introAnimFeature = nullptr;
+	/** Room animation runner (SCRB 7000+type). IDA: word_4AB742 */
+	ZmbFeature *_roomAnimFeature = nullptr;
+	/** Elevator/room SCRB runner (SCRB 11800). IDA: word_4AB752 */
+	ZmbFeature *_roomScrbFeature = nullptr;
 };
 
 } // End of namespace Mohawk

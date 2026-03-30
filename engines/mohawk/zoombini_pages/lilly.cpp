@@ -107,6 +107,27 @@ void ZoombiniInteractiveLilly::loadFeatures() {
 	// IDA: lilly_totalZmbCount = *(_WORD *)puzzle_collectAllZmbTraitBytes()
 	loadZoombinisFromPack();
 
+	// TODO: Per-zoombini runners (word_4AE3C2[]) — SCRB 10109+i with per-zmb positions from unk_4A15A8
+	// TODO: Virtual grid renderer (word_4A14C8), cursor runner, cell animation runners
+	// TODO: maze_registerObstacleRunners call
+
+	// IDA: 5 overlay features for SCRB 14000-14004, interval=0, flags=OVERLAY
+	for (uint16 i = 0; i < 5; i++) {
+		_overlayFeatures[i] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 7000), 14000 + i, 0,
+			ZmbFeature::FLAG_04000000_OVERLAY);
+	}
+
+	// IDA: lilly_frogScrbIdx — frog event SCRB 11000, diff > 1, interval=5
+	if (_difficultyLevel > 1) {
+		_frogScrbFeature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 7000), 11000, 5,
+			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE);
+	}
+
+	// TODO: Frog runner (lilly_frogRunnerIdx) — per-zmb entity with dynamic SCRB
+	// TODO: 12 no-op overlay runners (word_4AE3AA) for render ordering
+
 	// Set up Go/Map/Help buttons
 	setGoButton(Common::Rect(600, 441, 639, 478), 1, 2, 3);
 	setMapButton(Common::Rect(600, 403, 639, 440), 5, 6);

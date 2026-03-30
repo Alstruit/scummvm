@@ -36,6 +36,9 @@ const Common::Point ZoombiniInteractiveFleens::kSnoidPositions[16] = {
 	Common::Point( 89, 384), Common::Point( 67, 418), Common::Point( 76, 450), Common::Point( 56, 379),
 };
 
+// IDA: raft DRAW_ON_REG position at 0x4A1028
+const Common::Point ZoombiniInteractiveFleens::kRaftPosition(438, 357);
+
 ZoombiniInteractiveFleens::ZoombiniInteractiveFleens(MohawkEngine_Zoombini *vm) : ZoombiniInteractive(vm, ZoombiniPageType::kFleens) {
 }
 
@@ -125,9 +128,48 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 				  ZmbFeature::FLAG_00000001_TYPE_SNOID | ZmbFeature::FLAG_00020000_SKIP_RENDER);
 	}
 
+	// --- Puzzle-specific feature runners ---
+
+	// IDA: word_4AB1A4 = runner_registerAndAllocate(..., 6, 0x3E8, standard, standard, 0x108000)
+	// Animation runner (SCRB 1000), LOOP_ANIM | PLAY_ONCE
+	_animFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 4000), 1000, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE);
+
+	// IDA: scrb_drawOnRegRunnerIdxArr[0] = runner_registerAndAllocate(..., &raftPos, 7, 0x44C, standard, standard, 0x108A000)
+	// Raft DRAW_ON_REG runner (SCRB 1100) at raft position
+	_raftFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 4000), 1100, 7,
+		kRaftPosition,
+		ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
+		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER);
+
+	// IDA: runner_registerAndAllocate(0, 0, 0, 0, 0, caves_invalidateEntranceRectsC, caves_renderAllAttrSlots, 0x1000)
+	// Virtual feature for attribute slot rendering (TOPMOST)
+	// TODO: Implement caves_invalidateEntranceRectsC / caves_renderAllAttrSlots callbacks
+	{
+		ZmbFeature::EventHooks attrSlotHooks;
+		loadVirtualFeature(100, 0, ZmbFeature::FLAG_00001000_TOPMOST, attrSlotHooks);
+	}
+
 	// Load Zoombinis from active pack at 16 pedestal positions
 	// IDA: zmb_assignPedestalPositions(1, pPosArr, 16)
 	loadZoombinisFromPack();
+
+	// IDA: ferry_buildZmbRunners_41D9F4 — builds zoombini trait runners
+	// TODO: Implement Zoombini trait runner setup (gameplay code)
+
+	// IDA: 7× word_4AA848[scrbId] = runner_registerAndAllocate(..., 6, scrbId, standard, standard, flags)
+	// Overlay runners (SCRB 1200-1206)
+	for (int16 i = 0; i < 7; i++) {
+		uint32 flags = ZmbFeature::FLAG_04000000_OVERLAY;
+		if (i == 0) {
+			// SCRB 1200 gets additional DEFER_ANIM | PLAY_ONCE
+			flags |= ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE;
+		}
+		_overlayFeatures[i] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 4000), 1200 + i, 6, flags);
+	}
 
 	// Layout and stagger walk-in (200ms walk delay)
 	// IDA: zmb_layoutStaticAndWalkInGroups(0)

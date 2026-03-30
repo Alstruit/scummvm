@@ -54,8 +54,26 @@ private:
 
 	static const Common::Point kSnoidPositions[16];
 
+	/** 4 entry positions for DRAW_ON_REG tunnel entrance runners. IDA: unk_4A7674 */
+	static const Common::Point kTunnelEntryPositions[4];
+
+	/** Door index mapping {1, 2, 0, 3}. IDA: dword_4A7684 */
+	static const int16 kDoorIndices[4];
+
 	/** Route difficulty level (0-3). IDA: word_4B7A12 */
 	int16 _difficultyLevel = 0;
+
+	// Puzzle-specific feature runners (IDA: word_4B7AE0..word_4B7A20)
+	/** Feedback animation runner (SCRB 9000). IDA: word_4B7AE0 */
+	ZmbFeature *_feedbackFeature = nullptr;
+	/** 4 tunnel entrance DRAW_ON_REG runners (SCRB 5000-5003). IDA: scrb_drawOnRegRunnerIdxArr */
+	ZmbFeature *_tunnelEntryFeatures[4] = {};
+	/** Path effect runner (SCRB 7001). IDA: word_4B7AE6 */
+	ZmbFeature *_pathEffectFeature = nullptr;
+	/** 4 door animation runners (SCRB 6000-6003). IDA: word_4B7A18[] */
+	ZmbFeature *_doorAnimFeatures[4] = {};
+	/** Main path runner (SCRB 7000). IDA: word_4B7A16 */
+	ZmbFeature *_mainPathFeature = nullptr;
 
 	enum {
 		kResSound996_DepartSFX = 996

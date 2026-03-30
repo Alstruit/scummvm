@@ -57,6 +57,11 @@ private:
 
 	/** Count of occupied zoombinis loaded from pack. IDA: lilly_totalZmbCount */
 	int16 _totalZmbCount = 0;
+
+	/** 5 overlay features for SCRB 14000-14004. IDA: word_4A7636[14000..14004] */
+	ZmbFeature *_overlayFeatures[5] = {};
+	/** SCRB 11000 (0x2AF8) — frog event feature (diff > 1). IDA: lilly_frogScrbIdx */
+	ZmbFeature *_frogScrbFeature = nullptr;
 };
 
 } // End of namespace Mohawk

@@ -26,7 +26,7 @@
 
 namespace Mohawk {
 
-ZoombiniSound::ZoombiniSound(MohawkEngine_Zoombini * vm) : _vm(vm), Sound(vm) {
+ZoombiniSound::ZoombiniSound(MohawkEngine_Zoombini *vm) : _vm(vm), Sound(vm) {
 }
 
 ZoombiniSound::~ZoombiniSound() {
