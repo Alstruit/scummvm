@@ -82,8 +82,7 @@ void ZoombiniInteractiveSmoke::loadFeatures() {
 	// Feature groups — single main SCRB at 11000
 	// IDA: scrb_useFeatureGroup(0, 0, 11000)
 	// IDA: scrb_loadMainFeatureSet(78, 11000)
-	loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 10000), 11000, 0,
+	createMainFeatureHead(
 		ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 		ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY);
 

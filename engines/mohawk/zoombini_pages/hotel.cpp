@@ -93,10 +93,7 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 	// IDA: scrb_useFeatureGroup(0, 4, 11800)
 	// IDA: scrb_useFeatureGroup(0, 5, 7500) — not at diff 3
 
-	uint16 mainScrbId = (_difficultyLevel == 3) ? 9000 : 6000;
-
-	ZmbFeature *mainFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 8000), mainScrbId, 0,
+	ZmbFeature *mainFeature = createMainFeatureHead(
 		ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 		ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY);
 

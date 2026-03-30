@@ -91,8 +91,7 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 
 	// Load main features: 13 entrance SCRBs at 6000
 	// IDA: scrb_loadMainFeatureSet(13, 6000)
-	ZmbFeature *mainFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 11000), 6000, 0,
+	ZmbFeature *mainFeature = createMainFeatureHead(
 		ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 		ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY);
 

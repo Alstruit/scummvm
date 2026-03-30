@@ -263,6 +263,13 @@ ZmbFeature *ZoombiniPage::loadSubFeature(ZmbFeature *parentFeature, ZmbResource 
 	return subFeature;
 }
 
+ZmbFeature *ZoombiniPage::createMainFeatureHead(uint32 flags) {
+	ZmbFeature *head = new ZmbFeature(_vm, 0, 0, flags, ZmbResource(ZmbArchiveKind::kPage, 0));
+	head->initValues(_currentFrameCounter);
+	_mainFeatureHeads.push_back(head);
+	return head;
+}
+
 void ZoombiniPage::unloadScrbFeature(uint16 scrbId) {
 	deregisterFeature(_scrbFeatureMap, scrbId);
 }
@@ -921,6 +928,7 @@ Common::Rect ZoombiniPage::renderStoredSnoid(ZoombiniGraphics::ScreenKind screen
 void ZoombiniPage::clear() {
 	clearSubFeatures();
 	clearScrbFeatures();
+	clearMainFeatureHeads();
 	clearVirtualFeatures();
 	clearSnoids();
 	clearRegs();
@@ -934,6 +942,13 @@ void ZoombiniPage::clearScrbFeatures() {
 		delete feature;
 	}
 	_scrbFeatureMap.clear();
+}
+
+void ZoombiniPage::clearMainFeatureHeads() {
+	for (uint i = 0; i < _mainFeatureHeads.size(); i++) {
+		delete _mainFeatureHeads[i];
+	}
+	_mainFeatureHeads.clear();
 }
 
 void ZoombiniPage::clearSubFeatures() {

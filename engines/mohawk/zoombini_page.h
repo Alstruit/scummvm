@@ -134,6 +134,14 @@ public:
 	ZmbFeature *loadVirtualFeature(ZmbResource imgResource, uint16 virtFeatureId, const Common::Array<ZmbHotspot> &hotspots, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks);
 	ZmbFeature *loadVirtualFeature(uint16 virtFeatureId, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks);
 	ZmbFeature *loadSubFeature(ZmbFeature *parentFeature, ZmbResource imgResource, uint16 scrbId);
+	/**
+	 * Create a chain-head feature for sub-feature chaining.
+	 * IDA: scrb_loadMainFeatureSet just pre-loads SCRB data into flat arrays;
+	 * it does NOT create a feature runner. This method creates a bare ZmbFeature
+	 * (not registered in _scrbFeatureMap) that serves only as a parent for
+	 * loadSubFeature() chains — providing inherited flags and frame interval.
+	 */
+	ZmbFeature *createMainFeatureHead(uint32 flags);
 	void unloadScrbFeature(uint16 scrbId);
 	void unloadVirtualFeature(uint16 virtFeatureId);
 	/**
@@ -192,6 +200,7 @@ public:
 	void clearScrbFeatures();
 	void clearVirtualFeatures();
 	void clearSubFeatures();
+	void clearMainFeatureHeads();
 	void clearSnoids();
 	void clearRegs();
 	void clearNode();
@@ -425,6 +434,8 @@ protected:
 
 	Common::StableMap<uint16, ZmbFeature *> _scrbFeatureMap;
 	Common::StableMap<uint16, ZmbFeature *> _virtualFeatureMap;
+	/** Chain-head features from createMainFeatureHead(), not in any feature map. */
+	Common::Array<ZmbFeature *> _mainFeatureHeads;
 	/**
 	 * Sub-features temporarily running independently (e.g. FLAG_00040000_CHAIN_SCRIPT).
 	 */

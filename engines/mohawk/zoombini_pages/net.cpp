@@ -74,8 +74,7 @@ void ZoombiniInteractiveNet::loadFeatures() {
 
 	// Load main features: 48 SCRBs at 7000
 	// IDA: scrb_loadMainFeatureSet(48, 7000)
-	ZmbFeature *mainFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 6000), 7000, 0,
+	ZmbFeature *mainFeature = createMainFeatureHead(
 		ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 		ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY);
 

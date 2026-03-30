@@ -93,8 +93,7 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 
 	// Load main features: 4 SCRBs at 5000
 	// IDA: scrb_loadMainFeatureSet(4, 5000)
-	ZmbFeature *mainFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 400), 5000, 0,
+	ZmbFeature *mainFeature = createMainFeatureHead(
 		ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 		ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY);
 
