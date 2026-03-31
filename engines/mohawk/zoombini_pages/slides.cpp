@@ -22,6 +22,8 @@
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_pages/slides.h"
+#include "mohawk/zoombini_random.h"
+#include "mohawk/zoombini_resource.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 
@@ -59,6 +61,22 @@ void ZoombiniInteractiveSlides::setBackgroundBitmap() {
 void ZoombiniInteractiveSlides::loadFeatures() {
 	// IDA: puzzleSlides_441F0C
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
+
+	// IDA: slides_initGridByDifficulty (0x4468F8) — initialize grid parameters
+	// Default values: slotBaseState=504, cellSpacing=48
+	_slotBaseState = 504;
+	_cellSpacing = 48;
+
+	// At highest difficulty, randomize grid parameters
+	// IDA: if (slides_difficultyLevel == 3) { rand(0,1) → slotBaseState; if non-zero → cellSpacing=24 }
+	if (_difficultyLevel == 3) {
+		int16 randVal = _vm->_rnd->getRandomNumber(0, 1);
+		_slotBaseState = 504 + randVal;
+		if (randVal != 0)
+			_cellSpacing = 24;
+		debugC(kZmbDebugPage, "Slides Level 3: slotBaseState=%d, cellSpacing=%d",
+		       _slotBaseState, _cellSpacing);
+	}
 
 	// At highest difficulty, load NODE/PATH for walking
 	// IDA: if (slides_difficultyLevel == 3) node_loadNodeAndPath(0x3E8u)

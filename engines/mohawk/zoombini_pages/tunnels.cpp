@@ -348,6 +348,33 @@ void ZoombiniInteractiveTunnels::initPuzzleState() {
 
 	// Random seed for level-0 gate bias
 	_level0GateBias = _vm->_rnd->getRandomNumber(0, 1);
+
+	// Reset animation queue state
+	_animQueueCount = 0;
+	_animStepCounter = 0;
+	_animLocked = false;
+	_activeAnimSnoid = 0;
+	_activeGateType = 0;
+	_isSuccessAnim = false;
+	_pendingSoundRunner = 0;
+	_pendingSoundScrbId = 0;
+	_pendingSoundHasCallback = false;
+
+	for (int i = 0; i < 5; i++) {
+		_animQueue[i] = AnimQueueEntry();
+	}
+
+	// Reset ambient animation timers
+	_idleAnimTimer = 0;
+	_idleAnimInterval = _vm->_rnd->getRandomNumber(5400, 10800);
+	_fidgetScheduleCount = 0;
+	_fidgetPlayedCount = 0;
+	_fidgetTimer = 0;
+	_fidgetInterval = _vm->_rnd->getRandomNumber(1000, 2000);
+	_countdownVoiceId = 0;
+	_countdownVoicePlaying = false;
+	_countdownVoiceHandle = nullptr;
+	_zmbEnteredVoiceId = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -363,13 +390,11 @@ void ZoombiniInteractiveTunnels::generateRules() {
 		break;
 	case 2:
 		// Level 2: Dual guards, dual attributes each (OR within category)
-		// TODO: Implement setupLevel2_dualDoubleAttr()
-		setupLevel1_dualSingleAttr(); // Fallback to level 1 for now
+		setupLevel2_dualDoubleAttr();
 		break;
 	case 3:
 		// Level 3: Dual guards, cross-category attributes (AND)
-		// TODO: Implement setupLevel3_crossCategoryAttr()
-		setupLevel1_dualSingleAttr(); // Fallback to level 1 for now
+		setupLevel3_crossCategoryAttr();
 		break;
 	default:
 		setupLevel0_singleAttr();
@@ -601,6 +626,397 @@ void ZoombiniInteractiveTunnels::setupLevel1_dualSingleAttr() {
 }
 
 // ---------------------------------------------------------------------------
+// setupLevel2_dualDoubleAttr: Level 2 - dual guards, two conditions each (OR).
+// IDA: tunnels_setupLevel3_dualDoubleAttr @ 0x45CCCD
+//
+// Each guard tests two values from the SAME attribute category.
+// E.g., "Has blue OR green eyes" for guard A, "Has big OR medium nose" for guard B.
+//
+// The attrDescriptors10 table encodes 10 value-pair combinations per category:
+//   {1,2}, {1,3}, {1,4}, {1,5}, {2,3}, {2,4}, {2,5}, {3,4}, {3,5}, {4,5}
+// Total: 40 descriptors (10 per category x 4 categories).
+// We test all 40x40 = 1600 pairs (skipping diagonal where A==B).
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::setupLevel2_dualDoubleAttr() {
+	// Descriptor table: 10 value-pair encodings (low nibble = val0, high nibble = val1)
+	// IDA: tunnels_attrDescriptors10 @ 0x4A76E4
+	static const uint32 kAttrDescriptors10[10] = {
+		0x12, 0x13, 0x14, 0x15, 0x23, 0x24, 0x25, 0x34, 0x35, 0x45
+	};
+
+	// Collect all Zoombini traits
+	Common::Array<ZmbTrait> traits;
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		ZmbSnoid *snoid = it->second;
+		if (snoid && snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+			traits.push_back(snoid->_trait);
+		}
+	}
+
+	if (traits.empty()) {
+		// Fallback to level 1 rules
+		setupLevel1_dualSingleAttr();
+		return;
+	}
+
+	// Build 40 descriptors: 10 per category, shifted to appropriate byte position
+	// Category 0 (feet): byte 0, Category 1 (nose): byte 1
+	// Category 2 (eyes): byte 2, Category 3 (hair): byte 3
+	uint32 descriptors[40];
+	int descIdx = 0;
+	for (int cat = 0; cat < 4; cat++) {
+		for (int i = 0; i < 10; i++) {
+			descriptors[descIdx++] = kAttrDescriptors10[i] << (cat * 8);
+		}
+	}
+
+	// Bucket arrays for pair scoring
+	int16 bothMatch[1600] = {};    // Matches both A and B
+	int16 aOnlyMatch[1600] = {};   // Matches A only
+	int16 bOnlyMatch[1600] = {};   // Matches B only
+	int16 neitherMatch[1600] = {}; // Matches neither
+
+	// For each Zoombini, classify into buckets for each pair
+	for (const ZmbTrait &trait : traits) {
+		// Pack trait into 32-bit word (same encoding as IDA)
+		uint32 traitPacked = (trait._foot & 0x0F) |
+		                     ((trait._nose & 0x0F) << 8) |
+		                     ((trait._eye & 0x0F) << 16) |
+		                     ((trait._head & 0x0F) << 24);
+
+		for (int pairIdx = 0; pairIdx < 1600; pairIdx++) {
+			int descA = pairIdx / 40;
+			int descB = pairIdx % 40;
+
+			if (descA == descB)
+				continue; // Skip diagonal
+
+			// Check if trait matches descriptor A (matches either nibble at any byte)
+			bool matchA = false;
+			uint32 dA = descriptors[descA];
+			for (int b = 0; b < 4; b++) {
+				uint8 descByte = (dA >> (b * 8)) & 0xFF;
+				uint8 traitByte = (traitPacked >> (b * 8)) & 0x0F;
+				if (descByte != 0) {
+					uint8 val0 = descByte & 0x0F;
+					uint8 val1 = (descByte >> 4) & 0x0F;
+					if (traitByte == val0 || traitByte == val1) {
+						matchA = true;
+						break;
+					}
+				}
+			}
+
+			// Check if trait matches descriptor B
+			bool matchB = false;
+			uint32 dB = descriptors[descB];
+			for (int b = 0; b < 4; b++) {
+				uint8 descByte = (dB >> (b * 8)) & 0xFF;
+				uint8 traitByte = (traitPacked >> (b * 8)) & 0x0F;
+				if (descByte != 0) {
+					uint8 val0 = descByte & 0x0F;
+					uint8 val1 = (descByte >> 4) & 0x0F;
+					if (traitByte == val0 || traitByte == val1) {
+						matchB = true;
+						break;
+					}
+				}
+			}
+
+			// Classify into bucket
+			if (matchA && matchB)
+				bothMatch[pairIdx]++;
+			else if (matchA)
+				aOnlyMatch[pairIdx]++;
+			else if (matchB)
+				bOnlyMatch[pairIdx]++;
+			else
+				neitherMatch[pairIdx]++;
+		}
+	}
+
+	// Find best pair using diversity/balance scoring (IDA algorithm)
+	int16 bestDiversity = 0;
+	for (int p = 0; p < 1600; p++) {
+		if ((p / 40) == (p % 40))
+			continue;
+		int16 diversity = (bothMatch[p] > 0 ? 1 : 0) +
+		                  (aOnlyMatch[p] > 0 ? 1 : 0) +
+		                  (bOnlyMatch[p] > 0 ? 1 : 0) +
+		                  (neitherMatch[p] > 0 ? 1 : 0);
+		if (diversity > bestDiversity)
+			bestDiversity = diversity;
+	}
+
+	// Mark pairs with suboptimal diversity
+	int16 balanceScore[1600];
+	for (int p = 0; p < 1600; p++) {
+		balanceScore[p] = -1;
+		if ((p / 40) == (p % 40))
+			continue;
+		int16 diversity = (bothMatch[p] > 0 ? 1 : 0) +
+		                  (aOnlyMatch[p] > 0 ? 1 : 0) +
+		                  (bOnlyMatch[p] > 0 ? 1 : 0) +
+		                  (neitherMatch[p] > 0 ? 1 : 0);
+		if (diversity < bestDiversity)
+			continue;
+
+		// Calculate balance score (sum of absolute pairwise differences)
+		int16 a = bothMatch[p], b = aOnlyMatch[p], c = bOnlyMatch[p], d = neitherMatch[p];
+		balanceScore[p] = ABS(a - b) + ABS(a - c) + ABS(a - d) +
+		                  ABS(b - c) + ABS(b - d) + ABS(c - d);
+	}
+
+	// Find minimum balance score
+	int16 minBalance = 32000;
+	for (int p = 0; p < 1600; p++) {
+		if (balanceScore[p] >= 0 && balanceScore[p] < minBalance)
+			minBalance = balanceScore[p];
+	}
+
+	// Count candidates with minimum balance
+	int16 candidateCount = 0;
+	for (int p = 0; p < 1600; p++) {
+		if (balanceScore[p] == minBalance)
+			candidateCount++;
+	}
+
+	// Randomly select from candidates
+	int16 selection = _vm->_rnd->getRandomNumber(1, candidateCount);
+	int16 selectedPair = 0;
+	for (int p = 0; p < 1600; p++) {
+		if (balanceScore[p] == minBalance) {
+			if (--selection == 0) {
+				selectedPair = p;
+				break;
+			}
+		}
+	}
+
+	// Extract the two descriptors
+	uint32 descA = descriptors[selectedPair / 40];
+	uint32 descB = descriptors[selectedPair % 40];
+
+	// Convert descriptors to guard rules
+	_guardCount = 2;
+	for (int g = 0; g < 2; g++) {
+		uint32 desc = (g == 0) ? descA : descB;
+		_guards[g].sideFlag = _vm->_rnd->getRandomNumber(0, 1) != 0;
+		_guards[g].condCount = 2;
+
+		// Find which byte is non-zero and extract type/values
+		for (int b = 0; b < 4; b++) {
+			uint8 descByte = (desc >> (b * 8)) & 0xFF;
+			if (descByte != 0) {
+				// Map byte position to attribute type: 0=feet(4), 1=nose(3), 2=eyes(2), 3=hair(1)
+				_guards[g].attrType[0] = 4 - b;
+				_guards[g].attrValue[0] = descByte & 0x0F;
+				_guards[g].attrType[1] = 4 - b;
+				_guards[g].attrValue[1] = (descByte >> 4) & 0x0F;
+				break;
+			}
+		}
+	}
+
+	debug(3, "Tunnels Level 2 Rules: Guard 0 type=%d vals=%d/%d, Guard 1 type=%d vals=%d/%d",
+	      _guards[0].attrType[0], _guards[0].attrValue[0], _guards[0].attrValue[1],
+	      _guards[1].attrType[0], _guards[1].attrValue[0], _guards[1].attrValue[1]);
+}
+
+// ---------------------------------------------------------------------------
+// setupLevel3_crossCategoryAttr: Level 3 - dual guards, cross-category (AND).
+// IDA: tunnels_setupLevel4_crossCategoryAttr @ 0x45D608
+//
+// Each guard tests two values from DIFFERENT attribute categories.
+// E.g., "Has blue eyes AND big feet" for guard A.
+//
+// The 6 category pairs are:
+//   0: Feet + Nose, 1: Feet + Eyes, 2: Feet + Hair
+//   3: Nose + Eyes, 4: Nose + Hair, 5: Eyes + Hair
+// Total: 150 descriptors (25 per pair = 5x5 combinations).
+// We test all 150x150 = 22500 pairs (skipping diagonal).
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::setupLevel3_crossCategoryAttr() {
+	// Category pair base and step tables (IDA: 0x4A770C, 0x4A7724)
+	// Base: which bytes are set. Step: which byte to increment.
+	static const uint32 kAttrBaseTable6[6] = {
+		0x00000001, 0x00000001, 0x00000001, // Feet + {Nose, Eyes, Hair}
+		0x00000100, 0x00000100,             // Nose + {Eyes, Hair}
+		0x00010000                          // Eyes + Hair
+	};
+	static const uint32 kAttrStepTable6[6] = {
+		0x00000100, 0x00010000, 0x01000000, // Step for {Nose, Eyes, Hair}
+		0x00010000, 0x01000000,             // Step for {Eyes, Hair}
+		0x01000000                          // Step for Hair
+	};
+
+	// Collect all Zoombini traits
+	Common::Array<ZmbTrait> traits;
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		ZmbSnoid *snoid = it->second;
+		if (snoid && snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+			traits.push_back(snoid->_trait);
+		}
+	}
+
+	if (traits.empty()) {
+		setupLevel1_dualSingleAttr();
+		return;
+	}
+
+	// Build 150 cross-category descriptors
+	// Each category pair contributes 25 descriptors (5x5 value combinations)
+	uint32 descriptors[150];
+	int descIdx = 0;
+	for (int pair = 0; pair < 6; pair++) {
+		for (int v1 = 1; v1 <= 5; v1++) {
+			for (int v2 = 1; v2 <= 5; v2++) {
+				descriptors[descIdx++] = (kAttrBaseTable6[pair] * v1) + (kAttrStepTable6[pair] * v2);
+			}
+		}
+	}
+
+	// Bucket arrays for pair scoring (use heap to avoid stack overflow)
+	Common::Array<int16> bothMatch(22500, 0);
+	Common::Array<int16> aOnlyMatch(22500, 0);
+	Common::Array<int16> bOnlyMatch(22500, 0);
+	Common::Array<int16> neitherMatch(22500, 0);
+
+	// For each Zoombini, classify into buckets for each pair
+	for (const ZmbTrait &trait : traits) {
+		uint32 traitPacked = (trait._foot & 0x0F) |
+		                     ((trait._nose & 0x0F) << 8) |
+		                     ((trait._eye & 0x0F) << 16) |
+		                     ((trait._head & 0x0F) << 24);
+
+		for (int pairIdx = 0; pairIdx < 22500; pairIdx++) {
+			int descAIdx = pairIdx / 150;
+			int descBIdx = pairIdx % 150;
+
+			if (descAIdx == descBIdx)
+				continue;
+
+			// Check if trait matches descriptor A (matches ANY non-zero byte)
+			bool matchA = false;
+			uint32 dA = descriptors[descAIdx];
+			for (int b = 0; b < 4; b++) {
+				uint8 descVal = (dA >> (b * 8)) & 0x0F;
+				uint8 traitVal = (traitPacked >> (b * 8)) & 0x0F;
+				if (descVal != 0 && traitVal == descVal) {
+					matchA = true;
+					break;
+				}
+			}
+
+			// Check if trait matches descriptor B
+			bool matchB = false;
+			uint32 dB = descriptors[descBIdx];
+			for (int b = 0; b < 4; b++) {
+				uint8 descVal = (dB >> (b * 8)) & 0x0F;
+				uint8 traitVal = (traitPacked >> (b * 8)) & 0x0F;
+				if (descVal != 0 && traitVal == descVal) {
+					matchB = true;
+					break;
+				}
+			}
+
+			// Classify
+			if (matchA && matchB)
+				bothMatch[pairIdx]++;
+			else if (matchA)
+				aOnlyMatch[pairIdx]++;
+			else if (matchB)
+				bOnlyMatch[pairIdx]++;
+			else
+				neitherMatch[pairIdx]++;
+		}
+	}
+
+	// Find best diversity
+	int16 bestDiversity = 0;
+	for (int p = 0; p < 22500; p++) {
+		if ((p / 150) == (p % 150))
+			continue;
+		int16 diversity = (bothMatch[p] > 0 ? 1 : 0) +
+		                  (aOnlyMatch[p] > 0 ? 1 : 0) +
+		                  (bOnlyMatch[p] > 0 ? 1 : 0) +
+		                  (neitherMatch[p] > 0 ? 1 : 0);
+		if (diversity > bestDiversity)
+			bestDiversity = diversity;
+	}
+
+	// Calculate balance scores for best-diversity pairs
+	Common::Array<int16> balanceScore(22500, -1);
+	for (int p = 0; p < 22500; p++) {
+		if ((p / 150) == (p % 150))
+			continue;
+		int16 diversity = (bothMatch[p] > 0 ? 1 : 0) +
+		                  (aOnlyMatch[p] > 0 ? 1 : 0) +
+		                  (bOnlyMatch[p] > 0 ? 1 : 0) +
+		                  (neitherMatch[p] > 0 ? 1 : 0);
+		if (diversity < bestDiversity)
+			continue;
+
+		int16 a = bothMatch[p], b = aOnlyMatch[p], c = bOnlyMatch[p], d = neitherMatch[p];
+		balanceScore[p] = ABS(a - b) + ABS(a - c) + ABS(a - d) +
+		                  ABS(b - c) + ABS(b - d) + ABS(c - d);
+	}
+
+	// Find minimum balance score
+	int16 minBalance = 32000;
+	for (int p = 0; p < 22500; p++) {
+		if (balanceScore[p] >= 0 && balanceScore[p] < minBalance)
+			minBalance = balanceScore[p];
+	}
+
+	// Count and select from candidates
+	int16 candidateCount = 0;
+	for (int p = 0; p < 22500; p++) {
+		if (balanceScore[p] == minBalance)
+			candidateCount++;
+	}
+
+	int16 selection = _vm->_rnd->getRandomNumber(1, candidateCount);
+	int16 selectedPair = 0;
+	for (int p = 0; p < 22500; p++) {
+		if (balanceScore[p] == minBalance) {
+			if (--selection == 0) {
+				selectedPair = p;
+				break;
+			}
+		}
+	}
+
+	// Extract the two descriptors
+	uint32 descA = descriptors[selectedPair / 150];
+	uint32 descB = descriptors[selectedPair % 150];
+
+	// Convert descriptors to guard rules
+	_guardCount = 2;
+	for (int g = 0; g < 2; g++) {
+		uint32 desc = (g == 0) ? descA : descB;
+		_guards[g].sideFlag = _vm->_rnd->getRandomNumber(0, 1) != 0;
+		_guards[g].condCount = 2;
+
+		// Extract up to 2 non-zero bytes for attribute conditions
+		int condIdx = 0;
+		for (int b = 0; b < 4 && condIdx < 2; b++) {
+			uint8 descVal = (desc >> (b * 8)) & 0x0F;
+			if (descVal != 0) {
+				// Map byte position to attribute type: 0=feet(4), 1=nose(3), 2=eyes(2), 3=hair(1)
+				_guards[g].attrType[condIdx] = 4 - b;
+				_guards[g].attrValue[condIdx] = descVal;
+				condIdx++;
+			}
+		}
+	}
+
+	debug(3, "Tunnels Level 3 Rules: Guard 0 types=%d/%d vals=%d/%d, Guard 1 types=%d/%d vals=%d/%d",
+	      _guards[0].attrType[0], _guards[0].attrType[1], _guards[0].attrValue[0], _guards[0].attrValue[1],
+	      _guards[1].attrType[0], _guards[1].attrType[1], _guards[1].attrValue[0], _guards[1].attrValue[1]);
+}
+
+// ---------------------------------------------------------------------------
 // evaluateRule: Check if a Zoombini matches a tunnel rule.
 // IDA: tunnels_evalAttrRule @ 0x45C65D
 //
@@ -623,14 +1039,44 @@ bool ZoombiniInteractiveTunnels::evaluateRule(ZmbSnoid *snoid, int16 dropZone) {
 	traitVals[3] = snoid->_trait._nose & 0x0F;  // Nose
 	traitVals[4] = snoid->_trait._foot & 0x0F;  // Feet
 
+	// Helper lambda for evaluating a single guard
+	// For condCount == 1: single attribute match
+	// For condCount == 2:
+	//   - If same category (level 2): OR logic (either matches)
+	//   - If different categories (level 3): AND logic (both must match)
+	auto evaluateGuard = [&](const TunnelGuard &guard) -> bool {
+		if (guard.condCount == 0)
+			return false;
+
+		if (guard.condCount == 1) {
+			// Single condition
+			uint8 type = guard.attrType[0];
+			uint8 value = guard.attrValue[0];
+			return (type >= 1 && type <= 4 && traitVals[type] == value);
+		}
+
+		// Two conditions
+		uint8 type0 = guard.attrType[0];
+		uint8 value0 = guard.attrValue[0];
+		uint8 type1 = guard.attrType[1];
+		uint8 value1 = guard.attrValue[1];
+
+		bool match0 = (type0 >= 1 && type0 <= 4 && traitVals[type0] == value0);
+		bool match1 = (type1 >= 1 && type1 <= 4 && traitVals[type1] == value1);
+
+		if (type0 == type1) {
+			// Same category: OR logic (level 2 - "has blue OR green eyes")
+			return match0 || match1;
+		} else {
+			// Different categories: AND logic (level 3 - "has blue eyes AND big feet")
+			return match0 && match1;
+		}
+	};
+
 	// Evaluate guard 0
 	bool matchA = false;
 	if (_guardCount >= 1 && _guards[0].condCount >= 1) {
-		uint8 type = _guards[0].attrType[0];
-		uint8 value = _guards[0].attrValue[0];
-		if (type >= 1 && type <= 4 && traitVals[type] == value) {
-			matchA = true;
-		}
+		matchA = evaluateGuard(_guards[0]);
 		// Apply side flag (negation)
 		if (!_guards[0].sideFlag) {
 			matchA = !matchA;
@@ -652,11 +1098,7 @@ bool ZoombiniInteractiveTunnels::evaluateRule(ZmbSnoid *snoid, int16 dropZone) {
 	// Level 1+: 2 guards, 4 zones
 	bool matchB = false;
 	if (_guardCount >= 2 && _guards[1].condCount >= 1) {
-		uint8 type = _guards[1].attrType[0];
-		uint8 value = _guards[1].attrValue[0];
-		if (type >= 1 && type <= 4 && traitVals[type] == value) {
-			matchB = true;
-		}
+		matchB = evaluateGuard(_guards[1]);
 		// Apply side flag (negation)
 		if (!_guards[1].sideFlag) {
 			matchB = !matchB;
@@ -697,6 +1139,7 @@ int16 ZoombiniInteractiveTunnels::getDropZone(const Common::Point &pos) {
 
 // ---------------------------------------------------------------------------
 // handleZoombiniPlacement: Process a Zoombini being placed in a tunnel.
+// IDA: tunnels_onClickHandler case 4 (partial) @ 0x45AB4B
 // ---------------------------------------------------------------------------
 void ZoombiniInteractiveTunnels::handleZoombiniPlacement(ZmbSnoid *snoid, int16 zone, bool isCorrect) {
 	if (!snoid || zone < 1 || zone > 4) {
@@ -705,52 +1148,232 @@ void ZoombiniInteractiveTunnels::handleZoombiniPlacement(ZmbSnoid *snoid, int16 
 
 	int16 gateIdx = zone - 1;
 
+	// Build animation queue entry
+	AnimQueueEntry entry;
+	entry.runnerIdx = snoid->getId();
+	entry.isCorrect = isCorrect ? 1 : 0;
+	entry.pos = snoid->getPointLoc();
+	entry.gateIdx = gateIdx;
+
 	if (isCorrect) {
-		// Correct placement
+		// Success animation
 		_wrongAttempts[gateIdx] = 0;
-		_enteredCount++;
-		_remainingCount--;
 
-		// Add to gate slot
-		if (_gateOccupancy[gateIdx] < 16) {
-			_gateSlots[gateIdx][_gateOccupancy[gateIdx]] = snoid->getId();
-			_gateOccupancy[gateIdx]++;
-		}
+		// Select SCRS for success (8500 + variant 0-64)
+		entry.scrsResId = 8500 + _vm->_rnd->getRandomNumber(0, 64);
+		entry.doorScrbId = 0; // No door animation for success
 
-		// Play success sound
-		ZmbResource successSound(ZmbArchiveKind::kPage, 8500 + _vm->_rnd->getRandomNumber(0, 64));
-		_vm->_sound->playZmbSound(successSound, Audio::Mixer::kSFXSoundType);
+		// Select feedback SCRB based on gate
+		// IDA: uses attribute-based selection from category arrays
+		entry.feedbackScrbId = 0; // No feedback on success initially
 
-		// Hide the Zoombini (it entered the tunnel)
-		snoid->deactivateRender();
+		// Voice resource on success
+		entry.voiceResId = 0;
 
-		// Check if all Zoombinis placed
-		if (_remainingCount <= 0) {
-			_allPlaced = true;
-			debug(3, "Tunnels: All Zoombinis placed!");
-		}
+		debug(3, "Tunnels: Queuing success for snoid %d at gate %d", snoid->getId(), gateIdx);
 	} else {
-		// Wrong placement
+		// Rejection animation
 		_wrongAttempts[gateIdx]++;
 
-		// Play rejection sound
-		ZmbResource rejectSound(ZmbArchiveKind::kPage, 8000 + _vm->_rnd->getRandomNumber(0, 7));
-		_vm->_sound->playZmbSound(rejectSound, Audio::Mixer::kSFXSoundType);
+		// Select SCRS for rejection (8000 + 0-7)
+		entry.scrsResId = 8000 + _vm->_rnd->getRandomNumber(0, 7);
 
-		// Return Zoombini to original position
-		snoid->setAnimState(kSnoidAnimIdle);
+		// Door rejection animation (6004 + gateIdx derivative)
+		// IDA: wrongBonusSfx = hoverData + 6004
+		entry.doorScrbId = 6004 + gateIdx;
+
+		// Select feedback SCRB based on wrong attempt count
+		// IDA: uses random pool selection for feedback animations
+		if (_wrongAttempts[gateIdx] < 2) {
+			// Show feedback hint on first/second wrong attempt
+			entry.feedbackScrbId = 4000 + _vm->_rnd->getRandomNumber(0, 10);
+		} else {
+			entry.feedbackScrbId = 0;
+		}
+
+		debug(3, "Tunnels: Queuing rejection for snoid %d at gate %d (attempt %d)",
+			  snoid->getId(), gateIdx, _wrongAttempts[gateIdx]);
+	}
+
+	// Queue the animation entry
+	appendAnimQueueEntry(entry);
+}
+
+// ---------------------------------------------------------------------------
+// appendAnimQueueEntry: Add entry to animation queue.
+// IDA: tunnels_appendAnimEntry @ 0x45BF43
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::appendAnimQueueEntry(const AnimQueueEntry &entry) {
+	if (_animQueueCount >= 5) {
+		debug(3, "Tunnels: Animation queue full, dropping entry");
+		return;
+	}
+	_animQueue[_animQueueCount] = entry;
+	_animQueueCount++;
+}
+
+// ---------------------------------------------------------------------------
+// popAnimQueueEntry: Remove head entry from animation queue.
+// IDA: callIfNonZero_45BF72
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::popAnimQueueEntry() {
+	if (_animQueueCount <= 0) {
+		return;
+	}
+
+	// Shift remaining entries down
+	for (int i = 0; i < _animQueueCount - 1; i++) {
+		_animQueue[i] = _animQueue[i + 1];
+	}
+	_animQueueCount--;
+	_animQueue[_animQueueCount] = AnimQueueEntry();
+}
+
+// ---------------------------------------------------------------------------
+// advanceAnimStep: Advance the animation sequence step.
+// IDA: tunnels_advanceAnimStep @ 0x45BF8D
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::advanceAnimStep() {
+	_animStepCounter++;
+
+	if (_animStepCounter > 4 || _animQueueCount == 0) {
+		// Animation complete, pop the queue entry
+		popAnimQueueEntry();
+		_animStepCounter = 0;
+		_animLocked = false;
+		_activeAnimSnoid = 0;
+		return;
+	}
+
+	// Process current step
+	// IDA: steps 1-4 select different SCRB/runner pairs
+	// For now, simplified: just advance through phases
+}
+
+// ---------------------------------------------------------------------------
+// findIdlePackSnoid: Find an idle Zoombini from the pack.
+// IDA: zmb_findIdleFeatureRunner
+// ---------------------------------------------------------------------------
+ZmbSnoid *ZoombiniInteractiveTunnels::findIdlePackSnoid(uint16 snoidId) {
+	ZmbSnoid *snoid = getSnoid(snoidId);
+	if (snoid && snoid->getAnimState() == kSnoidAnimIdle) {
+		return snoid;
+	}
+
+	// Search all snoids for an idle pack snoid
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		if (it->first < 10000)
+			continue;
+		ZmbSnoid *s = static_cast<ZmbSnoid *>(it->second);
+		if (s && s->getAnimState() == kSnoidAnimIdle)
+			return s;
+	}
+	return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// reloadScrbAnimation: Reload SCRB animation on a feature.
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::reloadScrbAnimation(ZmbFeature *feature, uint16 scrbId) {
+	if (!feature)
+		return;
+	loadScrbOntoFeature(feature, scrbId);
+}
+
+// ---------------------------------------------------------------------------
+// processGateAnimEvent: Handle gate animation events.
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::processGateAnimEvent(ZmbFeature *feature, int16 eventCode) {
+	// Gate animation event handling
+	// -1 = animation complete, should advance sequence
+	if (eventCode == -1) {
+		_animLocked = false;
+		advanceAnimStep();
+	}
+}
+
+// ---------------------------------------------------------------------------
+// processSnoidAnimEvent: Handle snoid SCRS animation events.
+// IDA: tunnels_scrbAnimCallback @ 0x45B56C
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::processSnoidAnimEvent(ZmbSnoid *snoid, int16 eventCode) {
+	if (!snoid)
+		return;
+
+	if (eventCode == -1) {
+		// Animation complete
+		if (_isSuccessAnim) {
+			// Success: Zoombini entered gate
+			_enteredCount++;
+			_remainingCount--;
+
+			int16 gateIdx = _activeGateType;
+			if (gateIdx >= 0 && gateIdx < 4 && _gateOccupancy[gateIdx] < 16) {
+				_gateSlots[gateIdx][_gateOccupancy[gateIdx]] = snoid->getId();
+				_gateOccupancy[gateIdx]++;
+			}
+
+			// Hide the Zoombini
+			snoid->deactivateRender();
+
+			// Schedule "X remaining" voice if appropriate
+			if (_remainingCount > 0 && _remainingCount <= 4) {
+				_countdownVoiceId = 4700 + _remainingCount;
+			}
+
+			// Check if all placed
+			if (_remainingCount <= 0) {
+				_allPlaced = true;
+				// Voice: "Congratulations!" or similar
+				_zmbEnteredVoiceId = _vm->_rnd->getRandomNumber(20055, 20063);
+			}
+		} else {
+			// Rejection: Return Zoombini to staging area
+			snoid->finishScrsPlayback();
+			snoid->setAnimState(kSnoidAnimIdle);
+			snoid->setupIdleHotspots();
+		}
+
+		_animLocked = false;
+		_activeAnimSnoid = 0;
+		popAnimQueueEntry();
+	} else if (eventCode == 10) {
+		// Play snoid script - used for intermediate animations
+	} else if (eventCode == 13) {
+		// Exit sequence trigger
+	} else if (eventCode >= 240 && eventCode <= 243) {
+		// Special body layer shape toggle (IDA: word_4B7A38[0] = a3 - 239)
+	} else if (eventCode >= 250 && eventCode <= 253) {
+		// Body layer shape direct set (IDA: zmb_setBodyLayerShapes(a3 - 250, core))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// onFeatureAnimEvent: Dispatches animation event codes to appropriate handler.
+// IDA: tunnels_onFeatureEvent / tunnels_scrbAnimCallback
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+		// Snoid animation event
+		processSnoidAnimEvent(static_cast<ZmbSnoid *>(feature), eventCode);
+	} else {
+		// SCRB feature animation event (gate creatures, etc.)
+		processGateAnimEvent(feature, eventCode);
 	}
 }
 
 // ---------------------------------------------------------------------------
 // onEveryFrame: Main per-frame logic.
-// IDA: tunnels_onFrameTick @ 0x45A460
+// IDA: puzzleTunnels_onHover_45A460
 // ---------------------------------------------------------------------------
 void ZoombiniInteractiveTunnels::onEveryFrame() {
 	if (_processingFrame || !_puzzleActive) {
 		return;
 	}
 	_processingFrame = true;
+
+	// Render the current frame (IDA: gfx_renderFrame)
+	// This is handled by the page system
 
 	// Check for pending departure
 	if (_pendingGoDepart) {
@@ -760,12 +1383,119 @@ void ZoombiniInteractiveTunnels::onEveryFrame() {
 
 	// Check if all Zoombinis have been placed
 	if (_allPlaced && !_pendingGoDepart) {
-		// Enable Go button
 		setGoButtonsEnabled(true);
 	}
 
-	// Process any pending animation queues
-	// TODO: Implement animation queue processing
+	// -----------------------------------------------------------------------
+	// Process countdown voice playback (IDA: word_4B7AE4 / word_4B7AE2)
+	// -----------------------------------------------------------------------
+	if (_countdownVoicePlaying) {
+		// Check if countdown voice finished playing
+		if (!_countdownVoiceHandle || !_vm->_mixer->isSoundHandleActive(*_countdownVoiceHandle)) {
+			_countdownVoicePlaying = false;
+			_countdownVoiceId = 0;
+			_countdownVoiceHandle = nullptr;
+		}
+	} else if (_countdownVoiceId) {
+		// Start playing new countdown voice
+		_countdownVoiceHandle = _vm->_sound->playZmbSound(
+			ZmbResource(ZmbArchiveKind::kPage, _countdownVoiceId),
+			Audio::Mixer::kSpeechSoundType);
+		_countdownVoicePlaying = true;
+	}
+
+	// -----------------------------------------------------------------------
+	// Process animation queue (IDA: word_4B7A44, word_4B7A46, etc.)
+	// -----------------------------------------------------------------------
+	if (_animQueueCount > 0 && !_animLocked && _activeAnimSnoid == 0) {
+		// Get head of queue
+		AnimQueueEntry &entry = _animQueue[0];
+		ZmbSnoid *snoid = getSnoid(entry.runnerIdx);
+
+		if (snoid) {
+			_activeAnimSnoid = entry.runnerIdx;
+			_activeGateType = entry.gateIdx;
+			_isSuccessAnim = (entry.isCorrect != 0);
+			_animStepCounter = 0;
+			_animLocked = true;
+
+			// Start SCRS playback on the snoid
+			Common::SeekableReadStream *scrsStream =
+				_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, entry.scrsResId));
+
+			if (scrsStream) {
+				snoid->startScrsPlayback(scrsStream, _isSuccessAnim /* hideOnComplete */,
+										 !_isSuccessAnim /* rejectState */);
+				debug(3, "Tunnels: Started SCRS %d on snoid %d", entry.scrsResId, entry.runnerIdx);
+			} else {
+				// No SCRS available, directly handle outcome
+				if (_isSuccessAnim) {
+					_enteredCount++;
+					_remainingCount--;
+					snoid->deactivateRender();
+					if (_remainingCount <= 0) {
+						_allPlaced = true;
+					}
+				} else {
+					snoid->setAnimState(kSnoidAnimIdle);
+				}
+				popAnimQueueEntry();
+				_animLocked = false;
+				_activeAnimSnoid = 0;
+			}
+
+			// Play door animation if specified (rejections)
+			if (entry.doorScrbId > 0 && entry.gateIdx >= 0 && entry.gateIdx < 4) {
+				if (_doorAnimFeatures[entry.gateIdx]) {
+					reloadScrbAnimation(_doorAnimFeatures[entry.gateIdx], entry.doorScrbId);
+				}
+			}
+		} else {
+			// Snoid not found, pop entry
+			popAnimQueueEntry();
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Idle/ambient animation scheduling (IDA: word_4B7AEC, dword_4B7A34)
+	// -----------------------------------------------------------------------
+	if (!_allPlaced && getCurrentFrameCounter() - _idleAnimTimer > _idleAnimInterval) {
+		_idleAnimTimer = getCurrentFrameCounter();
+		_idleAnimInterval = _vm->_rnd->getRandomNumber(5400, 10800);
+
+		// Trigger ambient animation on gate features
+		// IDA: tunnels_selectLevelRunners with mode 0
+	}
+
+	// -----------------------------------------------------------------------
+	// Fidget animation (IDA: word_4B7AEE < word_4B7AEC)
+	// -----------------------------------------------------------------------
+	if (_fidgetPlayedCount < _fidgetScheduleCount &&
+		getCurrentFrameCounter() - _fidgetTimer > _fidgetInterval) {
+
+		_fidgetTimer = getCurrentFrameCounter();
+		bool triggered = false;
+		int attempts = 0;
+
+		while (!triggered && attempts < 16) {
+			attempts++;
+			uint16 poolIdx = _vm->_rnd->getRandomNumber(0, _totalZmbCount > 0 ? _totalZmbCount - 1 : 0);
+			uint16 snoidId = 10000 + poolIdx;
+
+			ZmbSnoid *snoid = findIdlePackSnoid(snoidId);
+			if (snoid && snoid->getId() != _activeAnimSnoid) {
+				// Play fidget SCRS (8559 + variant)
+				Common::SeekableReadStream *scrsStream =
+					_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+									 ZmbResource(ZmbArchiveKind::kPage, 8559 + snoid->getVariant()));
+				if (scrsStream) {
+					snoid->startScrsPlayback(scrsStream, false, true);
+					_fidgetPlayedCount++;
+					triggered = true;
+				}
+			}
+		}
+	}
 
 	_processingFrame = false;
 }

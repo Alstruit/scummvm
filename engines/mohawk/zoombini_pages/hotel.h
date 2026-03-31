@@ -56,6 +56,16 @@ private:
 	/** Difficulty level. IDA: hotel difficulty */
 	int16 _difficultyLevel = 0;
 
+	/**
+	 * Maximum steps allowed per round before forced placement.
+	 * Level 0: 5, Level 1: 2, Level 2: 4, Level 3: 2.
+	 * IDA: hotel_maxStepsPerRound
+	 */
+	int16 _maxStepsPerRound = 5;
+
+	/** Current step counter within round. IDA: hotel_stepCounter */
+	int16 _stepCounter = 1;
+
 	// Puzzle-specific feature runners
 	/** Intro animation runner (SCRB 5750+adj). IDA: word_4AB750 */
 	ZmbFeature *_introAnimFeature = nullptr;

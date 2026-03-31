@@ -55,6 +55,20 @@ private:
 
 	/** Difficulty level (0-3). IDA: slides_difficultyLevel */
 	int16 _difficultyLevel = 0;
+
+	/**
+	 * Slot base state for grid initialization.
+	 * Default 504, at level 3: 50% chance of 505.
+	 * IDA: slides_slotBaseState
+	 */
+	int16 _slotBaseState = 504;
+
+	/**
+	 * Cell spacing for grid positioning.
+	 * Default 48, if slotBaseState=505: 24.
+	 * IDA: slides_cellSpacing
+	 */
+	int16 _cellSpacing = 48;
 };
 
 } // End of namespace Mohawk

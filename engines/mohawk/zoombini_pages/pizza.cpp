@@ -22,6 +22,8 @@
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_pages/pizza.h"
+#include "mohawk/zoombini_random.h"
+#include "mohawk/zoombini_resource.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 
@@ -68,6 +70,15 @@ void ZoombiniInteractivePizza::setBackgroundBitmap() {
 void ZoombiniInteractivePizza::loadFeatures() {
 	// IDA: puzzlePizza_43B394
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
+
+	// Initialize topping slot count based on difficulty
+	// IDA: pizza_totalToppingSlots = 5 + difficultyLevel
+	_totalToppingSlots = 5 + _difficultyLevel;
+
+	// Generate and distribute toppings
+	// IDA: pizza_generateToppingSet (0x43F349) and pizza_toppingDistribution (0x43E0E0)
+	generateToppingSet();
+	distributeToppings();
 
 	// Load NODE and PATH for walk network
 	// IDA: node_loadNodeAndPath(0x3E8u)
@@ -269,6 +280,193 @@ void ZoombiniInteractivePizza::loadZoombinisFromPack() {
 		}
 		posIdx++;
 	}
+}
+
+void ZoombiniInteractivePizza::generateToppingSet() {
+	// IDA: pizza_generateToppingSet (0x43F349)
+	// Zeros _toppingSet, randomly places _targetToppingCount toppings
+	memset(_toppingSet, 0, sizeof(_toppingSet));
+
+	// At level 1, forbid topping slot 4
+	int16 forbiddenSlot = (_difficultyLevel == 1) ? 4 : -1;
+
+	// Set target count (varies by difficulty, simplified to roughly topping count)
+	_targetToppingCount = _totalToppingSlots;
+	_toppingPlaceThreshold = 500; // 50% chance threshold
+
+	bool anyPlaced = false;
+	int16 remaining = _targetToppingCount;
+
+	do {
+		for (int16 i = 0; i < _totalToppingSlots && remaining > 0; i++) {
+			// Random(0, 999) < threshold means place topping
+			if (_vm->_rnd->getRandomNumber(0, 999) < _toppingPlaceThreshold) {
+				if (_toppingSet[i] == 0 && i != forbiddenSlot) {
+					_toppingSet[i] = 1;
+					remaining--;
+					anyPlaced = true;
+				}
+			}
+		}
+	} while (remaining > 0);
+
+	// If none were placed (shouldn't happen normally), force one
+	if (!anyPlaced) {
+		int16 slot = _vm->_rnd->getRandomNumber(0, 3);
+		_toppingSet[slot] = 1;
+	}
+
+	debugC(kZmbDebugPage, "Pizza: Generated topping set for %d slots", _totalToppingSlots);
+}
+
+void ZoombiniInteractivePizza::distributeToppings() {
+	// IDA: pizza_toppingDistribution (0x43E0E0)
+	// Distributes active toppings into correct/wrongA/wrongB categories
+
+	// Clear distribution arrays
+	memset(_correctToppings, 0, sizeof(_correctToppings));
+	memset(_wrongToppingsA, 0, sizeof(_wrongToppingsA));
+	memset(_wrongToppingsB, 0, sizeof(_wrongToppingsB));
+
+	if (_difficultyLevel == 0) {
+		// Level 0: All toppings are correct
+		for (int16 i = 0; i < _totalToppingSlots; i++) {
+			_correctToppings[i] = _toppingSet[i];
+		}
+		debugC(kZmbDebugPage, "Pizza Level 0: All toppings correct");
+		return;
+	}
+
+	int16 correctCount = 0;
+	int16 wrongACount = 0;
+	int16 wrongBCount = 0;
+
+	if (_difficultyLevel == 1) {
+		// Level 1: Binary distribution — 50/50 correct or wrong
+		for (int16 i = 0; i < _totalToppingSlots; i++) {
+			if (_toppingSet[i]) {
+				if (_vm->_rnd->getRandomNumber(0, 1) == 0) {
+					_correctToppings[i] = 1;
+					correctCount++;
+				} else {
+					_wrongToppingsA[i] = 1;
+					wrongACount++;
+				}
+			}
+		}
+
+		// Ensure at least one is assigned if both counts are zero
+		if (correctCount == 0 && wrongACount == 0) {
+			int16 slot = _vm->_rnd->getRandomNumber(0, _totalToppingSlots - 1);
+			if (_vm->_rnd->getRandomNumber(0, 999) >= 500) {
+				_correctToppings[slot] = 1;
+			} else {
+				_wrongToppingsA[slot] = 1;
+			}
+		}
+		debugC(kZmbDebugPage, "Pizza Level 1: correct=%d, wrongA=%d", correctCount, wrongACount);
+		return;
+	}
+
+	// Levels 2-3: Three-way distribution (correct / wrongA / wrongB)
+	for (int16 i = 0; i < _totalToppingSlots; i++) {
+		if (_toppingSet[i]) {
+			int16 category = _vm->_rnd->getRandomNumber(0, 2);
+			switch (category) {
+			case 0:
+				_correctToppings[i] = 1;
+				correctCount++;
+				break;
+			case 1:
+				_wrongToppingsA[i] = 1;
+				wrongACount++;
+				break;
+			default:
+				_wrongToppingsB[i] = 1;
+				wrongBCount++;
+				break;
+			}
+		}
+	}
+
+	// Balancing: Ensure each category has at least one topping
+	// This loop keeps rebalancing until all three categories are non-empty
+	while (correctCount == 0 || wrongACount == 0 || wrongBCount == 0) {
+		// If no correct: steal from larger wrong group
+		if (correctCount == 0) {
+			int16 slot;
+			if (wrongACount <= wrongBCount && wrongBCount > 0) {
+				// Steal from wrongB
+				do {
+					slot = _vm->_rnd->getRandomNumber(0, _totalToppingSlots - 1);
+				} while (!_wrongToppingsB[slot]);
+				_wrongToppingsB[slot] = 0;
+				wrongBCount--;
+			} else if (wrongACount > 0) {
+				// Steal from wrongA
+				do {
+					slot = _vm->_rnd->getRandomNumber(0, _totalToppingSlots - 1);
+				} while (!_wrongToppingsA[slot]);
+				_wrongToppingsA[slot] = 0;
+				wrongACount--;
+			} else {
+				break; // Can't fix, all empty
+			}
+			_correctToppings[slot] = 1;
+			correctCount = 1;
+		}
+
+		// If no wrongA: steal from correct or wrongB
+		if (wrongACount == 0) {
+			int16 slot;
+			if (correctCount <= wrongBCount && wrongBCount > 0) {
+				// Steal from wrongB
+				do {
+					slot = _vm->_rnd->getRandomNumber(0, _totalToppingSlots - 1);
+				} while (!_wrongToppingsB[slot]);
+				_wrongToppingsB[slot] = 0;
+				wrongBCount--;
+			} else if (correctCount > 0) {
+				// Steal from correct
+				do {
+					slot = _vm->_rnd->getRandomNumber(0, _totalToppingSlots - 1);
+				} while (!_correctToppings[slot]);
+				_correctToppings[slot] = 0;
+				correctCount--;
+			} else {
+				break; // Can't fix
+			}
+			_wrongToppingsA[slot] = 1;
+			wrongACount = 1;
+		}
+
+		// If no wrongB: steal from wrongA or correct
+		if (wrongBCount == 0) {
+			int16 slot;
+			if (wrongACount >= correctCount && wrongACount > 0) {
+				// Steal from wrongA
+				do {
+					slot = _vm->_rnd->getRandomNumber(0, _totalToppingSlots - 1);
+				} while (!_wrongToppingsA[slot]);
+				_wrongToppingsA[slot] = 0;
+				wrongACount--;
+			} else if (correctCount > 0) {
+				// Steal from correct
+				do {
+					slot = _vm->_rnd->getRandomNumber(0, _totalToppingSlots - 1);
+				} while (!_correctToppings[slot]);
+				_correctToppings[slot] = 0;
+				correctCount--;
+			} else {
+				break; // Can't fix
+			}
+			_wrongToppingsB[slot] = 1;
+			wrongBCount = 1;
+		}
+	}
+
+	debugC(kZmbDebugPage, "Pizza Level %d: correct=%d, wrongA=%d, wrongB=%d",
+	       _difficultyLevel, correctCount, wrongACount, wrongBCount);
 }
 
 } // End of namespace Mohawk

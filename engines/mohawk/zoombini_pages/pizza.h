@@ -50,6 +50,8 @@ protected:
 
 private:
 	void loadZoombinisFromPack();
+	void generateToppingSet();
+	void distributeToppings();
 
 	static const Common::Point kSnoidPositions[16];
 
@@ -61,6 +63,39 @@ private:
 
 	/** Difficulty level (0-3). IDA: pizza_difficultyLevel */
 	int16 _difficultyLevel = 0;
+
+	/** Number of topping slots (5 + difficulty). IDA: pizza_totalToppingSlots */
+	int16 _totalToppingSlots = 5;
+
+	/** Target number of toppings to place on pizza. IDA: pizza_targetToppingCount */
+	int16 _targetToppingCount = 0;
+
+	/** Threshold for random topping placement (out of 1000). IDA: pizza_toppingPlaceThreshold */
+	int16 _toppingPlaceThreshold = 500;
+
+	/**
+	 * Topping slot active flags (1 = has topping, 0 = empty).
+	 * IDA: pizza_toppingSet
+	 */
+	uint8 _toppingSet[16] = {};
+
+	/**
+	 * Correct topping flags — these make the zoombini happy.
+	 * IDA: pizza_correctToppings
+	 */
+	uint8 _correctToppings[16] = {};
+
+	/**
+	 * Wrong topping A flags — these are incorrect (used at all difficulty levels).
+	 * IDA: pizza_wrongToppingsA
+	 */
+	uint8 _wrongToppingsA[16] = {};
+
+	/**
+	 * Wrong topping B flags — secondary incorrect set (levels 2-3 only).
+	 * IDA: pizza_wrongToppingsB
+	 */
+	uint8 _wrongToppingsB[16] = {};
 
 	/** SCRB 7063 — answer display drawn on region. IDA: scrb_drawOnRegRunnerIdxArr[0] */
 	ZmbFeature *_drawOnRegFeature = nullptr;

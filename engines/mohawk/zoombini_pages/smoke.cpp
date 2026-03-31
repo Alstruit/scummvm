@@ -23,6 +23,7 @@
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_pages/smoke.h"
 #include "mohawk/zoombini_random.h"
+#include "mohawk/zoombini_resource.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 
@@ -66,6 +67,20 @@ void ZoombiniInteractiveSmoke::loadFeatures() {
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel() + 1;
 	if (_difficultyLevel > 4)
 		_difficultyLevel = 4;
+
+	// IDA: smoke_assignRunnerAttrsForLevel (0x44D67C) — orientation and history setup
+	// Levels 1-2: orientation=0; Levels 3-4: orientation=2
+	_orientation = (_difficultyLevel < 3) ? 0 : 2;
+
+	// At level 1, clear the seen attribute history arrays
+	// IDA: if (!levelIdx) { smoke_seenAttrA[i] = 0; smoke_seenAttrB[i] = 0; }
+	if (_difficultyLevel == 1) {
+		for (int i = 0; i < 4; i++) {
+			_seenAttrA[i] = 0;
+			_seenAttrB[i] = 0;
+		}
+	}
+	debugC(kZmbDebugPage, "Smoke: difficultyLevel=%d, orientation=%d", _difficultyLevel, _orientation);
 
 	// Load terrain barrier bitmap (tBMP 100)
 	// IDA: rmap_loadTerrainArchive(0x64u)

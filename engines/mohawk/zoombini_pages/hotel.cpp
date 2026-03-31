@@ -23,6 +23,7 @@
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_pages/hotel.h"
 #include "mohawk/zoombini_random.h"
+#include "mohawk/zoombini_resource.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 
@@ -61,6 +62,23 @@ void ZoombiniInteractiveHotel::setBackgroundBitmap() {
 void ZoombiniInteractiveHotel::loadFeatures() {
 	// IDA: hotel_initAndSetupPuzzle (0x41ede4)
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
+
+	// IDA 0x41ef17-0x41ef46: Initialize maxStepsPerRound based on difficulty
+	// Level 0: 5, Level 1: 2, Level 2: 4, Level 3: 2
+	switch (_difficultyLevel) {
+	case 0:
+		_maxStepsPerRound = 5;
+		break;
+	case 2:
+		_maxStepsPerRound = 4;
+		break;
+	default: // Levels 1 and 3
+		_maxStepsPerRound = 2;
+		break;
+	}
+	_stepCounter = 1;
+	debugC(kZmbDebugPage, "Hotel: difficultyLevel=%d, maxStepsPerRound=%d",
+	       _difficultyLevel, _maxStepsPerRound);
 
 	// Load terrain barrier bitmap (tBMP 100)
 	// IDA: rmap_loadTerrainArchive(0x64u)

@@ -22,6 +22,7 @@
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_pages/maze.h"
+#include "mohawk/zoombini_random.h"
 #include "mohawk/zoombini_resource.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
@@ -279,38 +280,40 @@ void ZoombiniInteractiveMaze::loadZoombinisFromPack() {
 
 void ZoombiniInteractiveMaze::loadRegsConfigByLevel() {
 	// IDA: maze_loadRegsConfigByLevel (0x4319C9)
-	// Selects REGS resource based on difficulty level.
+	// Selects REGS resource based on difficulty level and random variant.
 	// REGS resources configure creature/obstacle placement on the maze grid.
 	//
-	// Level 0: REGS 16600 + variant (0-1)
-	// Level 1: REGS 16602 + variant (0-1)
-	// Level 2: REGS 16604 + variant (0-1)
-	// Level 3: REGS 16606 + variant (0-1)
-	// Default: REGS 16609
+	// Level 0: REGS 16600 + variant (0-1), 2 variants
+	// Level 1: REGS 16602 + variant (0-1), 2 variants
+	// Level 2: REGS 16604 + variant (0-1), 2 variants
+	// Level 3: REGS 16606 + variant (0-2), 3 variants
+	// Default (level 4): REGS 16609, fixed debug layout
 	
-	// For now, use base REGS without random variant
 	switch (_difficultyLevel) {
 	case 0:
-		_regsResourceId = 16600;
-		_levelVariantIdx = 0;
+		_levelVariantIdx = _vm->_rnd->getRandomNumber(0, 1);
+		_regsResourceId = 16600 + _levelVariantIdx;
 		break;
 	case 1:
-		_regsResourceId = 16602;
-		_levelVariantIdx = 0;
+		_levelVariantIdx = _vm->_rnd->getRandomNumber(0, 1);
+		_regsResourceId = 16602 + _levelVariantIdx;
 		break;
 	case 2:
-		_regsResourceId = 16604;
-		_levelVariantIdx = 0;
+		_levelVariantIdx = _vm->_rnd->getRandomNumber(0, 1);
+		_regsResourceId = 16604 + _levelVariantIdx;
 		break;
 	case 3:
-		_regsResourceId = 16606;
-		_levelVariantIdx = 0;
+		_levelVariantIdx = _vm->_rnd->getRandomNumber(0, 2);
+		_regsResourceId = 16606 + _levelVariantIdx;
 		break;
 	default:
 		_regsResourceId = 16609;
 		_levelVariantIdx = 0;
 		break;
 	}
+	
+	debugC(kZmbDebugPage, "Maze: level %d, variant %d, REGS %d",
+	       _difficultyLevel, _levelVariantIdx, _regsResourceId);
 }
 
 void ZoombiniInteractiveMaze::loadAndParseRegsData() {

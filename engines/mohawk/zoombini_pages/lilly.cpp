@@ -249,14 +249,17 @@ void ZoombiniInteractiveLilly::initGridWithAttributes() {
 	
 	// Select grid type based on difficulty
 	// IDA: word_4AE9CA = 3/4/5 for different difficulty levels
+	// Route level 0 -> gridType 3
+	// Route level 1 -> gridType 4
+	// Route level 2-3 -> gridType 5
 	switch (_difficultyLevel) {
 	case 1:
-	case 2:
 		_gridType = 3;
 		break;
-	case 3:
+	case 2:
 		_gridType = 4;
 		break;
+	case 3:
 	case 4:
 	default:
 		_gridType = 5;

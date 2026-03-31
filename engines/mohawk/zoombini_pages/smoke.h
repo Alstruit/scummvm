@@ -60,6 +60,21 @@ private:
 	/** Route difficulty level + 1 (1-4). IDA: smoke_difficultyLevel */
 	int16 _difficultyLevel = 0;
 
+	/**
+	 * Orientation flag for runner attribute assignment.
+	 * Levels 1-2: 0; Levels 3-4: 2.
+	 * IDA: runner+241 in smoke_assignRunnerAttrsForLevel
+	 */
+	uint8 _orientation = 0;
+
+	/**
+	 * Seen attribute history arrays for cross-level persistence.
+	 * Cleared at level 1, used for 65% reuse at levels 3-4.
+	 * IDA: smoke_seenAttrA, smoke_seenAttrB
+	 */
+	uint8 _seenAttrA[4] = {};
+	uint8 _seenAttrB[4] = {};
+
 	/** SCRB overlay animation (11013 or 11011). IDA: smoke_scrbOverlayAnim */
 	ZmbFeature *_overlayAnimFeature = nullptr;
 	/** SCRB 11076 — extra feature for diff 1/2 only. IDA: smoke_scrbLevel12Extra */

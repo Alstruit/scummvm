@@ -55,6 +55,9 @@ private:
 	/** Route difficulty level. IDA: word_4AB112 */
 	int16 _difficultyLevel = 0;
 
+	/** Selected SCRB ID for seating layout. IDA: ferry_selectSCRB result */
+	uint16 _seatingSCRB = 0;
+
 	// Puzzle-specific feature runners
 	/** Landscape overlay runner (SCRB 1601). IDA: word_4AB13A */
 	ZmbFeature *_landscapeFeature = nullptr;

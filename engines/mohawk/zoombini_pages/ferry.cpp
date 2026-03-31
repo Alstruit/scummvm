@@ -22,6 +22,8 @@
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_pages/ferry.h"
+#include "mohawk/zoombini_random.h"
+#include "mohawk/zoombini_resource.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 
@@ -65,6 +67,21 @@ void ZoombiniInteractiveFerry::setBackgroundBitmap() {
 void ZoombiniInteractiveFerry::loadFeatures() {
 	// IDA: ferry_funcInit (0x41a394)
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
+
+	// IDA: ferry_selectSCRB (0x41bc4e) — calculate SCRB ID based on difficulty and zoombini count
+	// Formula: scrbBase = 1510 + (level * 5); scrbId = base + (clamp(zmbCount, 16, 20) - 16)
+	{
+		int16 zmbCount = _vm->_state->_f._zmbPackActive._wPackZmbCount;
+		if (zmbCount < 16)
+			zmbCount = 16;
+		else if (zmbCount > 20)
+			zmbCount = 20;
+
+		uint16 scrbBase = 1510 + (_difficultyLevel * 5);
+		_seatingSCRB = scrbBase + (zmbCount - 16);
+		debugC(kZmbDebugPage, "Ferry: difficultyLevel=%d, zmbCount=%d, seatingSCRB=%d",
+		       _difficultyLevel, zmbCount, _seatingSCRB);
+	}
 
 	// Load terrain barrier bitmap (tBMP 100)
 	// IDA: rmap_loadTerrainArchive(100u)

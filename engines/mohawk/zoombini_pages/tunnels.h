@@ -50,6 +50,7 @@ public:
 	void setBackgroundBitmap() override;
 	void loadFeatures() override;
 	void onEveryFrame() override;
+	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
 
 protected:
 	void onGoButtonActivated() override;
@@ -82,6 +83,24 @@ private:
 	 * IDA: tunnels_setupLevel2_dualSingleAttr @ 0x45CB51
 	 */
 	void setupLevel1_dualSingleAttr();
+
+	/**
+	 * Level 2: Dual guards, two conditions each (OR within same category).
+	 * IDA: tunnels_setupLevel3_dualDoubleAttr @ 0x45CCCD
+	 *
+	 * Each guard tests two values from the SAME attribute category (OR logic).
+	 * E.g., "Has blue OR green eyes" for guard A.
+	 */
+	void setupLevel2_dualDoubleAttr();
+
+	/**
+	 * Level 3: Dual guards, cross-category conditions (AND).
+	 * IDA: tunnels_setupLevel4_crossCategoryAttr @ 0x45D608
+	 *
+	 * Each guard tests two values from DIFFERENT attribute categories (AND logic).
+	 * E.g., "Has blue eyes AND big feet" for guard A.
+	 */
+	void setupLevel3_crossCategoryAttr();
 
 	/**
 	 * Evaluate if a Zoombini matches a tunnel rule.
@@ -185,6 +204,100 @@ private:
 	uint16 _gateSlots[4][16] = {};
 
 	// ========================================
+	// Animation Queue System
+	// ========================================
+
+	/**
+	 * Animation queue entry structure.
+	 * IDA: 14-word stride starting at word_4B7A44
+	 */
+	struct AnimQueueEntry {
+		uint16 runnerIdx = 0;      ///< Zoombini runner index
+		int16 isCorrect = 0;       ///< 1=success, 0=rejection
+		int16 reserved = 0;
+		Common::Point pos;         ///< Target position
+		int16 scrsResId = 0;       ///< SCRS resource ID for animation
+		int16 doorScrbId = 0;      ///< Door SCRB to play (6004-6007)
+		int16 feedbackScrbId = 0;  ///< Feedback SCRB (4000 series)
+		int16 successScrbId = 0;   ///< Success sound slot
+		int16 voiceResId = 0;      ///< Voice SFX
+		int16 gateIdx = 0;         ///< Target gate (0-3)
+	};
+
+	/** Animation queue (max 5 entries). IDA: word_4B7A44 */
+	AnimQueueEntry _animQueue[5];
+	int16 _animQueueCount = 0;
+
+	/** Current animation step counter (1-4 within anim sequence). IDA: word_4B7A4A */
+	int16 _animStepCounter = 0;
+
+	/** Animation locking flag - prevents new pickups. IDA: word_4B7A26 */
+	bool _animLocked = false;
+
+	/** Current active snoid runner for animation. IDA: word_4B7A46 */
+	uint16 _activeAnimSnoid = 0;
+
+	/** Gate type being animated. IDA: word_4B7A60 */
+	int16 _activeGateType = 0;
+
+	/** Current animation is success (not rejection). IDA: word_4B7A48 */
+	bool _isSuccessAnim = false;
+
+	/** Pending sound playback wait (waiting for sound to finish). IDA: word_4B7A28 */
+	uint16 _pendingSoundRunner = 0;
+
+	/** Pending sound SCRB ID. IDA: word_4B7A2A */
+	uint16 _pendingSoundScrbId = 0;
+
+	/** Pending sound use callback flag. IDA: word_4B7A2C */
+	bool _pendingSoundHasCallback = false;
+
+	// ========================================
+	// Animation Callbacks
+	// ========================================
+
+	/**
+	 * Process gate entrance animation event.
+	 * IDA: similar to bridge's processEntranceEvent
+	 */
+	void processGateAnimEvent(ZmbFeature *feature, int16 eventCode);
+
+	/**
+	 * Process snoid SCRS animation event.
+	 * IDA: tunnels_scrbAnimCallback @ 0x45B56C
+	 */
+	void processSnoidAnimEvent(ZmbSnoid *snoid, int16 eventCode);
+
+	/**
+	 * Advance the current animation sequence step.
+	 * IDA: tunnels_advanceAnimStep @ 0x45BF8D
+	 */
+	void advanceAnimStep();
+
+	/**
+	 * Append an entry to the animation queue.
+	 * IDA: tunnels_appendAnimEntry @ 0x45BF43
+	 */
+	void appendAnimQueueEntry(const AnimQueueEntry &entry);
+
+	/**
+	 * Remove the head entry from the animation queue.
+	 * IDA: callIfNonZero_45BF72
+	 */
+	void popAnimQueueEntry();
+
+	/**
+	 * Find an idle Zoombini from the pack.
+	 * IDA: zmb_findIdleFeatureRunner
+	 */
+	ZmbSnoid *findIdlePackSnoid(uint16 snoidId);
+
+	/**
+	 * Reload SCRB animation on a feature.
+	 */
+	void reloadScrbAnimation(ZmbFeature *feature, uint16 scrbId);
+
+	// ========================================
 	// Puzzle-specific feature runners
 	// ========================================
 
@@ -198,6 +311,40 @@ private:
 	ZmbFeature *_doorAnimFeatures[4] = {};
 	/** Main path runner (SCRB 7000). IDA: word_4B7A16 */
 	ZmbFeature *_mainPathFeature = nullptr;
+
+	// ========================================
+	// Ambient/Idle Animation Scheduling
+	// ========================================
+
+	/** Idle animation timer. IDA: dword_4B7A34 */
+	uint32 _idleAnimTimer = 0;
+
+	/** Idle animation interval (random 5400-10800 frames). IDA: dword_4B7A34 interval */
+	uint32 _idleAnimInterval = 0;
+
+	/** Fidget schedule count. IDA: word_4B7AEC */
+	int16 _fidgetScheduleCount = 0;
+
+	/** Fidget played count. IDA: word_4B7AEE */
+	int16 _fidgetPlayedCount = 0;
+
+	/** Fidget timer. IDA: dword_4B7AF0 */
+	uint32 _fidgetTimer = 0;
+
+	/** Fidget interval. IDA: dword_4B7AF4 */
+	uint32 _fidgetInterval = 0;
+
+	/** Countdown voice SFX resource ID. IDA: word_4B7AE4 */
+	int16 _countdownVoiceId = 0;
+
+	/** Countdown voice playing flag. IDA: word_4B7AE2 */
+	bool _countdownVoicePlaying = false;
+
+	/** Sound handle for countdown voice (to check if still playing). */
+	Audio::SoundHandle *_countdownVoiceHandle = nullptr;
+
+	/** Voice to play when Zoombini enters. IDA: word_4B7AEA */
+	int16 _zmbEnteredVoiceId = 0;
 
 	enum {
 		kResSound996_DepartSFX = 996
