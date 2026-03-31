@@ -67,6 +67,11 @@ void ZoombiniInteractiveTunnels::setBackgroundBitmap() {
 
 void ZoombiniInteractiveTunnels::loadFeatures() {
 	// IDA: puzzleTunnels_459DCB (0x459dcb)
+
+	// Initialize puzzle state before anything else
+	// IDA: tunnels_initPuzzleState @ 0x459C5C
+	initPuzzleState();
+
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
 
 	// Load NODE/PATH waypoints at 1000
@@ -260,6 +265,15 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 
 	// IDA: sound_activeHandle = nextRand(20069, 20070) — tunnels narrator voice (F1 key replay)
 	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, _vm->_rnd->getRandomNumber(20069, 20070));
+
+	// Generate tunnel rules based on difficulty
+	generateRules();
+
+	// Disable Go button until at least one Zoombini has entered
+	setGoButtonsEnabled(false);
+
+	// Puzzle is now active
+	_puzzleActive = true;
 }
 
 void ZoombiniInteractiveTunnels::onGoButtonActivated() {
@@ -293,6 +307,529 @@ void ZoombiniInteractiveTunnels::loadZoombinisFromPack() {
 		}
 		posIdx++;
 	}
+
+	// Store total count
+	_totalZmbCount = posIdx;
+	_remainingCount = posIdx;
+}
+
+// ---------------------------------------------------------------------------
+// initPuzzleState: Reset all puzzle state variables.
+// IDA: tunnels_initPuzzleState @ 0x459C5C
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::initPuzzleState() {
+	_puzzleActive = false;
+	_processingFrame = false;
+	_enteredCount = 0;
+	_remainingCount = 0;
+	_totalZmbCount = 0;
+	_allPlaced = false;
+	_lastFrameSnapshot = 0;
+
+	// Reset rule system
+	_guardCount = 0;
+	for (int i = 0; i < 2; i++) {
+		_guards[i].sideFlag = false;
+		_guards[i].condCount = 0;
+		_guards[i].attrType[0] = 0;
+		_guards[i].attrType[1] = 0;
+		_guards[i].attrValue[0] = 0;
+		_guards[i].attrValue[1] = 0;
+	}
+
+	// Reset per-gate state
+	for (int gate = 0; gate < 4; gate++) {
+		_wrongAttempts[gate] = 0;
+		_gateOccupancy[gate] = 0;
+		for (int slot = 0; slot < 16; slot++) {
+			_gateSlots[gate][slot] = 0;
+		}
+	}
+
+	// Random seed for level-0 gate bias
+	_level0GateBias = _vm->_rnd->getRandomNumber(0, 1);
+}
+
+// ---------------------------------------------------------------------------
+// generateRules: Generate tunnel rules based on difficulty level.
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::generateRules() {
+	switch (_difficultyLevel) {
+	case 0:
+		setupLevel0_singleAttr();
+		break;
+	case 1:
+		setupLevel1_dualSingleAttr();
+		break;
+	case 2:
+		// Level 2: Dual guards, dual attributes each (OR within category)
+		// TODO: Implement setupLevel2_dualDoubleAttr()
+		setupLevel1_dualSingleAttr(); // Fallback to level 1 for now
+		break;
+	case 3:
+		// Level 3: Dual guards, cross-category attributes (AND)
+		// TODO: Implement setupLevel3_crossCategoryAttr()
+		setupLevel1_dualSingleAttr(); // Fallback to level 1 for now
+		break;
+	default:
+		setupLevel0_singleAttr();
+		break;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// setupLevel0_singleAttr: Generate single-attribute rule for level 0.
+// IDA: tunnels_setupLevel1_singleAttr @ 0x45C859
+//
+// Algorithm:
+// 1. Collect all Zoombini traits
+// 2. Build 20-element table of single-attribute rules (5 values x 4 categories)
+// 3. Count matches for each possible rule
+// 4. Find rule that splits Zoombinis closest to 50%
+// 5. Randomly pick from optimal rules
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::setupLevel0_singleAttr() {
+	// Collect all Zoombini traits
+	Common::Array<ZmbTrait> traits;
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		ZmbSnoid *snoid = it->second;
+		if (snoid && snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+			traits.push_back(snoid->_trait);
+		}
+	}
+
+	if (traits.empty()) {
+		// No Zoombinis, set default rule
+		_guardCount = 1;
+		_guards[0].sideFlag = false;
+		_guards[0].condCount = 1;
+		_guards[0].attrType[0] = 1; // Hair
+		_guards[0].attrValue[0] = 1; // Value 1
+		return;
+	}
+
+	// Build 20-element table: 4 categories x 5 values
+	// Category: 1=hair(head), 2=eyes, 3=nose, 4=feet(foot)
+	int16 matchCounts[20] = {};
+
+	for (const ZmbTrait &trait : traits) {
+		// Category 1: Hair (head)
+		uint8 hairVal = trait._head & 0x0F;
+		if (hairVal >= 1 && hairVal <= 5) {
+			matchCounts[(hairVal - 1)]++;
+		}
+
+		// Category 2: Eyes
+		uint8 eyeVal = trait._eye & 0x0F;
+		if (eyeVal >= 1 && eyeVal <= 5) {
+			matchCounts[5 + (eyeVal - 1)]++;
+		}
+
+		// Category 3: Nose
+		uint8 noseVal = trait._nose & 0x0F;
+		if (noseVal >= 1 && noseVal <= 5) {
+			matchCounts[10 + (noseVal - 1)]++;
+		}
+
+		// Category 4: Feet
+		uint8 footVal = trait._foot & 0x0F;
+		if (footVal >= 1 && footVal <= 5) {
+			matchCounts[15 + (footVal - 1)]++;
+		}
+	}
+
+	// Find rule closest to 50% split
+	int16 targetCount = traits.size() / 2;
+	int16 bestSlot = 0;
+
+	// Spiral search from target outward (IDA algorithm)
+	Common::Array<int16> candidates;
+	int16 step = 0;
+	int16 checkVal = targetCount;
+
+	for (int iter = 0; iter < 32 && candidates.empty(); iter++) {
+		if (checkVal >= 1 && checkVal < 16) {
+			// Find all slots with this match count
+			for (int slot = 0; slot < 20; slot++) {
+				if (matchCounts[slot] == checkVal) {
+					candidates.push_back(slot);
+				}
+			}
+		}
+		// Spiral: +1, -2, +3, -4, ...
+		step++;
+		checkVal += (step & 1) ? step : -step;
+	}
+
+	// If no candidates found, use first non-zero slot
+	if (candidates.empty()) {
+		for (int slot = 0; slot < 20; slot++) {
+			if (matchCounts[slot] > 0) {
+				candidates.push_back(slot);
+				break;
+			}
+		}
+	}
+
+	// Randomly pick from candidates
+	if (!candidates.empty()) {
+		bestSlot = candidates[_vm->_rnd->getRandomNumber(0, candidates.size() - 1)];
+	}
+
+	// Convert slot to attribute type and value
+	// Slots 0-4: Hair (type 1), values 1-5
+	// Slots 5-9: Eyes (type 2), values 1-5
+	// Slots 10-14: Nose (type 3), values 1-5
+	// Slots 15-19: Feet (type 4), values 1-5
+	uint8 attrType = (bestSlot / 5) + 1;
+	uint8 attrValue = (bestSlot % 5) + 1;
+
+	// Set the rule
+	_guardCount = 1;
+	_guards[0].sideFlag = _vm->_rnd->getRandomNumber(0, 1) != 0;
+	_guards[0].condCount = 1;
+	_guards[0].attrType[0] = attrType;
+	_guards[0].attrValue[0] = attrValue;
+
+	debug(3, "Tunnels Level 0 Rule: Guard 0 side=%d, type=%d, value=%d",
+	      _guards[0].sideFlag ? 1 : 0, attrType, attrValue);
+}
+
+// ---------------------------------------------------------------------------
+// setupLevel1_dualSingleAttr: Generate dual single-attribute rules for level 1.
+// IDA: tunnels_setupLevel2_dualSingleAttr @ 0x45CB51
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::setupLevel1_dualSingleAttr() {
+	// For now, generate two independent single-attribute rules
+	// TODO: Implement proper pair selection with diversity/balance scoring
+
+	// Collect all Zoombini traits
+	Common::Array<ZmbTrait> traits;
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		ZmbSnoid *snoid = it->second;
+		if (snoid && snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+			traits.push_back(snoid->_trait);
+		}
+	}
+
+	if (traits.empty()) {
+		// Default rules
+		_guardCount = 2;
+		_guards[0].sideFlag = false;
+		_guards[0].condCount = 1;
+		_guards[0].attrType[0] = 1;
+		_guards[0].attrValue[0] = 1;
+		_guards[1].sideFlag = true;
+		_guards[1].condCount = 1;
+		_guards[1].attrType[0] = 2;
+		_guards[1].attrValue[0] = 1;
+		return;
+	}
+
+	// Build match count table
+	int16 matchCounts[20] = {};
+	for (const ZmbTrait &trait : traits) {
+		uint8 vals[4] = {
+			static_cast<uint8>(trait._head & 0x0F),
+			static_cast<uint8>(trait._eye & 0x0F),
+			static_cast<uint8>(trait._nose & 0x0F),
+			static_cast<uint8>(trait._foot & 0x0F)
+		};
+		for (int cat = 0; cat < 4; cat++) {
+			if (vals[cat] >= 1 && vals[cat] <= 5) {
+				matchCounts[cat * 5 + (vals[cat] - 1)]++;
+			}
+		}
+	}
+
+	// Find two rules that create good 4-way split
+	// Simplified: just pick two rules from different categories with good match counts
+	Common::Array<int16> goodSlots;
+	uint totalCount = traits.size();
+
+	for (int slot = 0; slot < 20; slot++) {
+		if (matchCounts[slot] > 0 && static_cast<uint>(matchCounts[slot]) <= totalCount) {
+			goodSlots.push_back(slot);
+		}
+	}
+
+	// Pick two slots, preferring different categories
+	int16 slot0 = 0, slot1 = 5; // Default: hair type 1, eyes type 1
+
+	if (goodSlots.size() >= 2) {
+		// Shuffle and pick first two from different categories if possible
+		slot0 = goodSlots[_vm->_rnd->getRandomNumber(0, goodSlots.size() - 1)];
+		int16 cat0 = slot0 / 5;
+
+		// Find slot from different category
+		Common::Array<int16> diffCatSlots;
+		for (int16 s : goodSlots) {
+			if ((s / 5) != cat0) {
+				diffCatSlots.push_back(s);
+			}
+		}
+
+		if (!diffCatSlots.empty()) {
+			slot1 = diffCatSlots[_vm->_rnd->getRandomNumber(0, diffCatSlots.size() - 1)];
+		} else if (goodSlots.size() >= 2) {
+			// Same category, different value
+			for (int16 s : goodSlots) {
+				if (s != slot0) {
+					slot1 = s;
+					break;
+				}
+			}
+		}
+	}
+
+	// Set guard 0
+	_guardCount = 2;
+	_guards[0].sideFlag = _vm->_rnd->getRandomNumber(0, 1) != 0;
+	_guards[0].condCount = 1;
+	_guards[0].attrType[0] = (slot0 / 5) + 1;
+	_guards[0].attrValue[0] = (slot0 % 5) + 1;
+
+	// Set guard 1
+	_guards[1].sideFlag = _vm->_rnd->getRandomNumber(0, 1) != 0;
+	_guards[1].condCount = 1;
+	_guards[1].attrType[0] = (slot1 / 5) + 1;
+	_guards[1].attrValue[0] = (slot1 % 5) + 1;
+
+	debug(3, "Tunnels Level 1 Rules: Guard 0 type=%d val=%d, Guard 1 type=%d val=%d",
+	      _guards[0].attrType[0], _guards[0].attrValue[0],
+	      _guards[1].attrType[0], _guards[1].attrValue[0]);
+}
+
+// ---------------------------------------------------------------------------
+// evaluateRule: Check if a Zoombini matches a tunnel rule.
+// IDA: tunnels_evalAttrRule @ 0x45C65D
+//
+// For level 0 (1 guard): Simple match check
+// For level 1+ (2 guards): Zone determines combination:
+//   Zone 1: matchA (accepts if guard A matches)
+//   Zone 2: matchA AND NOT matchB
+//   Zone 3: NOT matchA AND NOT matchB
+//   Zone 4: NOT matchA AND matchB
+// ---------------------------------------------------------------------------
+bool ZoombiniInteractiveTunnels::evaluateRule(ZmbSnoid *snoid, int16 dropZone) {
+	if (!snoid || dropZone < 1 || dropZone > 4) {
+		return false;
+	}
+
+	// Get Zoombini's traits
+	uint8 traitVals[5] = {0}; // Index 0 unused, 1=hair, 2=eyes, 3=nose, 4=feet
+	traitVals[1] = snoid->_trait._head & 0x0F;  // Hair
+	traitVals[2] = snoid->_trait._eye & 0x0F;   // Eyes
+	traitVals[3] = snoid->_trait._nose & 0x0F;  // Nose
+	traitVals[4] = snoid->_trait._foot & 0x0F;  // Feet
+
+	// Evaluate guard 0
+	bool matchA = false;
+	if (_guardCount >= 1 && _guards[0].condCount >= 1) {
+		uint8 type = _guards[0].attrType[0];
+		uint8 value = _guards[0].attrValue[0];
+		if (type >= 1 && type <= 4 && traitVals[type] == value) {
+			matchA = true;
+		}
+		// Apply side flag (negation)
+		if (!_guards[0].sideFlag) {
+			matchA = !matchA;
+		}
+	}
+
+	// Level 0: Only 1 guard, 2 zones
+	if (_guardCount == 1) {
+		// Zone 1 and 2 are the only valid zones for level 0
+		// Zone 1: match, Zone 2: no match (or vice versa based on random)
+		if (dropZone == 1) {
+			return matchA;
+		} else if (dropZone == 2) {
+			return !matchA;
+		}
+		return false;
+	}
+
+	// Level 1+: 2 guards, 4 zones
+	bool matchB = false;
+	if (_guardCount >= 2 && _guards[1].condCount >= 1) {
+		uint8 type = _guards[1].attrType[0];
+		uint8 value = _guards[1].attrValue[0];
+		if (type >= 1 && type <= 4 && traitVals[type] == value) {
+			matchB = true;
+		}
+		// Apply side flag (negation)
+		if (!_guards[1].sideFlag) {
+			matchB = !matchB;
+		}
+	}
+
+	// Zone logic (IDA: a3 parameter in tunnels_evalAttrRule)
+	switch (dropZone) {
+	case 1: // matchA
+		return matchA;
+	case 2: // matchA AND NOT matchB
+		return matchA && !matchB;
+	case 3: // NOT matchA AND NOT matchB
+		return !matchA && !matchB;
+	case 4: // NOT matchA AND matchB
+		return !matchA && matchB;
+	default:
+		return false;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// getDropZone: Find which tunnel zone a position corresponds to.
+// ---------------------------------------------------------------------------
+int16 ZoombiniInteractiveTunnels::getDropZone(const Common::Point &pos) {
+	// Check each tunnel entry position
+	for (int16 i = 0; i < 4; i++) {
+		int16 dx = pos.x - kTunnelEntryPositions[i].x;
+		int16 dy = pos.y - kTunnelEntryPositions[i].y;
+		int32 distSq = dx * dx + dy * dy;
+
+		if (distSq <= kClickZoneRadius * kClickZoneRadius) {
+			return i + 1; // Zones are 1-indexed
+		}
+	}
+	return 0; // No zone hit
+}
+
+// ---------------------------------------------------------------------------
+// handleZoombiniPlacement: Process a Zoombini being placed in a tunnel.
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::handleZoombiniPlacement(ZmbSnoid *snoid, int16 zone, bool isCorrect) {
+	if (!snoid || zone < 1 || zone > 4) {
+		return;
+	}
+
+	int16 gateIdx = zone - 1;
+
+	if (isCorrect) {
+		// Correct placement
+		_wrongAttempts[gateIdx] = 0;
+		_enteredCount++;
+		_remainingCount--;
+
+		// Add to gate slot
+		if (_gateOccupancy[gateIdx] < 16) {
+			_gateSlots[gateIdx][_gateOccupancy[gateIdx]] = snoid->getId();
+			_gateOccupancy[gateIdx]++;
+		}
+
+		// Play success sound
+		ZmbResource successSound(ZmbArchiveKind::kPage, 8500 + _vm->_rnd->getRandomNumber(0, 64));
+		_vm->_sound->playZmbSound(successSound, Audio::Mixer::kSFXSoundType);
+
+		// Hide the Zoombini (it entered the tunnel)
+		snoid->deactivateRender();
+
+		// Check if all Zoombinis placed
+		if (_remainingCount <= 0) {
+			_allPlaced = true;
+			debug(3, "Tunnels: All Zoombinis placed!");
+		}
+	} else {
+		// Wrong placement
+		_wrongAttempts[gateIdx]++;
+
+		// Play rejection sound
+		ZmbResource rejectSound(ZmbArchiveKind::kPage, 8000 + _vm->_rnd->getRandomNumber(0, 7));
+		_vm->_sound->playZmbSound(rejectSound, Audio::Mixer::kSFXSoundType);
+
+		// Return Zoombini to original position
+		snoid->setAnimState(kSnoidAnimIdle);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// onEveryFrame: Main per-frame logic.
+// IDA: tunnels_onFrameTick @ 0x45A460
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::onEveryFrame() {
+	if (_processingFrame || !_puzzleActive) {
+		return;
+	}
+	_processingFrame = true;
+
+	// Check for pending departure
+	if (_pendingGoDepart) {
+		_processingFrame = false;
+		return;
+	}
+
+	// Check if all Zoombinis have been placed
+	if (_allPlaced && !_pendingGoDepart) {
+		// Enable Go button
+		setGoButtonsEnabled(true);
+	}
+
+	// Process any pending animation queues
+	// TODO: Implement animation queue processing
+
+	_processingFrame = false;
+}
+
+// ---------------------------------------------------------------------------
+// onLButtonDown: Handle mouse button press.
+// ---------------------------------------------------------------------------
+ZmbEventHandleResult ZoombiniInteractiveTunnels::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+	// First check base class handling (buttons, etc.)
+	ZmbEventHandleResult result = ZoombiniInteractive::onLButtonDown(absPos, relPos);
+	if (result == ZmbEventHandleResult::kConsumed) {
+		return result;
+	}
+
+	// Check if clicking on a Zoombini to start drag
+	ZmbSnoid *snoid = findSnoidAtPoint(absPos);
+	if (snoid && snoid->getAnimState() == kSnoidAnimIdle) {
+		startSnoidDrag(snoid, absPos);
+		return ZmbEventHandleResult::kConsumed;
+	}
+
+	return ZmbEventHandleResult::kPassthrough;
+}
+
+// ---------------------------------------------------------------------------
+// onLButtonUp: Handle mouse button release.
+// ---------------------------------------------------------------------------
+ZmbEventHandleResult ZoombiniInteractiveTunnels::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+	// Check if we were dragging a Zoombini
+	if (isDragging()) {
+		ZmbSnoid *snoid = finishSnoidDrag();
+		if (snoid) {
+			// Check which drop zone we're in
+			int16 zone = getDropZone(absPos);
+
+			if (zone > 0) {
+				// For level 0, only zones 1 and 2 are valid
+				if (_difficultyLevel == 0 && zone > 2) {
+					zone = 0; // Invalid zone for level 0
+				}
+
+				if (zone > 0) {
+					// Evaluate the rule
+					bool isCorrect = evaluateRule(snoid, zone);
+
+					// Level 0 bias: first-try success on appropriate gate
+					if (_difficultyLevel == 0 && _enteredCount == 0) {
+						// Force success on first attempt
+						isCorrect = true;
+					}
+
+					handleZoombiniPlacement(snoid, zone, isCorrect);
+					return ZmbEventHandleResult::kConsumed;
+				}
+			}
+
+			// Dropped outside valid zones - return to original position
+			snoid->setPointLoc(_dragOrigPos);
+			snoid->setAnimState(kSnoidAnimIdle);
+		}
+		return ZmbEventHandleResult::kConsumed;
+	}
+
+	return ZoombiniInteractive::onLButtonUp(absPos, relPos);
 }
 
 } // End of namespace Mohawk
