@@ -73,6 +73,11 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 	// Preload shape images
 	// IDA: shape_loadSubShapesFromArchive(&stru_4A0E58, 1400u)
 	_vm->_gfx->preloadImage(1400);
+	_vm->_gfx->preloadImage(1450);
+	_vm->_gfx->preloadImage(1500);
+	_vm->_gfx->preloadImage(1600);
+	_vm->_gfx->preloadImage(1700);
+	_vm->_gfx->preloadImage(1800);
 
 	// Load feature groups
 	// IDA: scrb_useFeatureGroup(0, 0, 1500)
@@ -92,7 +97,7 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 10; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 1400), 1600 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 1600), 1600 + i);
 		}
 	}
 
@@ -101,7 +106,7 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 7; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 1400), 1700 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 1700), 1700 + i);
 		}
 	}
 
@@ -110,7 +115,7 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 33; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 1400), 1800 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 1800), 1800 + i);
 		}
 	}
 
@@ -119,7 +124,7 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 3; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 1400), 1450 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 1450), 1450 + i);
 		}
 	}
 
@@ -144,13 +149,13 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 	// IDA: word_4AB13A = runner_registerAndAllocate(..., 6, 0x641, standard, standard, 0xC000)
 	// Landscape overlay animation (SCRB 1601)
 	_landscapeFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 1400), 1601, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 1600), 1601, 6,
 		ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM);
 
 	// IDA: word_4AB17A = runner_registerAndAllocate(..., 6, boatScrb, standard, standard, 0x188000)
 	// Boat animation runner — SCRB 1803 on first visit, random from pool on subsequent visits
 	_boatAnimFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 1400), 1803, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 1800), 1803, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 		ZmbFeature::FLAG_00100000_PLAY_ONCE);
 
@@ -159,35 +164,36 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 	if (!_vm->_state->isLessActionEnabled()) {
 		// IDA: word_4AB13E = runner_registerAndAllocate(..., 6, 1602, standard, standard, 0x8000)
 		_boatApproachA = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 1400), 1602, 6,
+			ZmbResource(ZmbArchiveKind::kPage, 1600), 1602, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM);
 
 		// IDA: word_4AB140 = runner_registerAndAllocate(..., 6, 1603, standard, standard, 0x8000)
 		_boatApproachB = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 1400), 1603, 6,
+			ZmbResource(ZmbArchiveKind::kPage, 1600), 1603, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM);
 
-		// IDA: scrb_linkRunnersToHotspotSlot(word_4AB140, word_4AB13E)
-		// TODO: Link boat approach runners for hotspot handling
+		// NOTE: Original engine called scrb_linkRunnersToHotspotSlot(word_4AB140, word_4AB13E)
+		// to pair both features on the same hotspot slot. ScummVM handles hotspot-per-feature
+		// independently through findDrawRecordAtPoint(), so shared slots are not needed.
 	}
 
 	// IDA: word_4AB142 = runner_registerAndAllocate(..., 6, 0x6A8, standard, standard, 0x1188000)
 	// Departure overlay runner (SCRB 1704)
 	_departOverlayFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 1400), 1704, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 1700), 1704, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_01000000_DEFER_RENDER);
 
 	// IDA: runner_registerAndAllocate(..., 6, 0x640, standard, standard, 0) — anonymous (SCRB 1600)
 	loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 1400), 1600, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 1600), 1600, 6,
 		ZmbFeature::FLAG_00000000_TYPE_SHAPES);
 
 	// IDA: 3× word_4AB14C[i] = runner_registerAndAllocate(..., 0, 1450+i, standard, standard, 0x4000000)
 	// Overlay SCRBs (1450-1452)
 	for (int16 i = 0; i < 3; i++) {
 		_overlayFeatures[i] = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 1400), 1450 + i, 0,
+			ZmbResource(ZmbArchiveKind::kPage, 1450), 1450 + i, 0,
 			ZmbFeature::FLAG_04000000_OVERLAY);
 	}
 
@@ -217,9 +223,8 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 void ZoombiniInteractiveFerry::onGoButtonActivated() {
 	// IDA: ferry_onClickHandler case 2 -> word_4AB17C=1 -> puzzle_pendingTransitionTarget = 11
 	// Route 2: Ferry -> Slides (via Xfer)
-	_vm->_xferSrcSiPage = ZMB_SI_FERRY_07;
-	_vm->setNextPage(ZoombiniPageType::kXfer);
-	close();
+	_departXferSrcSiPage = ZMB_SI_FERRY_07;
+	ZoombiniInteractive::onGoButtonActivated();
 }
 
 void ZoombiniInteractiveFerry::loadZoombinisFromPack() {

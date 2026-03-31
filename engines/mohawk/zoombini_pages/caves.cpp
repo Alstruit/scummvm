@@ -22,6 +22,7 @@
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_pages/caves.h"
+#include "mohawk/zoombini_random.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 
@@ -73,6 +74,11 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 	// Preload shape images
 	// IDA: shape_loadSubShapesFromArchive(&stru_4A08C0, 0x2AF8u) — shapes at tBMP 11000
 	_vm->_gfx->preloadImage(11000);
+	_vm->_gfx->preloadImage(6000);
+	_vm->_gfx->preloadImage(7000);
+	_vm->_gfx->preloadImage(8200);
+	_vm->_gfx->preloadImage(9000);
+	_vm->_gfx->preloadImage(9025);
 
 	// Load terrain barrier bitmap (tBMP 100)
 	// IDA: rmap_loadTerrainArchive(0x64u)
@@ -101,7 +107,7 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 20; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 11000), 9000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 9000), 9000 + i);
 		}
 	}
 
@@ -110,7 +116,7 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 20; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 11000), 7000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 7000), 7000 + i);
 		}
 	}
 
@@ -119,7 +125,7 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 80; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 11000), 8200 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 8200), 8200 + i);
 		}
 	}
 
@@ -128,7 +134,7 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 4; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 11000), 9025 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 9025), 9025 + i);
 		}
 	}
 
@@ -152,19 +158,19 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 
 	// IDA: word_4AB078 — entrance animation SCRB 6000, interval=6
 	_entranceAnimFeatures[0] = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 11000), 6000, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 6000), 6000, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 		ZmbFeature::FLAG_04000000_OVERLAY);
 
 	// IDA: word_4AB07A — entrance animation SCRB 6001, interval=6
 	_entranceAnimFeatures[1] = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 11000), 6001, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 6000), 6001, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 		ZmbFeature::FLAG_04000000_OVERLAY);
 
 	// IDA: word_4AB07C — entrance animation SCRB 6002, interval=8
 	_entranceAnimFeatures[2] = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 11000), 6002, 8,
+		ZmbResource(ZmbArchiveKind::kPage, 6000), 6002, 8,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_04000000_OVERLAY);
 
@@ -172,7 +178,7 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 	// IDA: scrb_drawOnRegRunnerIdxArr[0..3] from dword_4A09C0
 	for (uint16 i = 0; i < 4; i++) {
 		_doorDrawOnRegFeatures[i] = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 11000), 7000 + i, 7,
+			ZmbResource(ZmbArchiveKind::kPage, 7000), 7000 + i, 7,
 			kCaveEntrancePositions[i],
 			ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER |
@@ -182,14 +188,15 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 	// IDA: loop v2=5..11 — SCRB 7004-7010 DRAW_ON_REG + glyph overlays SCRB 9004-9010
 	for (uint16 i = 0; i < 7; i++) {
 		_glyphOverlayFeatures[i] = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 11000), 9004 + i, 6,
+			ZmbResource(ZmbArchiveKind::kPage, 9000), 9004 + i, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 			ZmbFeature::FLAG_04000000_OVERLAY);
 
-		// TODO: no-op placeholder runner (word_4AB04C[5+i]) for render ordering
+		// NOTE: Original engine used no-op placeholder runners (word_4AB04C[5+i]) for Z-ordering
+		// in its linked-list renderer. ScummVM uses per-frame sorted rendering, so not needed.
 
 		_doorDrawOnRegFeatures[4 + i] = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 11000), 7004 + i, 7,
+			ZmbResource(ZmbArchiveKind::kPage, 7000), 7004 + i, 7,
 			kCaveEntrancePositions[4 + i],
 			ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER |
@@ -200,44 +207,68 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 	// IDA: word_4AB010 (9014), word_4AB00E (9013), word_4AB00C (9012), word_4AB00A (9011)
 	for (uint16 i = 0; i < 4; i++) {
 		_doorPanelFeatures[3 - i] = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 11000), 9014 - i, 6,
+			ZmbResource(ZmbArchiveKind::kPage, 9000), 9014 - i, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 			ZmbFeature::FLAG_04000000_OVERLAY);
 
-		// TODO: no-op placeholder runner (word_4AB064[3-i]) for render ordering
+		// NOTE: Original engine used no-op placeholder runners (word_4AB064[3-i]) for Z-ordering.
 	}
 
 	// IDA: word_4B7B60[0..3] — glyph DRAW_ON_REG SCRB 7011-7014 from corePosUnion
 	for (uint16 i = 0; i < 4; i++) {
 		_doorDrawOnRegFeatures[11 + i] = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 11000), 7011 + i, 7,
+			ZmbResource(ZmbArchiveKind::kPage, 7000), 7011 + i, 7,
 			kCaveEntrancePositions[11 + i],
 			ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER |
 			ZmbFeature::FLAG_04000000_OVERLAY);
 	}
 
-	// TODO: runner_linkRelativeToParent(word_4AB064[i], 1, word_4B7B60[i]) for render ordering
+	// NOTE: Original engine called runner_linkRelativeToParent(word_4AB064[i], 1, word_4B7B60[i])
+	// for Z-ordering. ScummVM uses per-frame sorted rendering, so not needed.
 
 	// IDA: loop v2=16..20 — SCRB 7015-7019 DRAW_ON_REG + glyph overlays SCRB 9015-9019
 	for (uint16 i = 0; i < 5; i++) {
 		_extraGlyphOverlayFeatures[i] = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 11000), 9015 + i, 6,
+			ZmbResource(ZmbArchiveKind::kPage, 9000), 9015 + i, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 			ZmbFeature::FLAG_04000000_OVERLAY);
 
-		// TODO: no-op placeholder runner (word_4AB04C[16+i]) for render ordering
+		// NOTE: Original engine used no-op placeholder runners (word_4AB04C[16+i]) for Z-ordering.
 
 		_doorDrawOnRegFeatures[15 + i] = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 11000), 7015 + i, 7,
+			ZmbResource(ZmbArchiveKind::kPage, 7000), 7015 + i, 7,
 			kCaveEntrancePositions[15 + i],
 			ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER |
 			ZmbFeature::FLAG_04000000_OVERLAY);
 	}
 
-	// TODO: Overlay SCRB 6012 (word_4AB080), REGION_TRACK runner, virtual glyph renderer (unk_4A090C)
-	// These require caves_initDifficultyParams and caves_glyphSetupDispatch gameplay code
+	// IDA 0x417072: word_4AB080 — SCRB 6012 (0x177C), OVERLAY
+	// The full glyph renderer draws matching symbols on cave entrances based on puzzle rules.
+	// Glyph setup via setupEntranceGlyphs() → initEntranceAttrPattern/countGlyphDistribution/etc.
+	_glyphPanelOverlayFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 6000), 6012, 0,
+		ZmbFeature::FLAG_04000000_OVERLAY);
+	
+	// IDA 0x41709c: word_4AB080 — SCRB unk_4A08F0+1 (_glyphPanelScrbId+1), REGION_TRACK
+	// This is created after initDifficultyParams() which sets _glyphPanelScrbId
+	initDifficultyParams();
+	
+	_glyphPanelRegionFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 6000), _glyphPanelScrbId + 1, 9,
+		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_08000000_REGION_TRACK);
+	
+	// Setup glyph patterns
+	setupEntranceGlyphs();
+	
+	// IDA 0x4170e7: unk_4A090C — virtual glyph renderer with custom callbacks
+	// caves_clearAndInvalidateRect as preRender, caves_renderAllEntranceGlyphs as render
+	// For now, create a placeholder loop animation feature
+	_virtualGlyphRenderer = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 6000), 6000, 0,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00020000_SKIP_RENDER);
 
 	// Load Zoombinis from active pack at 20 pedestal positions
 	// IDA: zmb_assignPedestalPositions(1, posTable, 20)
@@ -266,9 +297,8 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 void ZoombiniInteractiveCaves::onGoButtonActivated() {
 	// IDA: caves_onClickHandler case 2 -> puzzle_pendingTransitionTarget = 17
 	// Route 4: Caves -> Smoke (via Xfer)
-	_vm->_xferSrcSiPage = ZMB_SI_CAVES_14;
-	_vm->setNextPage(ZoombiniPageType::kXfer);
-	close();
+	_departXferSrcSiPage = ZMB_SI_CAVES_14;
+	ZoombiniInteractive::onGoButtonActivated();
 }
 
 void ZoombiniInteractiveCaves::loadZoombinisFromPack() {
@@ -292,6 +322,329 @@ void ZoombiniInteractiveCaves::loadZoombinisFromPack() {
 			snoid->setupIdleHotspots();
 		}
 		posIdx++;
+	}
+}
+
+void ZoombiniInteractiveCaves::initDifficultyParams() {
+	// IDA: caves_initDifficultyParams_41896E
+	// Initialize difficulty parameters based on route level.
+	// The level determines how many entrances are active and which SCRB panel to use.
+	
+	// Reset tracking state
+	_hoveredEntranceSlot = 0;
+	
+	// Clear entrance attribute arrays
+	for (int i = 0; i < 11; i++) {
+		_entranceAttrReq[i] = 0;
+		_entranceAttrOffset[i] = 0;
+		_glyphTimingTable[i] = 0;
+	}
+	
+	// Map level (1-4) to entrance count (4-7) and panel SCRB (6006-6003)
+	switch (_difficultyLevel) {
+	case 1:
+		_entranceCount = 4;
+		_glyphPanelScrbId = 6006;
+		break;
+	case 2:
+		_entranceCount = 5;
+		_glyphPanelScrbId = 6005;
+		break;
+	case 3:
+		_entranceCount = 6;
+		_glyphPanelScrbId = 6004;
+		break;
+	case 4:
+	default:
+		_entranceCount = 7;
+		_glyphPanelScrbId = 6003;
+		break;
+	}
+}
+
+void ZoombiniInteractiveCaves::setupEntranceGlyphs() {
+	// IDA: caves_glyphSetupDispatch_418A6E
+	// Calls three sub-functions to setup the glyph pattern system:
+	initEntranceAttrPattern();
+	countGlyphDistribution();
+	buildGlyphTimingTable();
+	
+	// IDA: caves_entranceAttrDist_418CB1 — distribute attributes to entrances
+	distributeEntranceAttributes();
+}
+
+void ZoombiniInteractiveCaves::initEntranceAttrPattern() {
+	// IDA: caves_initEntranceAttrPattern_418A7E
+	// Initializes random attribute patterns using Fisher-Yates shuffle.
+	
+	// Guard complexity: 1 or 2 based on difficulty
+	// IDA: unk_4A08E4 = (word_4AAF00 <= 2) ? 1 : 2
+	_guardComplexity = (_difficultyLevel <= 2) ? 1 : 2;
+	
+	// Number of attribute columns (typically 5)
+	_attrColumnCount = 5;
+	
+	// Initialize base attribute types
+	_baseAttrTypes[0] = 0;
+	_baseAttrTypes[1] = 0;
+	_entranceAttrBase = 0;
+	
+	// Clear attribute columns
+	for (int row = 0; row < 2; row++) {
+		for (int col = 0; col < _attrColumnCount; col++) {
+			_attrColumns[5 * row + col] = 0;
+		}
+	}
+	
+	// Fisher-Yates shuffle for attribute selection
+	int16 attrPool[7];
+	int16 attrPoolSize = 3;  // Initially 4 attributes (0-3), but we pick with removal
+	
+	for (int pass = 0; pass < 2; pass++) {
+		// Reset column pool (0-6)
+		int16 colPool[7];
+		for (int i = 0; i < 7; i++) {
+			colPool[i] = i;
+		}
+		
+		// Reset attribute pool for first pass
+		if (pass == 0) {
+			for (int i = 0; i < 4; i++) {
+				attrPool[i] = i;
+			}
+			attrPoolSize = 3;
+			
+			// Pick base attribute type
+			int16 randIdx = _vm->_rnd->getRandomNumber(attrPoolSize);
+			_baseAttrTypes[0] = attrPool[randIdx];
+			
+			// Remove selected attribute from pool
+			for (int i = randIdx; i < attrPoolSize + 1; i++) {
+				attrPool[i] = attrPool[i + 1];
+			}
+			attrPoolSize--;
+		} else {
+			// Second pass: pick entrance base attribute from remaining pool
+			int16 randIdx = _vm->_rnd->getRandomNumber(attrPoolSize);
+			_entranceAttrBase = attrPool[randIdx];
+		}
+		
+		// Shuffle columns using Fisher-Yates
+		int16 colPoolSize = 5;
+		for (int col = 0; col < _attrColumnCount; col++) {
+			int16 randIdx = _vm->_rnd->getRandomNumber(1, colPoolSize);
+			_attrColumns[5 * pass + col] = colPool[randIdx];
+			
+			// Remove selected column from pool
+			for (int i = randIdx; i < colPoolSize + 1; i++) {
+				colPool[i] = colPool[i + 1];
+			}
+			colPoolSize--;
+		}
+	}
+}
+
+void ZoombiniInteractiveCaves::countGlyphDistribution() {
+	// IDA: caves_countGlyphDistribution_418BFE
+	// Counts glyph attribute distribution across loaded Zoombinis.
+	
+	// Get loaded Zoombini count from pack
+	ZmbStateFile &f = _vm->_state->_f;
+	_loadedZmbCount = 0;
+	for (int16 i = 0; i < f._zmbPackActive._wPackZmbCount; i++) {
+		if (f._zmbPackActive._entries[i]._bIsOccupied) {
+			_loadedZmbCount++;
+		}
+	}
+	
+	// Guard complexity based on difficulty
+	_guardComplexity = (_difficultyLevel <= 2) ? 1 : 2;
+	
+	// Clear distribution table
+	for (int i = 0; i < 36; i++) {
+		_glyphDistribution[i] = 0;
+	}
+	
+	// Count distribution based on Zoombini traits
+	for (int16 i = 0; i < f._zmbPackActive._wPackZmbCount; i++) {
+		if (!f._zmbPackActive._entries[i]._bIsOccupied)
+			continue;
+		
+		ZmbTrait &traits = f._zmbPackActive._entries[i]._traits;
+		uint8 traitBytes[4] = {
+			static_cast<uint8>(traits._head),
+			static_cast<uint8>(traits._eye),
+			static_cast<uint8>(traits._nose),
+			static_cast<uint8>(traits._foot)
+		};
+		
+		// Get trait value for base attribute type
+		int16 baseTraitVal = traitBytes[_baseAttrTypes[0]];
+		_glyphDistribution[baseTraitVal]++;
+		
+		// For complex guards, also count cross-product
+		if (_guardComplexity > 1) {
+			int16 secondTraitVal = traitBytes[_entranceAttrBase];
+			_glyphDistribution[6 * secondTraitVal + baseTraitVal]++;
+		}
+	}
+}
+
+void ZoombiniInteractiveCaves::buildGlyphTimingTable() {
+	// IDA: caves_buildGlyphTimingTable_418F6C
+	// Builds timing tables for glyph animations.
+	
+	// Clear timing arrays
+	for (int i = 0; i < 21; i++) {
+		_frameToSlotMap[i] = 0;
+		_crossProductTable[i] = 0;
+	}
+	
+	// Build frame-to-slot map from attribute columns and distribution
+	int timingIdx = 21 - _loadedZmbCount;  // IDA: dword_4A08FC
+	for (int col = 0; col < _attrColumnCount; col++) {
+		int16 slotVal = _attrColumns[col];
+		int16 distCount = _glyphDistribution[slotVal];
+		for (int j = 0; j < distCount && timingIdx < 21; j++) {
+			_frameToSlotMap[timingIdx++] = slotVal;
+		}
+	}
+	
+	// Build cross-product table for complex guards
+	if (_guardComplexity > 1) {
+		int glyphIdx = 21 - _loadedZmbCount;
+		for (int row = 0; row < _attrColumnCount; row++) {
+			for (int col = 0; col < _attrColumnCount; col++) {
+				int16 rowSlot = _attrColumns[5 + col];  // Second row
+				int16 colSlot = _attrColumns[row];
+				int16 crossDist = _glyphDistribution[6 * rowSlot + colSlot];
+				for (int j = 0; j < crossDist && glyphIdx < 21; j++) {
+					if (rowSlot != 0) {
+						_crossProductTable[glyphIdx] = rowSlot;
+					}
+					glyphIdx++;
+				}
+			}
+		}
+	}
+}
+
+void ZoombiniInteractiveCaves::distributeEntranceAttributes() {
+	// IDA: caves_entranceAttrDist_418CB1
+	// Distributes attributes to cave entrances based on difficulty level.
+	
+	int16 slotPool[7];
+	for (int i = 0; i < 7; i++) {
+		slotPool[i] = i;
+	}
+	
+	// Clear entrance requirements
+	for (int i = 0; i < 11; i++) {
+		_entranceAttrReq[i] = 0;
+		_entranceAttrOffset[i] = 0;
+	}
+	
+	switch (_difficultyLevel) {
+	case 1:
+		// Level 1: All first 5 entrances active
+		for (int slot = 1; slot < 6; slot++) {
+			_entranceAttrReq[slot] = 1;
+		}
+		break;
+		
+	case 2: {
+		// Level 2: Random 2-4 of first 5 entrances
+		int16 numActive = _vm->_rnd->getRandomNumber(2, 4);
+		int16 poolSize = 5;
+		for (int i = 0; i < numActive; i++) {
+			int16 randIdx = _vm->_rnd->getRandomNumber(1, poolSize);
+			_entranceAttrReq[slotPool[randIdx]] = 1;
+			// Remove from pool
+			for (int j = randIdx; j < poolSize + 1; j++) {
+				slotPool[j] = slotPool[j + 1];
+			}
+			poolSize--;
+		}
+		break;
+	}
+	
+	case 3: {
+		// Level 3: Random selection in two groups (0-4 and 5-9)
+		for (int group = 0; group < 2; group++) {
+			int16 offset = (group == 0) ? 0 : 5;
+			
+			// Reset pool
+			for (int i = 0; i < 7; i++) {
+				slotPool[i] = i;
+			}
+			
+			int16 numActive = _vm->_rnd->getRandomNumber(2, 4);
+			int16 poolSize = 5;
+			for (int i = 0; i < numActive; i++) {
+				int16 randIdx = _vm->_rnd->getRandomNumber(1, poolSize);
+				_entranceAttrReq[slotPool[randIdx] + offset] = 1;
+				// Remove from pool
+				for (int j = randIdx; j < poolSize + 1; j++) {
+					slotPool[j] = slotPool[j + 1];
+				}
+				poolSize--;
+			}
+		}
+		break;
+	}
+	
+	default:
+		// Level 4+: Similar to level 1, all entrances active
+		for (int slot = 1; slot < _entranceCount + 1; slot++) {
+			_entranceAttrReq[slot] = 1;
+		}
+		break;
+	}
+	
+	// Set attribute offsets based on base attribute type
+	for (int slot = 1; slot < 6; slot++) {
+		if (_entranceAttrReq[slot]) {
+			switch (_baseAttrTypes[0]) {
+			case 0:
+				_entranceAttrOffset[slot] = slot;  // Hair
+				break;
+			case 1:
+				_entranceAttrOffset[slot] = slot + 5;  // Eyes
+				break;
+			case 2:
+				_entranceAttrOffset[slot] = slot + 10;  // Nose
+				break;
+			case 3:
+				_entranceAttrOffset[slot] = slot + 15;  // Feet
+				break;
+			default:
+				_entranceAttrOffset[slot] = slot;
+				break;
+			}
+		}
+	}
+	
+	// Set offsets for second group (slots 6-10)
+	for (int slot = 6; slot < 11; slot++) {
+		if (_entranceAttrReq[slot]) {
+			switch (_entranceAttrBase) {
+			case 0:
+				_entranceAttrOffset[slot] = (slot - 5);  // Hair
+				break;
+			case 1:
+				_entranceAttrOffset[slot] = (slot - 5) + 5;  // Eyes
+				break;
+			case 2:
+				_entranceAttrOffset[slot] = (slot - 5) + 10;  // Nose
+				break;
+			case 3:
+				_entranceAttrOffset[slot] = (slot - 5) + 15;  // Feet
+				break;
+			default:
+				_entranceAttrOffset[slot] = (slot - 5);
+				break;
+			}
+		}
 	}
 }
 

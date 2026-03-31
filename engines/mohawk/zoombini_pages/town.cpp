@@ -19,6 +19,8 @@
  *
  */
 
+#include "common/system.h"
+
 #include "mohawk/mohawk.h"
 #include "mohawk/sound.h"
 
@@ -89,19 +91,23 @@ void ZoombiniInteractiveTown::loadFeatures() {
 
 	// Preload images
 	_vm->_gfx->preloadImage(kResBitmapShape1100);
+	_vm->_gfx->preloadImage(1000);
+	_vm->_gfx->preloadImage(4000);
+	_vm->_gfx->preloadImage(6000);
+	_vm->_gfx->preloadImage(8000);
 
 	// Load REGS
 	loadREGS(ZmbArchiveKind::kPage, kResRegs2000);
 
 	// [*] SCRB 1000: Main overlay
-	_overlayFeatures[0] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), kResScrb1000_Overlay, 0,
+	_overlayFeatures[0] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), kResScrb1000_Overlay, 0,
 					ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 					ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY);
 
 	{ // [*] SCRB 1002: Overlay with REGS + pre-render shape callback
 		ZmbFeature::EventHooks hooks;
 		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveTown::overlay_preRenderShape));
-		_overlayFeatures[1] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), kResScrb1002_Overlay, 0,
+		_overlayFeatures[1] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), kResScrb1002_Overlay, 0,
 						ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 						ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY |
 						ZmbFeature::FLAG_08000000_REGION_TRACK,
@@ -111,7 +117,7 @@ void ZoombiniInteractiveTown::loadFeatures() {
 	{ // [*] SCRB 1003: Overlay with REGS + pre-render shape callback
 		ZmbFeature::EventHooks hooks;
 		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveTown::overlay_preRenderShape));
-		_overlayFeatures[2] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), kResScrb1003_Overlay, 0,
+		_overlayFeatures[2] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), kResScrb1003_Overlay, 0,
 						ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 						ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY |
 						ZmbFeature::FLAG_08000000_REGION_TRACK,
@@ -121,7 +127,7 @@ void ZoombiniInteractiveTown::loadFeatures() {
 	{ // [*] SCRB 1001: Overlay with REGS + pre-render shape callback
 		ZmbFeature::EventHooks hooks;
 		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveTown::overlay_preRenderShape));
-		_overlayFeatures[3] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), kResScrb1001_Overlay, 0,
+		_overlayFeatures[3] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), kResScrb1001_Overlay, 0,
 						ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 						ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY |
 						ZmbFeature::FLAG_08000000_REGION_TRACK,
@@ -139,12 +145,12 @@ void ZoombiniInteractiveTown::loadFeatures() {
 	}
 
 	// [*] SCRB 6000: Zodiac sub-feature (child of SCRB 1000)
-	loadSubFeature(_overlayFeatures[0], ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), kResScrb6000_Zodiac);
+	loadSubFeature(_overlayFeatures[0], ZmbResource(ZmbArchiveKind::kPage, 6000), kResScrb6000_Zodiac);
 
 	{ // [*] SCRB 8000 ~ 8043: Town building sub-features (44 of them, chained from SCRB 1002)
 		ZmbFeature *parent = _overlayFeatures[1];
 		for (uint16 i = 0; i < 44; i++) {
-			parent = loadSubFeature(parent, ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), kResScrb8000_SubFeatureBase + i);
+			parent = loadSubFeature(parent, ZmbResource(ZmbArchiveKind::kPage, 8000), kResScrb8000_SubFeatureBase + i);
 		}
 	}
 
@@ -201,7 +207,7 @@ void ZoombiniInteractiveTown::loadFeatures() {
 			// Load the inhabitant snoid at the designated position using its SCRB animation.
 			// Inhabitants use SCRB 4000-4007 (not SCRS); use slot index i as the unique snoid ID.
 			if (storedIdx >= 0) {
-				ZmbSnoid *snoid = loadSnoidFromScrb(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100),
+				ZmbSnoid *snoid = loadSnoidFromScrb(ZmbResource(ZmbArchiveKind::kPage, 4000),
 													i, kInhabitantScrbIds[posIdx],
 													kInhabitantPositions[posIdx],
 													ZmbFeature::FLAG_00000001_TYPE_SNOID);
@@ -252,10 +258,14 @@ void ZoombiniInteractiveTown::loadFeatures() {
 	// IDA 0x4581d9: SCRB 6000 memorial statue feature
 	// Originally created with TYPE_SNOID|LOOP_ANIM then bitmask overwritten to
 	// TYPE_TOWN_ENTITY|LOOP_ANIM, with onPreRenderShapeFunc = town_preRenderMemorialStatue
-	// TODO: Add preRenderMemorialStatue callback for town development level filtering
-	_memorialStatueFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), kResScrb6000_Zodiac, 6,
-		ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY | ZmbFeature::FLAG_00008000_LOOP_ANIM);
+	{
+		ZmbFeature::EventHooks hooks;
+		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveTown::memorialStatue_preRenderShape));
+		_memorialStatueFeature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 6000), kResScrb6000_Zodiac, 6,
+			ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY | ZmbFeature::FLAG_00008000_LOOP_ANIM,
+			hooks);
+	}
 
 	// Determine sound to play based on difficulty
 	ZMB_DIFFICULTY_ID difficultyId = ZMB_DIFFICULTY_NOTVISITED_00;
@@ -432,5 +442,56 @@ const uint16 ZoombiniInteractiveTown::kInhabitantScrbIds[16] = {
 	4000, 4001, 4002, 4003, 4004, 4005, 4006, 4007,
 	4000, 4001, 4002, 4003, 4004, 4005, 4006, 4007,
 };
+
+void ZoombiniInteractiveTown::memorialStatue_updateDials() {
+	// IDA: town_updateDateCachePeriodic (0x457C19)
+	// Debounce: only update every 1800 frames (~30 seconds at 60fps)
+	if (_currentFrameCounter <= _statueUpdateTimer + 1800)
+		return;
+
+	_statueUpdateTimer = _currentFrameCounter;
+
+	// IDA: getDate_410CFE returns hours in a1, minutes in a2
+	// unk_4A72CE = hours / 5, unk_4A72CF = minutes % 12
+	TimeDate td;
+	g_system->getTimeAndDate(td);
+	_statueHourDial = static_cast<uint8>(td.tm_hour) / 5;
+	_statueMinuteDial = static_cast<uint8>(td.tm_min) % 12;
+}
+
+void ZoombiniInteractiveTown::memorialStatue_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
+	// IDA: town_preRenderMemorialStatue (0x458597)
+	// Hides the memorial zodiac statue shapes, then selectively re-shows them
+	// when the town is scrolled to column 1 or 2.
+
+	// Zero out first hotspot shape (hide by default)
+	if (hotspots.size() > 0)
+		hotspots[0]._shapeIdx = ZmbHotspot::kShapeNone;
+
+	// IDA: Only show statue when townScrollCol is 1 or 2
+	uint16 scrollCol = _vm->_state->_f._townScrollCol;
+	if (scrollCol != 1 && scrollCol != 2)
+		return;
+
+	// Update zodiac dials from system clock (debounced)
+	memorialStatue_updateDials();
+
+	// IDA 0x4586A6: Set hotspot shapes and positions
+	// hotspot[0]: hour dial — shapeIdx = hourDial + 1
+	// hotspot[1]: minute dial — shapeIdx = minuteDial + 13
+	// Both positioned at y=218, x depends on scroll column
+	int16 xPos = (scrollCol == 1) ? 626 : 307;
+
+	if (hotspots.size() > 0) {
+		hotspots[0]._shapeIdx = _statueHourDial + 1;
+		hotspots[0]._x = xPos;
+		hotspots[0]._y = 218;
+	}
+	if (hotspots.size() > 1) {
+		hotspots[1]._shapeIdx = _statueMinuteDial + 13;
+		hotspots[1]._x = xPos;
+		hotspots[1]._y = 218;
+	}
+}
 
 } // End of namespace Mohawk

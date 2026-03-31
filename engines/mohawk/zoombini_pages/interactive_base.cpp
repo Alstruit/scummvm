@@ -269,10 +269,22 @@ ZmbEventHandleResult ZoombiniInteractive::onLButtonDown(const Common::Point &abs
 }
 
 void ZoombiniInteractive::onGoButtonActivated() {
-	close();
+	playDepartSfx();
+	_pendingGoDepart = true;
 }
 
 void ZoombiniInteractive::onSecondGoButtonActivated() {
+	playDepartSfx();
+	_pendingGoDepart = true;
+}
+
+void ZoombiniInteractive::executeDeparture() {
+	// Default departure: navigate to kXfer with the configured source page.
+	// Pages with custom departure logic (e.g. BC1/BC2 save pack state) override this.
+	if (_departXferSrcSiPage != ZMB_SI_MINUS1) {
+		_vm->_xferSrcSiPage = _departXferSrcSiPage;
+		_vm->setNextPage(ZoombiniPageType::kXfer);
+	}
 	close();
 }
 
@@ -543,6 +555,15 @@ static const uint16 kAmbientPoolMaze[10] = {922, 923, 935, 907, 908, 909, 900, 9
 
 void ZoombiniInteractive::onAnimFrame() {
 	runAmbientSoundDriver();
+
+	// Two-phase departure system: poll SFX completion.
+	// IDA: all puzzle funcOnHover check puzzle_pendingTransitionTarget at the top.
+	// When the departure SFX finishes, commit the transition via executeDeparture().
+	if (_pendingGoDepart && isDepartSfxDone()) {
+		_pendingGoDepart = false;
+		executeDeparture();
+	}
+
 	ZoombiniPage::onAnimFrame();
 }
 

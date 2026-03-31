@@ -463,14 +463,14 @@ Common::U32String ZoombiniText::pickNextZoombiniName() {
 Common::U32String ZoombiniText::getPageName(ZoombiniPageType pageType) const {
 	auto it = _pageKeyMap.find(pageType);
 	if (it == _pageKeyMap.end())
-		return Common::U32String("TODO", Common::kUtf8);
+		return Common::U32String("Unimplemented", Common::kUtf8);
 	return _strMap[it->_value];
 }
 
 Common::U32String ZoombiniText::getLocalizedString(uint32 textKey) const {
 	auto it = _strMap.find(textKey);
 	if (it == _strMap.end())
-		return Common::U32String("TODO", Common::kUtf8);
+		return Common::U32String("Unimplemented", Common::kUtf8);
 	return it->_value;
 }
 

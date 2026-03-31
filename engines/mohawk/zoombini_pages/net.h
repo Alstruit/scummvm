@@ -47,15 +47,67 @@ public:
 
 protected:
 	void onGoButtonActivated() override;
-	void onEveryFrame() override;
 
 private:
 	void loadZoombinisFromPack();
+	void registerColumnRunners();
+
+	// Attribute slot render callbacks
+	bool attrSlots_preRender(ZmbFeature *feature);
+	ZmbRenderResult attrSlots_render(ZmbFeature *feature);
 
 	static const Common::Point kSnoidPositions[16];
 
 	/** Route difficulty level (0-3). IDA: net_difficultyLevel */
 	int16 _difficultyLevel = 0;
+
+	// --- Puzzle state (IDA: puzzleNet_4361D4 globals) ---
+	
+	/** Total slots: 25 (diff<=1) or 125 (diff>1). IDA: net_totalSlotCount */
+	int16 _totalSlotCount = 25;
+	
+	/** Number of columns: 2 (diff<=1) or 3 (diff>1). IDA: net_columnCount */
+	int16 _columnCount = 2;
+	
+	/** Whether "Go" button should be enabled. IDA: net_advanceReady */
+	bool _bAdvanceReady = false;
+	
+	/** Random attr column offsets (0-4). IDA: net_randAttrColOffset0/1/2 */
+	int16 _randAttrColOffset[3] = {0, 0, 0};
+	
+	/** Previous attr column offsets. IDA: net_prevAttrColOffset0/1/2 */
+	int16 _prevAttrColOffset[3] = {-1, -1, -1};
+
+	// --- Feature runners ---
+	
+	/** Column SCRB runners (5 entries). IDA: net_columnScrbRunners */
+	ZmbFeature *_columnScrbFeatures[5] = {};
+	
+	/** Entry SCRB runner. IDA: net_entryScrbRunner */
+	ZmbFeature *_entryScrbFeature = nullptr;
+	
+	/** Label SCRB runner. IDA: net_labelScrbRunner */
+	ZmbFeature *_labelScrbFeature = nullptr;
+	
+	/** Attribute animation SCRB runner. IDA: net_attrAnimScrbRunner */
+	ZmbFeature *_attrAnimScrbFeature = nullptr;
+	
+	/** Feedback SCRB runner. IDA: net_feedbackScrbRunner */
+	ZmbFeature *_feedbackScrbFeature = nullptr;
+	
+	/** Attribute column SCRB runners (3 entries). IDA: net_attrCol0/1/2ScrbRunner */
+	ZmbFeature *_attrColScrbFeatures[3] = {};
+	
+	/** Exit SCRB runner. IDA: net_exitScrbRunner */
+	ZmbFeature *_exitScrbFeature = nullptr;
+
+	// --- Internal dirty flags for attr slot rendering ---
+	
+	/** Dirty flag for advance button rect. IDA: unk_4A28AC */
+	bool _advanceButtonDirty = false;
+	
+	/** Dirty flag for column label rect. IDA: unk_4A28AE */
+	bool _columnLabelDirty = false;
 
 	enum {
 		kResSound996_DepartSFX = 996

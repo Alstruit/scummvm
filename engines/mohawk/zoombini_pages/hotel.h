@@ -47,7 +47,6 @@ public:
 
 protected:
 	void onGoButtonActivated() override;
-	void onEveryFrame() override;
 
 private:
 	void loadZoombinisFromPack();

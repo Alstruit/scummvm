@@ -173,6 +173,27 @@ protected:
 	 * preRenderMemorialStatue callback.
 	 */
 	ZmbFeature *_memorialStatueFeature = nullptr;
+
+	/**
+	 * Pre-render shape callback for the memorial zodiac statue (SCRB 6000).
+	 * Filters visibility based on scroll column and sets dial shapes from system time.
+	 * IDA: town_preRenderMemorialStatue (0x458597)
+	 */
+	void memorialStatue_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
+
+	/**
+	 * Updates the zodiac statue dials from the system clock.
+	 * Called every 1800 frames (debounced).
+	 * IDA: town_updateDateCachePeriodic (0x457C19)
+	 */
+	void memorialStatue_updateDials();
+
+	/** Memorial statue hour dial position (0-4). IDA: unk_4A72CE → hours/5 */
+	uint8 _statueHourDial = 0;
+	/** Memorial statue minute dial position (0-11). IDA: unk_4A72CF → minutes%12 */
+	uint8 _statueMinuteDial = 0;
+	/** Frame counter of last dial update. IDA: town_statueUpdateState */
+	uint32 _statueUpdateTimer = 0;
 };
 
 } // End of namespace Mohawk

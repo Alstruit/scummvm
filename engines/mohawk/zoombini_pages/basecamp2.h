@@ -35,11 +35,11 @@ public:
 	void setBackgroundMusic() override;
 	void setBackgroundBitmap() override;
 	void loadFeatures() override;
-	void onEveryFrame() override;
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;
 
 protected:
+	void executeDeparture() override;
 	// [*] Virtual feature callbacks — Storage
 	bool storage_preRender(ZmbFeature *feature);
 	void storage_postRender(ZmbFeature *feature);

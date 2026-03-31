@@ -647,7 +647,7 @@ void ZoombiniInteractivePicker::updateCaveMarkHighlight() {
 	if (dropZone.contains(_caveMarkRegPoint)) {
 		if (!_caveMarkHighlighted) {
 			_caveMarkFeature->activateRender();
-			_caveMarkFeature->activateAnimate(getCurrentFrameCounter());
+			_caveMarkFeature->activateAnimate();
 			_caveMarkHighlighted = true;
 		}
 	} else {

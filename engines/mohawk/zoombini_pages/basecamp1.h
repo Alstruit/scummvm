@@ -35,7 +35,6 @@ public:
 	void setBackgroundMusic() override;
 	void setBackgroundBitmap() override;
 	void loadFeatures() override;
-	void onEveryFrame() override;
 
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;
@@ -111,6 +110,7 @@ protected:
 
 	void onGoButtonActivated() override;
 	void onSecondGoButtonActivated() override;
+	void executeDeparture() override;
 
 	/**
 	 * Find the nearest unoccupied pedestal slot to the given position.

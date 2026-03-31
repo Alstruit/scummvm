@@ -80,6 +80,11 @@ void ZoombiniInteractivePizza::loadFeatures() {
 	// Preload shape images
 	// IDA: shape_loadSubShapesFromArchive(&stru_4A381C, 0x1770u) — shapes at tBMP 6000
 	_vm->_gfx->preloadImage(6000);
+	_vm->_gfx->preloadImage(7000);
+	_vm->_gfx->preloadImage(8000);
+	_vm->_gfx->preloadImage(9000);
+	_vm->_gfx->preloadImage(10000);
+	_vm->_gfx->preloadImage(12000);
 
 	// Load feature groups
 	// IDA: scrb_useFeatureGroup(0, 0, 7000)
@@ -97,7 +102,7 @@ void ZoombiniInteractivePizza::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 36; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 6000), 8000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 8000), 8000 + i);
 		}
 	}
 
@@ -106,7 +111,7 @@ void ZoombiniInteractivePizza::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 45; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 6000), 12000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 12000), 12000 + i);
 		}
 	}
 
@@ -117,7 +122,7 @@ void ZoombiniInteractivePizza::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 35; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 6000), 9000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 9000), 9000 + i);
 		}
 	}
 
@@ -127,7 +132,7 @@ void ZoombiniInteractivePizza::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 39; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 6000), 10000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 10000), 10000 + i);
 		}
 	}
 
@@ -150,7 +155,7 @@ void ZoombiniInteractivePizza::loadFeatures() {
 	// IDA: answser display DRAW_ON_REG — SCRB 7063, interval=7
 	// IDA: scrb_drawOnRegRunnerIdxArr[0] = runner_registerAndAllocate(..., MEMORY[0x4A3824], 7, 7063, ..., 0x108A000)
 	_drawOnRegFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 6000), 7063, 7,
+		ZmbResource(ZmbArchiveKind::kPage, 7000), 7063, 7,
 		kAnswerDisplayPosition,
 		ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER);
@@ -159,7 +164,7 @@ void ZoombiniInteractivePizza::loadFeatures() {
 	// IDA: MEMORY[0x4B0CC0] = runner_registerAndAllocate(..., 6, 7000, ..., 0x188000)
 	// IDA: scrb_playFrameSounds(0, MEMORY[0x4B0CC0]); scrb_registerHotspotGroup(0, 0, 0, 0, ...)
 	_treeAnimFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 6000), 7000, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 7000), 7000, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 		ZmbFeature::FLAG_00100000_PLAY_ONCE);
 
@@ -171,7 +176,7 @@ void ZoombiniInteractivePizza::loadFeatures() {
 		uint16 scrbBase = kToppingScrbBase[_difficultyLevel];
 		for (uint16 i = 0; i < _toppingCount; i++) {
 			_toppingFeatures[i] = loadScrbFeature(
-				ZmbResource(ZmbArchiveKind::kPage, 6000), scrbBase + i * 2, 6,
+				ZmbResource(ZmbArchiveKind::kPage, 7000), scrbBase + i * 2, 6,
 				ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 				ZmbFeature::FLAG_00100000_PLAY_ONCE);
 		}
@@ -181,28 +186,28 @@ void ZoombiniInteractivePizza::loadFeatures() {
 	// IDA: if pizza_order1State → SCRB 9034 (diff >= 1)
 	if (_difficultyLevel >= 1) {
 		_order1Feature = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 6000), 9034, 6,
+			ZmbResource(ZmbArchiveKind::kPage, 9000), 9034, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 			ZmbFeature::FLAG_00100000_PLAY_ONCE);
 	}
 
 	// IDA: MEMORY[0x4B0CDE] = SCRB 8032 (always)
 	_orderBaseFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 6000), 8032, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 8000), 8032, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 		ZmbFeature::FLAG_00100000_PLAY_ONCE);
 
 	// IDA: if pizza_order2State → SCRB 10038 (diff >= 2)
 	if (_difficultyLevel >= 2) {
 		_order2Feature = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 6000), 10038, 6,
+			ZmbResource(ZmbArchiveKind::kPage, 10000), 10038, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 			ZmbFeature::FLAG_00100000_PLAY_ONCE);
 	}
 
 	// IDA: pizza_overlayBaseRunner — SCRB 8033, flags=0x4108000 (OVERLAY|PLAY_ONCE|LOOP_ANIM)
 	_overlayFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 6000), 8033, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 8000), 8033, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 		ZmbFeature::FLAG_04000000_OVERLAY);
 
@@ -236,23 +241,10 @@ void ZoombiniInteractivePizza::onGoButtonActivated() {
 	// IDA: scrb_enqueueSoundResource(0, 0) — stop background music
 	_vm->_sound->stopAllSoundQueues();
 
-	playDepartSfx();
-
+	_departXferSrcSiPage = ZMB_SI_PIZZA_04;
 	// IDA: zmbMoveAnimation_45479D(45, 250, 690)
 	startDepartWalkAnimation(Common::Point(690, 250));
-	_pendingGoDepart = true;
-}
-
-void ZoombiniInteractivePizza::onEveryFrame() {
-	if (!_pendingGoDepart)
-		return;
-
-	if (isDepartSfxDone()) {
-		_pendingGoDepart = false;
-		_vm->_xferSrcSiPage = ZMB_SI_PIZZA_04;
-		_vm->setNextPage(ZoombiniPageType::kXfer);
-		close();
-	}
+	ZoombiniInteractive::onGoButtonActivated();
 }
 
 void ZoombiniInteractivePizza::loadZoombinisFromPack() {

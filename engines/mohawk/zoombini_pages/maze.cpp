@@ -22,6 +22,7 @@
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_pages/maze.h"
+#include "mohawk/zoombini_resource.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 
@@ -34,6 +35,26 @@ const Common::Point ZoombiniInteractiveMaze::kSnoidPositions[20] = {
 	Common::Point(155, 402), Common::Point(121, 417), Common::Point(226, 354), Common::Point(189, 349),
 	Common::Point(156, 354), Common::Point(131, 375), Common::Point( 85, 394), Common::Point(164, 311),
 	Common::Point(125, 324), Common::Point( 79, 352), Common::Point( 29, 318), Common::Point( 15, 285),
+};
+
+// IDA: word_4A1CB4 - has shadow flag for each creature slot (14 entries)
+// 0 = no shadow, 1 = has shadow
+const int16 ZoombiniInteractiveMaze::kCreatureHasShadow[14] = {
+	0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1
+};
+
+// IDA: word_4A1CD0 - creature type ID for each slot (14 entries)
+// 0 = base type (goes in word_4AF3F6[0])
+// 1 = type 1 bank (goes in word_4AF3F6[1])
+// 2 = type 2 bank (goes in word_4AF3F6[2])
+const int16 ZoombiniInteractiveMaze::kCreatureTypeId[14] = {
+	0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 2
+};
+
+// IDA: word_4A1CEC - SCRB resource ID for each creature slot (14 entries)
+// These are the base SCRB IDs; some creatures use SCRB_ID+1 for shadows
+const int16 ZoombiniInteractiveMaze::kCreatureScrbId[14] = {
+	9000, 9000, 9000, 9001, 9001, 9001, 9001, 9001, 9001, 9000, 9000, 9000, 9003, 9003
 };
 
 ZoombiniInteractiveMaze::ZoombiniInteractiveMaze(MohawkEngine_Zoombini *vm) : ZoombiniInteractive(vm, ZoombiniPageType::kMaze) {
@@ -76,6 +97,11 @@ void ZoombiniInteractiveMaze::loadFeatures() {
 	// Preload shape images at tBMP 5100 (0x13EC)
 	// IDA: shape_loadSubShapesFromArchive(&stru_4AF294, 0x13ECu)
 	_vm->_gfx->preloadImage(5100);
+	_vm->_gfx->preloadImage(7000);
+	_vm->_gfx->preloadImage(8000);
+	_vm->_gfx->preloadImage(9000);
+	_vm->_gfx->preloadImage(10000);
+	_vm->_gfx->preloadImage(12000);
 
 	// Load main features: 28 SCRBs at 7000
 	// IDA: scrb_loadMainFeatureSet(28, 7000)
@@ -88,7 +114,7 @@ void ZoombiniInteractiveMaze::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 14; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 5100), 8000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 8000), 8000 + i);
 		}
 	}
 
@@ -97,7 +123,7 @@ void ZoombiniInteractiveMaze::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 8; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 5100), 9000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 9000), 9000 + i);
 		}
 	}
 
@@ -106,7 +132,7 @@ void ZoombiniInteractiveMaze::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 44; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 5100), 10000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 10000), 10000 + i);
 		}
 	}
 
@@ -115,7 +141,7 @@ void ZoombiniInteractiveMaze::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 2; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 5100), 12000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 12000), 12000 + i);
 		}
 	}
 
@@ -148,7 +174,7 @@ void ZoombiniInteractiveMaze::loadFeatures() {
 	// IDA 0x42ea74: word_4AF2FA - overlay anim feature
 	// SCRB 12001, interval=7, OVERLAY|LOOP_ANIM|DEFER_ANIM|PLAY_ONCE
 	_overlayAnimFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 5100), 12001, 7,
+		ZmbResource(ZmbArchiveKind::kPage, 12000), 12001, 7,
 		ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE);
 
@@ -156,17 +182,19 @@ void ZoombiniInteractiveMaze::loadFeatures() {
 	// IDA: zmb_assignPedestalPositions(1, v31, 20)
 	loadZoombinisFromPack();
 
-	// TODO: Data-driven creature features based on maze_regsDataPtr (tREG config by difficulty).
-	// IDA 0x42eae0-0x42ee1b: Creature loops (type 1&3) → SCRB 9005+type
-	//   Grid position features → SCRB 7000+idx, OVERLAY|PLAY_ONCE|LOOP_ANIM
-	//   DRAW_ON_REG features → SCRB 7014+idx, with positions from word_4A1BD4[]
-	//   Obstacle features (cases 6-8) → complex switch with word_4A1CEC[], asc_4A1D0A[]
-	// IDA 0x42ee22-0x42ee82: word_4AF314 linking (SCRB 8005 or 8010)
+	// IDA: maze_loadRegsConfigByLevel — select REGS resource for creature/obstacle config
+	loadRegsConfigByLevel();
+	
+	// Load and parse REGS data, then create creature features
+	// IDA: maze_regsDataPtr = maze_loadRegsConfigByLevel(unk_4AF302)
+	// IDA: Multiple loops creating creature runners based on REGS data
+	loadAndParseRegsData();
+	createCreatureFeatures();
 
 	// IDA 0x42eea8: word_4AF3F6[0] - creature base animation
 	// SCRB 9005, interval=7, DEFER_ANIM|PLAY_ONCE|LOOP_ANIM
 	_creatureBaseFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 5100), 9005, 7,
+		ZmbResource(ZmbArchiveKind::kPage, 9000), 9005, 7,
 		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 		ZmbFeature::FLAG_00008000_LOOP_ANIM);
 
@@ -174,34 +202,28 @@ void ZoombiniInteractiveMaze::loadFeatures() {
 	// SCRB 8011, interval=0, noOp callbacks, OVERLAY|LOOP_ANIM
 	for (int i = 0; i < 11; i++) {
 		_noopFeatures[i] = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 5100), 8011, 0,
+			ZmbResource(ZmbArchiveKind::kPage, 8000), 8011, 0,
 			ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00008000_LOOP_ANIM);
 	}
 
-	// TODO: Data-driven creature/obstacle features (second pass)
-	// IDA 0x42ef3e-0x42efa9: Creature loop 2 (type 2) → SCRB 9005+type, DEFER_ANIM|PLAY_ONCE
-	// IDA 0x42efab-0x42f2d0: Obstacle loop 2 (cases 3-5, 12-13, default) → complex switch
-	// IDA 0x42f2de-0x42f312: unk_4AF316 linking (SCRB 8001)
-	// IDA 0x42f321-0x42f355: word_4AF318 linking (SCRB 8008)
-
 	// IDA 0x42f378: final SCRB 8011, OVERLAY|LOOP_ANIM
 	loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 5100), 8011, 0,
+		ZmbResource(ZmbArchiveKind::kPage, 8000), 8011, 0,
 		ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00008000_LOOP_ANIM);
 
 	// IDA 0x42f399: SCRB 8004, OVERLAY
 	_finalOverlayA = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 5100), 8004, 0,
+		ZmbResource(ZmbArchiveKind::kPage, 8000), 8004, 0,
 		ZmbFeature::FLAG_04000000_OVERLAY);
 
 	// IDA 0x42f3ba: SCRB 8000, OVERLAY
 	_finalOverlayB = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 5100), 8000, 0,
+		ZmbResource(ZmbArchiveKind::kPage, 8000), 8000, 0,
 		ZmbFeature::FLAG_04000000_OVERLAY);
 
 	// IDA 0x42f3bf-0x42f3f4: NoOp runner 11, SCRB 8011, OVERLAY|LOOP_ANIM
 	_noopFeatures[11] = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 5100), 8011, 0,
+		ZmbResource(ZmbArchiveKind::kPage, 8000), 8011, 0,
 		ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00008000_LOOP_ANIM);
 
 	// Layout and stagger walk-in
@@ -227,9 +249,8 @@ void ZoombiniInteractiveMaze::loadFeatures() {
 void ZoombiniInteractiveMaze::onGoButtonActivated() {
 	// IDA: maze_onClickHandler case 2 -> puzzle_pendingTransitionTarget = 6 (Town)
 	// Route 4: Maze -> Town (via Xfer)
-	_vm->_xferSrcSiPage = ZMB_SI_MAZE_16;
-	_vm->setNextPage(ZoombiniPageType::kXfer);
-	close();
+	_departXferSrcSiPage = ZMB_SI_MAZE_16;
+	ZoombiniInteractive::onGoButtonActivated();
 }
 
 void ZoombiniInteractiveMaze::loadZoombinisFromPack() {
@@ -253,6 +274,200 @@ void ZoombiniInteractiveMaze::loadZoombinisFromPack() {
 			snoid->setupIdleHotspots();
 		}
 		posIdx++;
+	}
+}
+
+void ZoombiniInteractiveMaze::loadRegsConfigByLevel() {
+	// IDA: maze_loadRegsConfigByLevel (0x4319C9)
+	// Selects REGS resource based on difficulty level.
+	// REGS resources configure creature/obstacle placement on the maze grid.
+	//
+	// Level 0: REGS 16600 + variant (0-1)
+	// Level 1: REGS 16602 + variant (0-1)
+	// Level 2: REGS 16604 + variant (0-1)
+	// Level 3: REGS 16606 + variant (0-1)
+	// Default: REGS 16609
+	
+	// For now, use base REGS without random variant
+	switch (_difficultyLevel) {
+	case 0:
+		_regsResourceId = 16600;
+		_levelVariantIdx = 0;
+		break;
+	case 1:
+		_regsResourceId = 16602;
+		_levelVariantIdx = 0;
+		break;
+	case 2:
+		_regsResourceId = 16604;
+		_levelVariantIdx = 0;
+		break;
+	case 3:
+		_regsResourceId = 16606;
+		_levelVariantIdx = 0;
+		break;
+	default:
+		_regsResourceId = 16609;
+		_levelVariantIdx = 0;
+		break;
+	}
+}
+
+void ZoombiniInteractiveMaze::loadAndParseRegsData() {
+	// IDA: regs_loadAndByteSwap (0x452374) + maze parsing in puzzleMaze2_42E47C
+	// Load REGS resource and parse creature slot assignments.
+	//
+	// REGS format (big-endian int16 array):
+	// - regs[0]: Total creature count (stored in word_4AFF80)
+	// - regs[1-9]: Creature slot index for each maze column (0 = no creature)
+	// - regs[10+]: Per-creature configuration records (10 words each)
+	
+	Common::SeekableReadStream *stream = _vm->getResource(ID_REGS, ZmbResource(ZmbArchiveKind::kPage, _regsResourceId));
+	if (!stream) {
+		warning("ZoombiniInteractiveMaze: Failed to load REGS %d", _regsResourceId);
+		return;
+	}
+	
+	// REGS data is big-endian int16 array
+	uint32 dataSize = stream->size();
+	uint32 wordCount = dataSize / 2;
+	
+	_regsData.clear();
+	_regsData.resize(wordCount);
+	
+	for (uint32 i = 0; i < wordCount; i++) {
+		_regsData[i] = stream->readSint16BE();
+	}
+	delete stream;
+	
+	// Parse header
+	if (wordCount < 10) {
+		warning("ZoombiniInteractiveMaze: REGS %d too small (%u words)", _regsResourceId, wordCount);
+		return;
+	}
+	
+	// regs[0] = total creature count (IDA: word_4AFF80)
+	_totalCreatureCount = _regsData[0];
+	
+	// regs[1-9] = creature slot for each maze column
+	// Clear slots first
+	for (int i = 0; i < 10; i++) {
+		_creatureSlots[i] = 0;
+	}
+	
+	// Copy slots 1-9 (column 0 is unused)
+	for (int col = 1; col <= 9; col++) {
+		_creatureSlots[col] = _regsData[col];
+	}
+	
+	debugC(1, kZmbDebugScript, "Maze REGS %d: count=%d, slots=[%d %d %d %d %d %d %d %d %d]",
+		_regsResourceId, _totalCreatureCount,
+		_creatureSlots[1], _creatureSlots[2], _creatureSlots[3],
+		_creatureSlots[4], _creatureSlots[5], _creatureSlots[6],
+		_creatureSlots[7], _creatureSlots[8], _creatureSlots[9]);
+}
+
+void ZoombiniInteractiveMaze::createCreatureFeatures() {
+	// IDA: Multiple creature creation loops in puzzleMaze2_42E47C
+	// Creates creature features based on parsed REGS data.
+	//
+	// Loop 1 (0x42eae0-0x42eb49): Creates type 1 creatures (word_4A1CD0[] == 1)
+	// Loop 2 (0x42eb5d-0x42eba7): Creates grid cell creatures (word_4AF362[])
+	// Loop 3 (0x42eba9-0x42ec1a): Creates draw-on-region runners
+	// Loop 4 (0x42ec1c-0x42ee1b): Creates obstacle features for slots 7-9
+	// Loop 5 (0x42efab-0x42f2d0): Creates remaining obstacle features
+	
+	// Phase 1: Create type 1 creature runners (IDA: word_4AF3F6[1..2])
+	// Loop through columns 1-9, check if creature type == 1
+	for (int col = 1; col <= 9; col++) {
+		int16 slot = _creatureSlots[col];
+		if (slot == 0)
+			continue;
+		
+		int16 slotIdx = slot - 1;  // 0-based index
+		if (slotIdx < 0 || slotIdx >= 14)
+			continue;
+		
+		int16 typeId = kCreatureTypeId[slotIdx];
+		
+		// Type 1 creatures go into _creatureSlotFeatures[1]
+		if (typeId == 1 && _creatureSlotFeatures[1] == nullptr) {
+			// IDA: word_4AF3F6[word_4A1CD0[v4]] = runner_registerAndAllocate(...)
+			// SCRB = typeId + 9005 = 9006
+			_creatureSlotFeatures[1] = loadScrbFeature(
+				ZmbResource(ZmbArchiveKind::kPage, 9000), 9006, 7,
+				ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+				ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
+		}
+	}
+	
+	// Phase 2: Create grid cell creature features (IDA: word_4AF362[])
+	for (int col = 1; col <= 9; col++) {
+		int16 slot = _creatureSlots[col];
+		if (slot == 0)
+			continue;
+		
+		int16 slotIdx = slot - 1;
+		if (slotIdx < 0 || slotIdx >= 14)
+			continue;
+		
+		// IDA: word_4AF362[v6-1] = runner_registerAndAllocate(..., v6-1+7000, ...)
+		// SCRB = slotIdx + 7000
+		_gridCreatureFeatures[slotIdx] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 7000), 7000 + slotIdx, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY |
+			ZmbFeature::FLAG_00100000_PLAY_ONCE);
+	}
+	
+	// Phase 3: Create obstacle features for matching slots
+	for (int col = 1; col <= 9; col++) {
+		int16 slot = _creatureSlots[col];
+		if (slot == 0)
+			continue;
+		
+		int16 slotIdx = slot - 1;
+		if (slotIdx < 0 || slotIdx >= 14)
+			continue;
+		
+		int16 scrbId = kCreatureScrbId[slotIdx];
+		bool hasShadow = (kCreatureHasShadow[slotIdx] != 0);
+		
+		// IDA: word_4AF3FC[v16] = runner_registerAndAllocate(..., word_4A1CEC[v16], ...)
+		_creatureObstacleFeatures[slotIdx] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 9000), scrbId, 7,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY |
+			ZmbFeature::FLAG_00080000_DEFER_ANIM);
+		
+		// Create shadow feature if needed
+		// IDA: word_4AF418[v9] = runner_registerAndAllocate(..., word_4A1CEC[v9]+1, ...)
+		if (hasShadow) {
+			_creatureShadowFeatures[slotIdx] = loadScrbFeature(
+				ZmbResource(ZmbArchiveKind::kPage, 9000), scrbId + 1, 7,
+				ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY |
+				ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00800000_POS_DELTA);
+		}
+	}
+	
+	// Phase 4: Create type 2 creature runners (IDA: word_4AF3F6[2])
+	for (int col = 1; col <= 9; col++) {
+		int16 slot = _creatureSlots[col];
+		if (slot == 0)
+			continue;
+		
+		int16 slotIdx = slot - 1;
+		if (slotIdx < 0 || slotIdx >= 14)
+			continue;
+		
+		int16 typeId = kCreatureTypeId[slotIdx];
+		
+		// Type 2 creatures go into _creatureSlotFeatures[2]
+		if (typeId == 2 && _creatureSlotFeatures[2] == nullptr) {
+			// SCRB = typeId + 9005 = 9007
+			_creatureSlotFeatures[2] = loadScrbFeature(
+				ZmbResource(ZmbArchiveKind::kPage, 9000), 9007, 7,
+				ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+				ZmbFeature::FLAG_00008000_LOOP_ANIM);
+		}
 	}
 }
 

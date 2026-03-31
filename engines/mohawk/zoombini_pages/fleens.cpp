@@ -69,6 +69,14 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 	// IDA: fleens_initAndSetupPuzzle (0x41C3DC)
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
 
+	// Initialize puzzle state
+	_bRaftReady = false;
+	_bInteractionAllowed = false;
+	_mismatchCount = 0;
+	_raftButtonDirty = false;
+	_attrSlot1Dirty = false;
+	_attrSlot2Dirty = false;
+
 	// Load terrain barrier bitmap (tBMP 500)
 	// IDA: rmap_loadTerrainArchive(0x1F4u)
 	loadTerrainBitmap(500);
@@ -79,6 +87,9 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 
 	// IDA: shape_loadSubShapesFromArchive(&stru_4AB20C, 0x190u) — shapes at tBMP 400
 	_vm->_gfx->preloadImage(400);
+	_vm->_gfx->preloadImage(1000);
+	_vm->_gfx->preloadImage(1100);
+	_vm->_gfx->preloadImage(1200);
 
 	// Load feature groups
 	// IDA: scrb_useFeatureGroup(0, 0, 1000)
@@ -99,7 +110,7 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 	{
 		ZmbFeature *parent = mainFeature;
 		parent = loadSubFeature(parent,
-			ZmbResource(ZmbArchiveKind::kPage, 4000), 1100);
+			ZmbResource(ZmbArchiveKind::kPage, 1100), 1100);
 	}
 
 	// IDA: scrb_loadSubFeatureSet(0, 7, 0x4B0) — 7 subs at 1200
@@ -107,7 +118,7 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 7; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 4000), 1200 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 1200), 1200 + i);
 		}
 	}
 
@@ -132,22 +143,23 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 	// IDA: word_4AB1A4 = runner_registerAndAllocate(..., 6, 0x3E8, standard, standard, 0x108000)
 	// Animation runner (SCRB 1000), LOOP_ANIM | PLAY_ONCE
 	_animFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 4000), 1000, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 1000), 1000, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE);
 
 	// IDA: scrb_drawOnRegRunnerIdxArr[0] = runner_registerAndAllocate(..., &raftPos, 7, 0x44C, standard, standard, 0x108A000)
 	// Raft DRAW_ON_REG runner (SCRB 1100) at raft position
 	_raftFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 4000), 1100, 7,
+		ZmbResource(ZmbArchiveKind::kPage, 1100), 1100, 7,
 		kRaftPosition,
 		ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER);
 
 	// IDA: runner_registerAndAllocate(0, 0, 0, 0, 0, caves_invalidateEntranceRectsC, caves_renderAllAttrSlots, 0x1000)
 	// Virtual feature for attribute slot rendering (TOPMOST)
-	// TODO: Implement caves_invalidateEntranceRectsC / caves_renderAllAttrSlots callbacks
 	{
 		ZmbFeature::EventHooks attrSlotHooks;
+		attrSlotHooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveFleens::attrSlots_preRender));
+		attrSlotHooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractiveFleens::attrSlots_render));
 		loadVirtualFeature(100, 0, ZmbFeature::FLAG_00001000_TOPMOST, attrSlotHooks);
 	}
 
@@ -156,7 +168,9 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 	loadZoombinisFromPack();
 
 	// IDA: ferry_buildZmbRunners_41D9F4 — builds zoombini trait runners
-	// TODO: Implement Zoombini trait runner setup (gameplay code)
+	// Sets up trait transformation data for puzzle matching logic.
+	// The visual trait runners (fleens_spawnRunner) are not fully implemented yet.
+	buildZmbTraitSetup();
 
 	// IDA: 7× word_4AA848[scrbId] = runner_registerAndAllocate(..., 6, scrbId, standard, standard, flags)
 	// Overlay runners (SCRB 1200-1206)
@@ -167,7 +181,7 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 			flags |= ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE;
 		}
 		_overlayFeatures[i] = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 4000), 1200 + i, 6, flags);
+			ZmbResource(ZmbArchiveKind::kPage, 1200), 1200 + i, 6, flags);
 	}
 
 	// Layout and stagger walk-in (200ms walk delay)
@@ -193,9 +207,8 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 void ZoombiniInteractiveFleens::onGoButtonActivated() {
 	// IDA: fleens_onClickHandler case 2 -> puzzle_pendingTransitionTarget = 14
 	// Route 3: Fleens -> Hotel (via Xfer)
-	_vm->_xferSrcSiPage = ZMB_SI_FLEENS_10;
-	_vm->setNextPage(ZoombiniPageType::kXfer);
-	close();
+	_departXferSrcSiPage = ZMB_SI_FLEENS_10;
+	ZoombiniInteractive::onGoButtonActivated();
 }
 
 void ZoombiniInteractiveFleens::loadZoombinisFromPack() {
@@ -220,6 +233,111 @@ void ZoombiniInteractiveFleens::loadZoombinisFromPack() {
 		}
 		posIdx++;
 	}
+}
+
+void ZoombiniInteractiveFleens::buildZmbTraitSetup() {
+	// IDA: ferry_buildZmbRunners_41D9F4
+	// Selects "mismatch" zoombinis and generates mod-5 trait transformation offsets.
+	// The transformed traits determine which Zoombinis will be captured by Fleens.
+
+	ZmbStateFile &f = _vm->_state->_f;
+	
+	// Count occupied zoombinis (IDA: countOccupiedInActivePack_452875)
+	int16 zmbCount = 0;
+	for (int16 i = 0; i < f._zmbPackActive._wPackZmbCount; i++) {
+		if (f._zmbPackActive._entries[i]._bIsOccupied)
+			zmbCount++;
+	}
+	
+	if (zmbCount == 0)
+		return;
+	
+	// Reset mismatch indices
+	_mismatchIdx[0] = 0;
+	_mismatchIdx[1] = 0;
+	_mismatchIdx[2] = 0;
+	
+	// Pick first mismatch zoombini randomly (1-based index)
+	_mismatchIdx[0] = _vm->_rnd->getRandomNumber(1, zmbCount);
+	
+	// Set mismatch count based on zoombini count
+	if (zmbCount == 1) {
+		_mismatchCount = 2;
+	} else if (zmbCount == 2) {
+		_mismatchCount = 1;
+	}
+	
+	// Pick second mismatch zoombini (different from first)
+	if (zmbCount >= 2) {
+		do {
+			_mismatchIdx[1] = _vm->_rnd->getRandomNumber(1, zmbCount);
+		} while (_mismatchIdx[1] == _mismatchIdx[0]);
+	}
+	
+	// Pick third mismatch zoombini (different from first two)
+	if (zmbCount >= 3) {
+		do {
+			_mismatchIdx[2] = _vm->_rnd->getRandomNumber(1, zmbCount);
+		} while (_mismatchIdx[2] == _mismatchIdx[0] || _mismatchIdx[2] == _mismatchIdx[1]);
+	}
+	
+	// Generate trait transformation offsets (1-5) for first 4 slots
+	// These determine how traits are transformed for puzzle matching
+	// IDA: if (!wTransitionsDisable[1] || fleens_routeLevel == 1 || fleens_routeLevel == 3)
+	if (_traitOffsets[0] == 0 || _difficultyLevel == 1 || _difficultyLevel == 3) {
+		for (int i = 0; i < 4; i++) {
+			_traitOffsets[i] = static_cast<uint8>(_vm->_rnd->getRandomNumber(1, 5));
+		}
+	}
+	
+	// For difficulty <= 1, clear the slot order array
+	if (_difficultyLevel <= 1) {
+		for (int i = 0; i < 4; i++) {
+			_traitSlotOrder[i] = 0;
+		}
+	} else if (_traitSlotOrder[0] == 0 || _difficultyLevel == 3) {
+		// For higher difficulty, generate slot order using non-repeat random
+		// IDA: e2GetPoolValue_nonRepeatRandom with 4 positions
+		_traitSlotOrder[0] = static_cast<uint8>(_vm->_rnd->getRandomNumber(2, 4));
+		// Simplified: just assign 1-4 for slot ordering
+		uint32 usedMask = 1 << (_traitSlotOrder[0] - 1);
+		for (int i = 1; i < 4; i++) {
+			uint8 slot;
+			do {
+				slot = static_cast<uint8>(_vm->_rnd->getRandomNumber(1, 4));
+			} while (usedMask & (1 << (slot - 1)));
+			_traitSlotOrder[i] = slot;
+			usedMask |= (1 << (slot - 1));
+		}
+	}
+}
+
+bool ZoombiniInteractiveFleens::attrSlots_preRender(ZmbFeature *feature) {
+	// IDA: fleens_renderAttrSlotSCRB_4366CB
+	// Toggle dirty flags when raft state changes
+	if (_bRaftReady && _bInteractionAllowed) {
+		if (!_raftButtonDirty) {
+			_raftButtonDirty = true;
+			_attrSlot1Dirty = true;
+			_attrSlot2Dirty = true;
+		}
+	} else {
+		if (_raftButtonDirty) {
+			_raftButtonDirty = false;
+			_attrSlot1Dirty = false;
+			_attrSlot2Dirty = false;
+		}
+	}
+	return true; // Continue to render
+}
+
+ZmbRenderResult ZoombiniInteractiveFleens::attrSlots_render(ZmbFeature *feature) {
+	// IDA: fleens_renderAttrSlotSCRB_4366CB
+	// Just clear dirty flags for now - actual sprite rendering handled by SCRB features
+	_raftButtonDirty = false;
+	_attrSlot1Dirty = false;
+	_attrSlot2Dirty = false;
+	return ZmbRenderResult::kRendered;
 }
 
 } // End of namespace Mohawk

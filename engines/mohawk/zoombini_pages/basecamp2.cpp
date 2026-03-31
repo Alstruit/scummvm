@@ -649,21 +649,14 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonUp(const Common::P
 	return ZmbEventHandleResult::kConsumed;
 }
 
-void ZoombiniInteractiveBasecampTwo::onEveryFrame() {
-	if (!_pendingGoDepart)
-		return;
+void ZoombiniInteractiveBasecampTwo::executeDeparture() {
+	// IDA: bc2_cleanupOnExit (0x4134D9)
+	saveSnoidsToPack();
+	saveBc2PackState(true);
 
-	if (isDepartSfxDone()) {
-		// All walkers done — save pack state and transition via xfer to tunnels.
-		// IDA: bc2_cleanupOnExit (0x4134D9)
-		saveSnoidsToPack();
-		saveBc2PackState(true);
-
-		_pendingGoDepart = false;
-		_vm->_xferSrcSiPage = ZMB_SI_BASECAMP2_13;
-		_vm->setNextPage(ZoombiniPageType::kXfer);
-		close();
-	}
+	_vm->_xferSrcSiPage = ZMB_SI_BASECAMP2_13;
+	_vm->setNextPage(ZoombiniPageType::kXfer);
+	close();
 }
 
 void ZoombiniInteractiveBasecampTwo::renderButtons(bool blit, int group, bool pressed, int singleButton) {

@@ -86,6 +86,40 @@ bool ZoombiniGameState::deleteGame(int slot) {
 	return g_system->getSavefileManager()->removeSavefile(filename);
 }
 
+bool ZoombiniGameState::deleteGameAndShiftRoster(int slot) {
+	if (slot < 0 || slot >= _r._saveCount1)
+		return false;
+
+	// Delete the save file
+	deleteGame(slot);
+
+	// Rename subsequent save files (shift filenames down by 1)
+	for (int i = slot; i < _r._saveCount1 - 1; i++) {
+		Common::String oldName = buildSaveFilename(i + 1);
+		Common::String newName = buildSaveFilename(i);
+		_saveFileMan->renameSavefile(oldName, newName);
+	}
+
+	// Shift roster entries down
+	for (int i = slot; i < _r._saveCount1 - 1; i++) {
+		_r._entries[i] = _r._entries[i + 1];
+	}
+	memset(_r._entries[_r._saveCount1 - 1]._saveName, 0, sizeof(ZmbRosterEntry::_saveName));
+	memset(_r._entries[_r._saveCount1 - 1]._fileName, 0, sizeof(ZmbRosterEntry::_fileName));
+	_r._saveCount1--;
+	if (_r._saveCount2 > _r._saveCount1)
+		_r._saveCount2 = _r._saveCount1;
+
+	// Update current save slot if affected by the shift
+	if (_currentSaveSlot == slot) {
+		_currentSaveSlot = kUnsavedNewGame;
+	} else if (_currentSaveSlot > slot) {
+		_currentSaveSlot--;
+	}
+
+	return saveRoster();
+}
+
 bool ZoombiniGameState::loadState(int slot) {
 	Common::String filename = buildSaveFilename(slot);
 	Common::InSaveFile *loadFile = _saveFileMan->openForLoading(filename);
@@ -176,9 +210,21 @@ void ZoombiniGameState::buildNameGeneratedTable() {
 }
 
 bool ZoombiniGameState::saveState(int slot) {
-	// TODO
-	debug("Saving game state not implemented yet");
-	return false;
+	Common::String filename = buildSaveFilename(slot);
+	Common::OutSaveFile *saveFile = _saveFileMan->openForSaving(filename);
+	if (!saveFile) {
+		return false;
+	}
+
+	debugC(kZmbDebugSaveLoad, "Saving game to '%s'", filename.c_str());
+
+	Common::Serializer s(nullptr, saveFile);
+	syncGameState(s);
+	saveFile->finalize();
+	delete saveFile;
+
+	_currentSaveSlot = slot;
+	return true;
 }
 
 void ZoombiniGameState::loadRoster() {
@@ -205,7 +251,20 @@ void ZoombiniGameState::loadRoster() {
 }
 
 bool ZoombiniGameState::saveRoster() {
-	return false;
+	Common::String filename = getRosterFilename();
+	Common::OutSaveFile *rosterFile = _saveFileMan->openForSaving(filename);
+	if (!rosterFile) {
+		return false;
+	}
+
+	debugC(kZmbDebugSaveLoad, "Saving roster to '%s'", filename.c_str());
+
+	Common::Serializer r(nullptr, rosterFile);
+	_r.sync(r);
+	rosterFile->finalize();
+	delete rosterFile;
+
+	return true;
 }
 
 int16 ZmbTrait::snoidId() const {

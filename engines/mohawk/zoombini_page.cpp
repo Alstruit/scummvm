@@ -180,15 +180,9 @@ ZmbEventHandleResult ZoombiniPage::onKeyUp(const Common::KeyState &kbd, bool kbd
 }
 
 ZmbEventHandleResult ZoombiniPage::onQuit() {
-	ZmbEventHandleResult result = ZmbEventHandleResult::kPassthrough;
-	Common::Array<ZmbFeature *> eventList;
-	buildSortedEventList(eventList);
-	for (ZmbFeature *feature : eventList) {
-		result = feature->onQuit(this);
-		if (result == ZmbEventHandleResult::kConsumed)
-			break;
-	}
-	return result;
+	// No per-feature quit dispatch — the original engine has no per-feature
+	// quit callback. Page subclasses can override this for custom cleanup.
+	return ZmbEventHandleResult::kPassthrough;
 }
 
 ZmbFeature *ZoombiniPage::loadScrbFeature(ZmbResource imgResource, uint16 scrbId, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks) {
@@ -225,7 +219,7 @@ ZmbFeature *ZoombiniPage::registerFeature(ZoombiniPage *page, Common::StableMap<
 		feature->setVirtualHotspots(*virtualHotspots);
 	}
 
-	feature->initValues(page->_currentFrameCounter);
+	feature->initValues();
 
 	// Always register hooks for normal per-frame rendering
 	feature->setEventHooks(eventHooks);
@@ -255,7 +249,7 @@ ZmbFeature *ZoombiniPage::loadSubFeature(ZmbFeature *parentFeature, ZmbResource 
 
 	Common::SeekableReadStream *scrbStream = _vm->getResource(ID_SCRB, ZmbResource(imgResource._archiveKind, scrbId));
 	subFeature->parseStream(scrbStream);
-	subFeature->initValues(_currentFrameCounter);
+	subFeature->initValues();
 	subFeature->setEventHooks(ZmbFeature::EventHooks());
 
 	parentFeature->setSubFeature(subFeature);
@@ -265,7 +259,7 @@ ZmbFeature *ZoombiniPage::loadSubFeature(ZmbFeature *parentFeature, ZmbResource 
 
 ZmbFeature *ZoombiniPage::createMainFeatureHead(uint32 flags) {
 	ZmbFeature *head = new ZmbFeature(_vm, 0, 0, flags, ZmbResource(ZmbArchiveKind::kPage, 0));
-	head->initValues(_currentFrameCounter);
+	head->initValues();
 	_mainFeatureHeads.push_back(head);
 	return head;
 }
@@ -276,6 +270,26 @@ void ZoombiniPage::unloadScrbFeature(uint16 scrbId) {
 
 void ZoombiniPage::unloadVirtualFeature(uint16 virtFeatureId) {
 	deregisterFeature(_virtualFeatureMap, virtFeatureId);
+}
+
+void ZoombiniPage::loadScrbOntoFeature(ZmbFeature *feature, uint16 newScrbId, bool scheduleRender) {
+	// IDA: scrb_loadOnRunner (0x460384) — page-level convenience wrapper.
+	// Resolves the SCRB resource and delegates to ZmbFeature::loadScrbData().
+	if (!feature)
+		return;
+
+	// IDA: if scriptId == 0, reload the runner's current wResId
+	uint16 scrbId = newScrbId;
+	if (scrbId == 0)
+		scrbId = feature->getId();
+
+	Common::SeekableReadStream *stream = _vm->getResource(ID_SCRB, ZmbResource(feature->getResource()._archiveKind, scrbId));
+	if (!stream) {
+		warning("loadScrbOntoFeature: cannot load SCRB %u", scrbId);
+		return;
+	}
+
+	feature->loadScrbData(stream, scheduleRender);
 }
 
 void ZoombiniPage::attachSubFeature(ZmbFeature *subFeature) {
@@ -652,9 +666,12 @@ void ZoombiniPage::checkCloseFeatures() {
  * BEFORE Z-sorting in gfx_renderFrame (0x45F070).
  *
  * Order of operations matches the binary:
- *   1. Frame selection (advance animation)
- *   2. Sound dispatch (if frame changed)
- *   3. End-of-cycle handling (CHAIN_SCRIPT, PLAY_ONCE)
+ *   1. Frame selection (advance animation via incremental ++)
+ *   2. End-of-cycle handling (CHAIN_SCRIPT, PLAY_ONCE)
+ *      — end-of-cycle and frame advance are MUTUALLY EXCLUSIVE in the
+ *      original.  Here, defaultSelectRenderFrame increments past _frameIdxMax
+ *      to signal end-of-cycle, and the handler resets _lastFrameIdx to 0.
+ *   3. Sound dispatch (using the final _lastFrameIdx after any reset)
  *   4. Per-frame flag checks (SKIP_RENDER, SKIP_ONCE)
  */
 void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
@@ -666,13 +683,90 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 
 	// 1. Frame selection — advance animation state
 	// IDA 0x461D60–0x461D6F: frame advancement (wGroupFrameIdx++)
+	// defaultSelectRenderFrame increments _lastFrameIdx.  When _lastFrameIdx
+	// goes past _frameIdxMax, isEndOfAnimationCycle() returns true below.
+	// It also sets _frameTimingReady (IDA: wBoolDoRender[0] local at 0x461B0C).
 	int32 frameIdx = feature->onSelectRenderFrame(this);
 	// Store result — custom selectRenderFrame hooks may not call setLastFrameIdx themselves.
 	feature->setLastFrameIdx(frameIdx);
 
+	// IDA 0x4619F5–0x461B12: timing gate.
+	// In the original, wBoolDoRender[0] (local) is computed from the
+	// dNextRenderFrame timing check, optionally modulated by the paired
+	// hotspot slot system (wHotspotIdxToDraw / hotspot_renderPhaseArr).
+	// Without paired slots, it reduces to dNextRenderFrame <= currentTime.
+	// When timing is not ready, the original returns here — no end-of-cycle,
+	// no dirty rect merge, no sound dispatch, no flag checks.
+	// IDA 0x461BB7–0x461BF3: dirty rect merge (chGetDrawnRect = 1).
+	// The original merges the previous frame's clickRect / wRectRgnB / RgnR
+	// into the per-feature dirty region for partial screen refresh.  ScummVM
+	// does full Z-sorted redraws, so the dirty rect merge is a no-op.
+	if (!feature->isFrameTimingReady())
+		return;
+
 	if (feature->isAnimateActivated()) {
-		// 2. Sound dispatch — fire sounds/events for newly reached frames
+		// 2. End-of-cycle handling (IDA 0x461C05–0x461D06)
+		// In the original, end-of-cycle fires when wGroupFrameIdx >= wScriptFrameCount.
+		// With the incremental model, _lastFrameIdx was advanced past _frameIdxMax by
+		// defaultSelectRenderFrame.  The last valid frame was displayed on the previous tick.
+		bool didChainScript = false;
+
+		if (feature->isEndOfAnimationCycle()) {
+
+			// IDA 0x461C13: CHAIN_SCRIPT — swap SCRB data on the same feature
+			if (feature->hasFlag(ZmbFeature::FLAG_00040000_CHAIN_SCRIPT)) {
+				int16 chainedId = feature->getChainedScrbId();
+				if (chainedId != 0) {
+					feature->setChainedScrbId(0);
+					if (chainedId >= 0) {
+						loadScrbOntoFeature(feature, static_cast<uint16>(chainedId));
+					} else {
+						// IDA 0x461C47: negative = negate and set RANDOM_FRAME
+						loadScrbOntoFeature(feature, static_cast<uint16>(-chainedId));
+						feature->addFlag(ZmbFeature::FLAG_02000000_RANDOM_FRAME);
+					}
+					// IDA 0x461C6C: DRAW_ON_REG → disable render after chain
+					if (feature->hasFlag(ZmbFeature::FLAG_00002000_DRAW_ON_REG))
+						feature->deactivateRender();
+				}
+				// IDA 0x461C7F: if frame count < 2 → disable render
+				if (feature->getMaxFrameIdx() < 1)
+					feature->deactivateRender();
+				// IDA 0x461C8A–0x461C93: wGroupFrameIdx=0, dwHotspotIdx=1
+				feature->setLastFrameIdx(0);
+				feature->setLastSoundedFrameIdx(-1);
+				didChainScript = true;
+			}
+
+			// IDA 0x461CA3: PLAY_ONCE — stop rendering at end of cycle
+			if (feature->hasFlag(ZmbFeature::FLAG_00100000_PLAY_ONCE)) {
+				// IDA 0x461CDD: pFeatureRunner->core188.wBoolDoRender = 0
+				feature->deactivateRender();
+				// IDA 0x461CE9–0x461D06: callback fires and RETURNS EARLY
+				// only if CHAIN_SCRIPT did NOT run (v5=1).
+				// One-shot: onHotspotShapeOrFrameFunc cleared to 0 after firing.
+				if (!didChainScript) {
+					if (!feature->hasAnimEndCallbackFired()) {
+						onFeatureAnimEvent(feature, -1);
+						feature->markAnimEndCallbackFired();
+					}
+					return;
+				}
+			} else if (!didChainScript) {
+				// IDA 0x461D0B: neither CHAIN_SCRIPT nor PLAY_ONCE → loop from beginning
+				feature->setLastFrameIdx(0);
+				feature->setLastSoundedFrameIdx(-1);
+			}
+
+			// Sub-feature detach (ScummVM-only: for sub-features running independently)
+			if (feature->isSubFeatureRunning())
+				feature->scheduleDetach();
+		}
+
+		// 3. Sound dispatch — fire sounds/events for newly reached frames
 		// IDA 0x461EB6–0x461EDA: sound enqueue + event code dispatch
+		// Re-read _lastFrameIdx: end-of-cycle may have reset it to 0.
+		frameIdx = feature->getLastFrameIdx();
 		if (feature->isAnimationCycleRunning()) {
 			if (feature->getLastSoundedFrameIdx() < frameIdx) {
 				feature->setLastSoundedFrameIdx(frameIdx);
@@ -682,9 +776,11 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 						_vm->_sound->playZmbSound(soundGroup->getAssignedSoundRes(), Audio::Mixer::kSFXSoundType);
 
 					// Process SCRS event codes (0xFFxx frame terminators where xx != 0).
-					// IDA: event codes 200-217 trigger zoombini voice SFX;
-					// other codes are dispatched to a page-level callback.
-					if (soundGroup->hasAssignedEventCode()) {
+					// IDA: event code dispatch is gated by onHotspotShapeOrFrameFunc != null.
+					// After the one-shot -1 fires and clears the pointer, subsequent event
+					// codes stop dispatching.  _animEndCallbackFired models the null-pointer state.
+					// Voice SFX (codes 200-239) use a separate sound table and are NOT gated.
+					if (soundGroup->hasAssignedEventCode() && !feature->hasAnimEndCallbackFired()) {
 						uint8 eventCode = soundGroup->getAssignedEventCode();
 						uint8 adjustedCode = eventCode - 1;
 						if (adjustedCode >= 200 && adjustedCode <= 239 && feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
@@ -713,16 +809,13 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 			}
 		}
 
-		// 3. End-of-cycle handling
-		// IDA 0x461C05–0x461D06: CHAIN_SCRIPT, PLAY_ONCE end-of-cycle
-		if (feature->isEndOfAnimationCycle()) {
-			if (feature->hasFlag(ZmbFeature::FLAG_00100000_PLAY_ONCE)) {
-				// IDA 0x461CDD: pFeatureRunner->core188.wBoolDoRender = 0
-				feature->deactivateRender();
-				onFeatureAnimEvent(feature, -1);
-			}
-			if (feature->isSubFeatureRunning())
-				feature->scheduleDetach();
+		// 3b. Deferred -1 callback for CHAIN_SCRIPT (IDA 0x461F51–0x461F67)
+		// In the original, the -1 callback fires at the END of the hotspot frame walk
+		// (LABEL_70), AFTER processing frame 0 event codes of the chained SCRB.
+		// One-shot: onHotspotShapeOrFrameFunc is cleared to 0 after firing.
+		if (didChainScript && !feature->hasAnimEndCallbackFired()) {
+			onFeatureAnimEvent(feature, -1);
+			feature->markAnimEndCallbackFired();
 		}
 	}
 
@@ -997,7 +1090,7 @@ ZmbSnoid *ZoombiniPage::loadSnoid(ZmbResource imgResource, uint16 scrsId, const 
 	snoid->parseScrsStream(scrsStream);
 	scrsStream = nullptr;
 
-	snoid->initValues(_currentFrameCounter);
+	snoid->initValues();
 	snoid->setEventHooks(eventHooks);
 
 	return snoid;
@@ -1023,7 +1116,7 @@ ZmbSnoid *ZoombiniPage::loadSnoidFromPack(uint16 snoidId, const Common::Point &p
 
 	// No SCRS resource parsing — traits/name are set by the caller from pack data
 
-	snoid->initValues(_currentFrameCounter);
+	snoid->initValues();
 	snoid->setEventHooks(eventHooks);
 
 	return snoid;
@@ -1048,7 +1141,7 @@ ZmbSnoid *ZoombiniPage::loadSnoidFromScrb(ZmbResource imgResource, uint16 snoidI
 	snoid->parseStream(scrbStream);
 	scrbStream = nullptr;
 
-	snoid->initValues(_currentFrameCounter);
+	snoid->initValues();
 	snoid->setEventHooks(eventHooks);
 
 	return snoid;

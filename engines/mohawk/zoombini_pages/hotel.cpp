@@ -22,6 +22,7 @@
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_pages/hotel.h"
+#include "mohawk/zoombini_random.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 
@@ -68,6 +69,11 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 	// Preload shape images — main shapes at tBMP 8000
 	// IDA: shape_loadSubShapesFromArchive(&stru_4AB7CC, 0x1F40u)
 	_vm->_gfx->preloadImage(8000);
+	_vm->_gfx->preloadImage(7000);
+	_vm->_gfx->preloadImage(7500);
+	_vm->_gfx->preloadImage(10000);
+	_vm->_gfx->preloadImage(11500);
+	_vm->_gfx->preloadImage(11800);
 
 	// Level-dependent extra shapes
 	if (_difficultyLevel == 2) {
@@ -102,7 +108,7 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 11; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 8000), 7000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 7000), 7000 + i);
 		}
 	}
 
@@ -113,7 +119,7 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < subCount; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 8000), subStart + i);
+				ZmbResource(ZmbArchiveKind::kPage, 10000), subStart + i);
 		}
 	}
 
@@ -122,7 +128,7 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 6; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 8000), 11500 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 11500), 11500 + i);
 		}
 	}
 
@@ -130,7 +136,7 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 	{
 		ZmbFeature *parent = mainFeature;
 		parent = loadSubFeature(parent,
-			ZmbResource(ZmbArchiveKind::kPage, 8000), 11800);
+			ZmbResource(ZmbArchiveKind::kPage, 11800), 11800);
 	}
 
 	// IDA: scrb_loadSubFeatureSet(2, 10, 0x1D4C) — 10 subs at 7500 (not at diff 3)
@@ -138,7 +144,7 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 10; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 8000), 7500 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 7500), 7500 + i);
 		}
 	}
 
@@ -182,6 +188,10 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE);
 	}
 
+	// IDA 0x41f294: getDifficultyIdFromPuzzleFlag increments the page flag.
+	// Must be called before room anim type selection (which reads the updated flag).
+	_vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagHotel);
+
 	// IDA: word_4AB742 = runner_registerAndAllocate(..., 6, roomAnimType+7000, standard, standard, 0x8108000)
 	// Room animation runner — SCRB depends on difficulty and puzzle flags
 	{
@@ -190,14 +200,16 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 		case 1: roomAnimType = 4; break;
 		case 2: roomAnimType = 5; break;
 		case 3: roomAnimType = 6; break;
-		default:
-			// diff=0: type 0 on first play, random on subsequent plays
-			// TODO: Implement random selection from puzzle flag for subsequent plays
-			roomAnimType = 0;
+		default: {
+			// IDA 0x41f2c3: diff=0, type 0 on first play, random on subsequent plays
+			uint16 hotelPF = _vm->_state->_f._pageFlagHotel;
+			if ((hotelPF & ZMB_PAGE_MASK_0FFF) > 1)
+				roomAnimType = _vm->_rnd->getRandomNumber(1, (hotelPF & ZMB_PAGE_MASK_0FFF) - 1);
 			break;
 		}
+		}
 		_roomAnimFeature = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 8000), 7000 + roomAnimType, 6,
+			ZmbResource(ZmbArchiveKind::kPage, 7000), 7000 + roomAnimType, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 			ZmbFeature::FLAG_08000000_REGION_TRACK);
 	}
@@ -205,7 +217,7 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 	// IDA: word_4AB752 = runner_registerAndAllocate(..., 6, 0x2E18, standard, standard, 0x100000)
 	// Room SCRB runner (SCRB 11800)
 	_roomScrbFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 8000), 11800, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 11800), 11800, 6,
 		ZmbFeature::FLAG_00100000_PLAY_ONCE);
 
 	// Load Zoombinis from active pack at 20 pedestal positions
@@ -222,9 +234,6 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 	loadGoMapButtonsFeature(8000);
 	loadHelpButtonFeature();
 
-	// Get difficulty
-	_vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagHotel);
-
 	// IDA: sound_activeHandle = 20081 — hotel narrator voice (F1 key replay)
 	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, 20081);
 }
@@ -235,20 +244,8 @@ void ZoombiniInteractiveHotel::onGoButtonActivated() {
 	// IDA: scrb_enqueueSoundResource(0, 0) — stop background music
 	_vm->_sound->stopAllSoundQueues();
 
-	playDepartSfx();
-	_pendingGoDepart = true;
-}
-
-void ZoombiniInteractiveHotel::onEveryFrame() {
-	if (!_pendingGoDepart)
-		return;
-
-	if (isDepartSfxDone()) {
-		_pendingGoDepart = false;
-		_vm->_xferSrcSiPage = ZMB_SI_HOTEL_11;
-		_vm->setNextPage(ZoombiniPageType::kXfer);
-		close();
-	}
+	_departXferSrcSiPage = ZMB_SI_HOTEL_11;
+	ZoombiniInteractive::onGoButtonActivated();
 }
 
 void ZoombiniInteractiveHotel::loadZoombinisFromPack() {

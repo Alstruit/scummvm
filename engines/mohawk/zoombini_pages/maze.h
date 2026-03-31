@@ -51,11 +51,60 @@ protected:
 
 private:
 	void loadZoombinisFromPack();
+	
+	/**
+	 * Load REGS configuration for the current difficulty level.
+	 * IDA: maze_loadRegsConfigByLevel (0x4319C9)
+	 * Selects REGS resource 16600-16609 based on level and variant.
+	 */
+	void loadRegsConfigByLevel();
+	
+	/**
+	 * Load and parse REGS data for creature/obstacle configuration.
+	 * Parses the REGS resource and populates _creatureSlots[].
+	 */
+	void loadAndParseRegsData();
+	
+	/**
+	 * Create creature feature runners based on parsed REGS data.
+	 * IDA: Multiple loops in puzzleMaze2_42E47C creating creature runners.
+	 */
+	void createCreatureFeatures();
 
 	static const Common::Point kSnoidPositions[20];
+	
+	// --- Creature slot lookup tables (IDA: word_4A1CB4, word_4A1CD0, word_4A1CEC) ---
+	
+	/** Has shadow flag for each slot (0-13). IDA: word_4A1CB4 */
+	static const int16 kCreatureHasShadow[14];
+	
+	/** Creature type ID for each slot (0-13): 0=base, 1=type1, 2=type2. IDA: word_4A1CD0 */
+	static const int16 kCreatureTypeId[14];
+	
+	/** SCRB resource ID for each slot (0-13). IDA: word_4A1CEC */
+	static const int16 kCreatureScrbId[14];
 
 	/** Route difficulty level (0-3). IDA: maze_difficultyLevel */
 	int16 _difficultyLevel = 0;
+	
+	// --- REGS config state (IDA: maze_loadRegsConfigByLevel globals) ---
+	
+	/** REGS resource ID for current level (16600-16609). IDA: computed from maze_levelVariantIdx* */
+	int16 _regsResourceId = 16600;
+	
+	/** Level variant index for randomization. IDA: word_4A1ACC */
+	int16 _levelVariantIdx = 0;
+	
+	// --- Parsed REGS data (IDA: maze_regsDataPtr contents) ---
+	
+	/** Total creature count from REGS[0]. IDA: word_4AFF80 */
+	int16 _totalCreatureCount = 0;
+	
+	/** Creature slot index for each maze column (1-9). 0 = no creature. */
+	int16 _creatureSlots[10] = {};
+	
+	/** Parsed REGS data buffer. */
+	Common::Array<int16> _regsData;
 
 	// --- Feature runners from IDA puzzleMaze2_42E47C ---
 
@@ -64,6 +113,30 @@ private:
 
 	/** IDA: word_4AF3F6[0]. SCRB 9005, DEFER_ANIM|PLAY_ONCE|LOOP_ANIM. */
 	ZmbFeature *_creatureBaseFeature = nullptr;
+	
+	/**
+	 * Creature feature runners per slot (0-2). IDA: word_4AF3F6[1..2].
+	 * Created based on creature type from _creatureSlots[].
+	 */
+	ZmbFeature *_creatureSlotFeatures[3] = {};
+	
+	/**
+	 * Grid cell creature features (0-13). IDA: word_4AF362[].
+	 * Each grid column can have one creature feature.
+	 */
+	ZmbFeature *_gridCreatureFeatures[14] = {};
+	
+	/**
+	 * Creature obstacle features (0-13). IDA: word_4AF3FC[].
+	 * Secondary features for creatures with special behaviors.
+	 */
+	ZmbFeature *_creatureObstacleFeatures[14] = {};
+	
+	/**
+	 * Shadow features for creatures (0-13). IDA: word_4AF418[].
+	 * Created when kCreatureHasShadow[slot] is true.
+	 */
+	ZmbFeature *_creatureShadowFeatures[14] = {};
 
 	/**
 	 * IDA: word_4AF45C[12]. NoOp layer placeholders (SCRB 8011) for render Z-ordering.

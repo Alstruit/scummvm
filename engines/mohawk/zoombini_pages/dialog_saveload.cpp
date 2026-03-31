@@ -288,9 +288,13 @@ ZmbEventHandleResult ZoombiniDialogSaveLoad::dialogFrame_onKeyDown(ZmbFeature *f
 		// - Plus, add support for Left/Right keys (ScummVM implementation only)
 		switch (kbd.keycode) {
 		case Common::KEYCODE_DELETE:
-			// TODO: Ask for confirmation before deleting
-			// TODO: Delete savegame
-			warning("TODO: Delete savegame at slot %u", _saveEntrySelectedIdx);
+			if (_vm->_state->_r._saveCount1 > 0) {
+				_vm->_state->deleteGameAndShiftRoster(_saveEntrySelectedIdx);
+				if (_saveEntrySelectedIdx >= static_cast<int32>(_vm->_state->_r._saveCount1) && _vm->_state->_r._saveCount1 > 0) {
+					_saveEntrySelectedIdx = _vm->_state->_r._saveCount1 - 1;
+				}
+				result = ZmbEventHandleResult::kConsumed;
+			}
 			break;
 		case Common::KEYCODE_LEFT:
 			_saveEntrySelectedIdx = MAX<int32>(0, _saveEntrySelectedIdx - 1);

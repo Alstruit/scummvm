@@ -177,12 +177,9 @@ void ZoombiniInteractiveBasecampOne::loadFeatures() {
 	{ // [*] SCRB 1104: Bonfire (randomly animates; clicking triggers Pod animation)
 		ZmbFeature::EventHooks hooks;
 		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveBasecampOne::easterEggBonfire_onLButtonDown));
-		ZmbFeature *featureBonfire = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), kResScrb1104_Bonfire, 6,
-													 ZmbFeature::FLAG_00040000_CHAIN_SCRIPT | ZmbFeature::FLAG_02000000_RANDOM_FRAME,
-													 hooks);
-
-		// [*] SCRB 1105: Easter Egg Pod (sub-feature owned by Bonfire)
-		loadSubFeature(featureBonfire, ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), kResScrb1105_EasterEggPod);
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), kResScrb1104_Bonfire, 6,
+						ZmbFeature::FLAG_00040000_CHAIN_SCRIPT | ZmbFeature::FLAG_02000000_RANDOM_FRAME,
+						hooks);
 	}
 
 	// [*] SCRB 1100 ~ 1103: Bottom shapes
@@ -367,24 +364,17 @@ void ZoombiniInteractiveBasecampOne::onSecondGoButtonActivated() {
 	_pendingGoDepart = true;
 }
 
-void ZoombiniInteractiveBasecampOne::onEveryFrame() {
-	if (!_pendingGoDepart)
-		return;
+void ZoombiniInteractiveBasecampOne::executeDeparture() {
+	// IDA: bc1_saveActivePackAndReadBC2 is called when pendingTransitionTarget fires.
+	saveSnoidsToPack();
+	saveBc1PackState(true);
 
-	if (isDepartSfxDone()) {
-		// All walkers done — save pack state and transition via xfer.
-		// IDA: bc1_saveActivePackAndReadBC2 is called when pendingTransitionTarget fires.
-		saveSnoidsToPack();
-		saveBc1PackState(true);
-
-		_pendingGoDepart = false;
-		if (_departRouteDirection == 1)
-			_vm->_xferSrcSiPage = ZMB_SI_BC1_NORTH_05;
-		else
-			_vm->_xferSrcSiPage = ZMB_SI_BC1_SOUTH_06;
-		_vm->setNextPage(ZoombiniPageType::kXfer);
-		close();
-	}
+	if (_departRouteDirection == 1)
+		_vm->_xferSrcSiPage = ZMB_SI_BC1_NORTH_05;
+	else
+		_vm->_xferSrcSiPage = ZMB_SI_BC1_SOUTH_06;
+	_vm->setNextPage(ZoombiniPageType::kXfer);
+	close();
 }
 
 ZmbRenderResult ZoombiniInteractiveBasecampOne::storage_render(ZmbFeature *feature) {
@@ -621,7 +611,7 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampOne::genericEasterEgg_onLButtonD
 		return ZmbEventHandleResult::kConsumed;
 
 	feature->activateRender();
-	feature->activateAnimate(_currentFrameCounter);
+	feature->activateAnimate();
 	return ZmbEventHandleResult::kConsumed;
 }
 
@@ -821,7 +811,9 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampOne::easterEggBonfire_onLButtonD
 	if (!feature->findDrawRecordAtPoint(absPos))
 		return ZmbEventHandleResult::kPassthrough;
 
-	feature->runSubFeature(this);
+	// IDA: sets wOtherScriptId on the bonfire runner; CHAIN_SCRIPT in
+	// preRenderFeature will swap SCRB data at end-of-animation-cycle.
+	feature->setChainedScrbId(kResScrb1105_EasterEggPod);
 	return ZmbEventHandleResult::kConsumed;
 }
 

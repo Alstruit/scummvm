@@ -1020,8 +1020,8 @@ void ZoombiniTransitionXfer::activateEnvScrb(uint16 scrbId) {
 	if (it == _scrbFeatureMap.end())
 		return;
 	ZmbFeature *feature = it->second;
-	feature->initValues(getCurrentFrameCounter());
-	feature->activateAnimate(getCurrentFrameCounter());
+	feature->initValues();
+	feature->activateAnimate();
 	feature->activateRender();
 }
 

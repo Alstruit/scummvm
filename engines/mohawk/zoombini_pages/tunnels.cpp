@@ -80,6 +80,14 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 	// Preload shape images at tBMP 400 (0x190)
 	// IDA: shape_loadSubShapesFromArchive(&stru_4A750C, 0x190u)
 	_vm->_gfx->preloadImage(400);
+	_vm->_gfx->preloadImage(4000);
+	_vm->_gfx->preloadImage(4200);
+	_vm->_gfx->preloadImage(4400);
+	_vm->_gfx->preloadImage(4600);
+	_vm->_gfx->preloadImage(5000);
+	_vm->_gfx->preloadImage(6000);
+	_vm->_gfx->preloadImage(7000);
+	_vm->_gfx->preloadImage(9000);
 
 	// Feature groups
 	// IDA: scrb_useFeatureGroup(0, 0, 5000) — main tunnel animations
@@ -102,7 +110,7 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 12; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 400), 6000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 6000), 6000 + i);
 		}
 	}
 
@@ -111,7 +119,7 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 5; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 400), 7000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 7000), 7000 + i);
 		}
 	}
 
@@ -120,7 +128,7 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 7; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 400), 9000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 9000), 9000 + i);
 		}
 	}
 
@@ -129,7 +137,7 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 39; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 400), 4000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 4000), 4000 + i);
 		}
 	}
 
@@ -138,7 +146,7 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 27; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 400), 4200 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 4200), 4200 + i);
 		}
 	}
 
@@ -147,7 +155,7 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 24; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 400), 4400 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 4400), 4400 + i);
 		}
 	}
 
@@ -156,7 +164,7 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 18; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 400), 4600 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 4600), 4600 + i);
 		}
 	}
 
@@ -180,14 +188,14 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 	// IDA: word_4B7AE0 = runner_registerAndAllocate(..., 0, 9000, standard, standard, 0x8000)
 	// Feedback animation runner (SCRB 9000), interval=0, flags=LOOP_ANIM
 	_feedbackFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 400), 9000, 0,
+		ZmbResource(ZmbArchiveKind::kPage, 9000), 9000, 0,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM);
 
 	// IDA: 4× scrb_drawOnRegRunnerIdxArr[i] = runner_registerAndAllocate(..., &pos[i], 6, i+5000, standard, standard, 0x108A000)
 	// 4 tunnel entrance DRAW_ON_REG runners at predefined positions
 	for (int16 i = 0; i < 4; i++) {
 		_tunnelEntryFeatures[i] = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 400), 5000 + i, 6,
+			ZmbResource(ZmbArchiveKind::kPage, 5000), 5000 + i, 6,
 			kTunnelEntryPositions[i],
 			ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER);
@@ -196,7 +204,7 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 	// IDA: word_4B7AE6 = runner_registerAndAllocate(..., 0, 6, 7001, standard, standard, 0xC180000)
 	// Path effect runner (SCRB 7001)
 	_pathEffectFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 400), 7001, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 7000), 7001, 6,
 		ZmbFeature::FLAG_08000000_REGION_TRACK | ZmbFeature::FLAG_04000000_OVERLAY |
 		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_00080000_DEFER_ANIM);
 
@@ -205,7 +213,7 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 	for (int16 i = 0; i < 4; i++) {
 		int16 doorIdx = kDoorIndices[i];
 		_doorAnimFeatures[doorIdx] = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 400), 6000 + doorIdx, 6,
+			ZmbResource(ZmbArchiveKind::kPage, 6000), 6000 + doorIdx, 6,
 			ZmbFeature::FLAG_08000000_REGION_TRACK | ZmbFeature::FLAG_04000000_OVERLAY |
 			ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_00080000_DEFER_ANIM);
 	}
@@ -214,14 +222,14 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 	// Anonymous visual feedback runners (SCRB 9001-9006), flags=0
 	for (uint16 i = 0; i < 6; i++) {
 		loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 400), 9001 + i, 6,
+			ZmbResource(ZmbArchiveKind::kPage, 9000), 9001 + i, 6,
 			ZmbFeature::FLAG_00000000_TYPE_SHAPES);
 	}
 
 	// IDA: word_4B7A16 = runner_registerAndAllocate(..., 0, 6, 7000, standard, standard, 0xD181000)
 	// Main path runner (SCRB 7000) — topmost overlay
 	_mainPathFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 400), 7000, 6,
+		ZmbResource(ZmbArchiveKind::kPage, 7000), 7000, 6,
 		ZmbFeature::FLAG_08000000_REGION_TRACK | ZmbFeature::FLAG_04000000_OVERLAY |
 		ZmbFeature::FLAG_01000000_DEFER_RENDER | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00001000_TOPMOST);
@@ -258,21 +266,9 @@ void ZoombiniInteractiveTunnels::onGoButtonActivated() {
 	// IDA: tunnels_onClickHandler case 2
 	// Play departure SFX, start walk-off animation, then fade out when SFX finishes.
 	// IDA: zmbMoveAnimation_45479D(45, 30, 670) — walk to (670, 30)
-	playDepartSfx();
+	_departXferSrcSiPage = ZMB_SI_TUNNELS_03;
 	startDepartWalkAnimation(Common::Point(670, 30));
-	_pendingGoDepart = true;
-}
-
-void ZoombiniInteractiveTunnels::onEveryFrame() {
-	if (!_pendingGoDepart)
-		return;
-
-	if (isDepartSfxDone()) {
-		_pendingGoDepart = false;
-		_vm->_xferSrcSiPage = ZMB_SI_TUNNELS_03;
-		_vm->setNextPage(ZoombiniPageType::kXfer);
-		close();
-	}
+	ZoombiniInteractive::onGoButtonActivated();
 }
 
 void ZoombiniInteractiveTunnels::loadZoombinisFromPack() {

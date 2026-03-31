@@ -173,21 +173,43 @@ protected:
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 
 	/**
-	 * Called when the Go button is activated. Default implementation calls close().
-	 * Override in derived classes for page-specific Go button behavior.
+	 * Called when the Go button is activated.
+	 * Default: plays departure SFX (SND 996) and sets _pendingGoDepart = true.
+	 * Base class onAnimFrame() polls isDepartSfxDone() and calls executeDeparture().
+	 *
+	 * Override: set _departXferSrcSiPage and any page-specific pre-departure work
+	 * (stop BGM, start walk animation), then call ZoombiniInteractive::onGoButtonActivated().
 	 */
 	virtual void onGoButtonActivated();
 
 	/**
-	 * Called when the secondary Go button is activated. Default implementation calls close().
+	 * Called when the secondary Go button is activated.
+	 * Default: plays departure SFX and sets _pendingGoDepart = true (same as Go button).
 	 */
 	virtual void onSecondGoButtonActivated();
 
-	// [*] Departure walk-off animation infrastructure
-	// IDA: zmbMoveAnimation_45479D — shared by Bridge, BC1, BC2, Tunnels, Pizza, Net.
+	// [*] Two-phase departure system
+	// IDA: puzzle_pendingTransitionTarget → puzzle_nextPuzzleId
+	// funcOnHover (called every frame) polls puzzle_pendingTransitionTarget and commits
+	// the transition after SFX 996 finishes. Centralized here in onAnimFrame().
+
+	/** Xfer source page for the standard departure. Set before calling base onGoButtonActivated(). */
+	ZMB_SI_PAGE _departXferSrcSiPage = ZMB_SI_MINUS1;
 
 	/** True while a go-button departure is pending (SFX playing / walk animating). */
 	bool _pendingGoDepart = false;
+
+	/**
+	 * Execute the page departure transition.
+	 * Called by base class onAnimFrame() when departure SFX finishes.
+	 * Default: sets _vm->_xferSrcSiPage from _departXferSrcSiPage,
+	 * navigates to kXfer, and closes the page.
+	 * Override for custom departure logic (e.g. save pack state).
+	 */
+	virtual void executeDeparture();
+
+	// [*] Departure walk-off animation infrastructure
+	// IDA: zmbMoveAnimation_45479D — shared by Bridge, BC1, BC2, Tunnels, Pizza, Net.
 
 	/**
 	 * Start the shared departure walk-off animation.

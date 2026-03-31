@@ -111,10 +111,16 @@ public:
 
 	/**
 	 * Called when a SCRB/SCRS feature fires a non-voice event code during animation.
-	 * IDA: step callback / hotspotShapeOrFrameFunc dispatch.
-	 * @param feature The feature that fired the event.
+	 * IDA: onHotspotShapeOrFrameFunc dispatch (runner offset 0x10).
+	 *
+	 * For SCRS event codes (non-negative), dispatched every frame that carries one.
+	 * For -1 (end-of-animation-cycle), dispatched at most once per activateAnimate()
+	 * cycle — one-shot semantics matching the original where the function pointer
+	 * is cleared to 0 after the first -1 fire (0x461F67 / 0x461D03).
+	 *
+	 * @param feature   The feature that fired the event.
 	 * @param eventCode The adjusted event code (IDA convention: raw - 1).
-	 *                  -1 signals end-of-animation (PLAY_ONCE completion).
+	 *                  -1 signals end-of-animation (PLAY_ONCE / CHAIN_SCRIPT completion).
 	 */
 	virtual void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {}
 
@@ -144,6 +150,20 @@ public:
 	ZmbFeature *createMainFeatureHead(uint32 flags);
 	void unloadScrbFeature(uint16 scrbId);
 	void unloadVirtualFeature(uint16 virtFeatureId);
+	/**
+	 * Swap the SCRB data on an already-registered feature.
+	 * IDA: scrb_loadOnRunner (0x460384) — loads/reloads SCRB resource data
+	 * onto an existing feature runner without destroying or recreating it.
+	 *
+	 * Preserves the feature's identity (map key), flags, event hooks, and
+	 * position reference. Resets animation state (frame index, sound index,
+	 * render timers) and re-runs initValues().
+	 *
+	 * @param feature          The target feature (must already be registered).
+	 * @param newScrbId        SCRB resource ID to load. 0 = reload the feature's current SCRB.
+	 * @param scheduleRender   If true, activates rendering after swap (IDA: wBoolScheduleRender=1).
+	 */
+	void loadScrbOntoFeature(ZmbFeature *feature, uint16 newScrbId, bool scheduleRender = true);
 	/**
 	 * Register a sub-feature (already owned by a parent feature) into the page's active scrb feature map
 	 * so that it is rendered independently. The page does NOT take ownership; the parent feature retains it.

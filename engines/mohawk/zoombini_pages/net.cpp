@@ -22,6 +22,7 @@
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_pages/net.h"
+#include "mohawk/zoombini_random.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 
@@ -62,9 +63,30 @@ void ZoombiniInteractiveNet::loadFeatures() {
 	// IDA: puzzleNet_4361D4 (0x4361d4)
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
 
+	// Initialize puzzle state
+	// IDA: net_totalSlotCount = 25; if (diff > 1) net_totalSlotCount = 125;
+	_totalSlotCount = (_difficultyLevel > 1) ? 125 : 25;
+	_columnCount = (_difficultyLevel > 1) ? 3 : 2;
+	_bAdvanceReady = false;
+	_advanceButtonDirty = false;
+	_columnLabelDirty = false;
+	
+	// Random attribute column offsets (0-4)
+	// IDA: net_randAttrColOffset0 = nextRand(4); etc.
+	_randAttrColOffset[0] = _vm->_rnd->getRandomNumber(0, 4);
+	_randAttrColOffset[1] = _vm->_rnd->getRandomNumber(0, 4);
+	_randAttrColOffset[2] = _vm->_rnd->getRandomNumber(0, 4);
+	_prevAttrColOffset[0] = -1;
+	_prevAttrColOffset[1] = -1;
+	_prevAttrColOffset[2] = -1;
+
 	// Preload shape images at tBMP 6000 (0x1770)
 	// IDA: shape_loadSubShapesFromArchive(&stru_4A285C, 0x1770u)
 	_vm->_gfx->preloadImage(6000);
+	_vm->_gfx->preloadImage(7000);
+	_vm->_gfx->preloadImage(8000);
+	_vm->_gfx->preloadImage(9000);
+	_vm->_gfx->preloadImage(10000);
 
 	// Feature groups
 	// IDA: scrb_useFeatureGroup(1, 0, 7000)
@@ -83,7 +105,7 @@ void ZoombiniInteractiveNet::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 8; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 6000), 8000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 8000), 8000 + i);
 		}
 	}
 
@@ -92,7 +114,7 @@ void ZoombiniInteractiveNet::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 154; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 6000), 9000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 9000), 9000 + i);
 		}
 	}
 
@@ -101,7 +123,7 @@ void ZoombiniInteractiveNet::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 19; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 6000), 10000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 10000), 10000 + i);
 		}
 	}
 
@@ -121,12 +143,12 @@ void ZoombiniInteractiveNet::loadFeatures() {
 				  ZmbFeature::FLAG_00000001_TYPE_SNOID | ZmbFeature::FLAG_00020000_SKIP_RENDER);
 	}
 
-	// Register virtual render feature
+	// Register virtual render feature for attribute slot buttons
 	// IDA: runner_registerAndAllocate(0, 0, 0, 0, 0, net_invalidateVisualRects2, fleens_renderAllAttrSlots_436785, 0x1000)
-	// Virtual feature for attribute slot rendering (TOPMOST)
-	// TODO: Implement net_invalidateVisualRects2 / fleens_renderAllAttrSlots callbacks
 	{
 		ZmbFeature::EventHooks attrSlotHooks;
+		attrSlotHooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveNet::attrSlots_preRender));
+		attrSlotHooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractiveNet::attrSlots_render));
 		loadVirtualFeature(100, 0, ZmbFeature::FLAG_00001000_TOPMOST, attrSlotHooks);
 	}
 
@@ -135,8 +157,9 @@ void ZoombiniInteractiveNet::loadFeatures() {
 	// IDA: SHPL_copyPaletteSrcToDst(236, 10)
 	loadZoombinisFromPack();
 
-	// IDA: net_registerAllSCRBRunners(v10, &unk_4A28AC) — registers all puzzle SCRB runners
-	// TODO: Implement net_registerAllSCRBRunners (gameplay code for column/slot runners)
+	// Register column SCRB runners
+	// IDA: net_registerAllSCRBRunners(v10, &unk_4A28AC)
+	registerColumnRunners();
 
 	// Layout and stagger walk-in with walkDelay=30
 	// IDA: zmb_layoutStaticAndWalkInGroups(0)
@@ -165,23 +188,10 @@ void ZoombiniInteractiveNet::onGoButtonActivated() {
 	// IDA: scrb_enqueueSoundResource(0, 0) — stop background music
 	_vm->_sound->stopAllSoundQueues();
 
-	playDepartSfx();
-
+	_departXferSrcSiPage = ZMB_SI_NET_12;
 	// IDA: zmbMoveAnimation_45479D(45, -100, 600)
 	startDepartWalkAnimation(Common::Point(600, -100));
-	_pendingGoDepart = true;
-}
-
-void ZoombiniInteractiveNet::onEveryFrame() {
-	if (!_pendingGoDepart)
-		return;
-
-	if (isDepartSfxDone()) {
-		_pendingGoDepart = false;
-		_vm->_xferSrcSiPage = ZMB_SI_NET_12;
-		_vm->setNextPage(ZoombiniPageType::kXfer);
-		close();
-	}
+	ZoombiniInteractive::onGoButtonActivated();
 }
 
 void ZoombiniInteractiveNet::loadZoombinisFromPack() {
@@ -206,6 +216,122 @@ void ZoombiniInteractiveNet::loadZoombinisFromPack() {
 		}
 		posIdx++;
 	}
+}
+
+void ZoombiniInteractiveNet::registerColumnRunners() {
+	// IDA: net_registerAllSCRBRunners (0x437733)
+	// Registers all the SCRB features needed for column-based sorting puzzle.
+	
+	// 5 column SCRB runners at 8000-8004
+	// IDA: for i=0..4: net_columnScrbRunners[i] = registerSCRB(..., 6, i+8000, ..., 0x4180000)
+	for (int16 i = 0; i < 5; i++) {
+		_columnScrbFeatures[i] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 8000), 8000 + i, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+			ZmbFeature::FLAG_04000000_OVERLAY);
+	}
+	
+	// Entry SCRB runner at 8005
+	// IDA: net_entryScrbRunner = registerSCRB(..., 6, 8005, ..., 0x4180000)
+	_entryScrbFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 8000), 8005, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_04000000_OVERLAY);
+	
+	// Label SCRB runner: 9151 (diff<=1) or 9153 (diff>1)
+	// IDA: net_labelScrbRunner = registerSCRB(..., 6, 9151/9153, ..., 0x4100000)
+	uint16 labelScrbId = (_difficultyLevel > 1) ? 9153 : 9151;
+	_labelScrbFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 9000), labelScrbId, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
+	
+	// Attribute animation SCRB runner at 7018
+	// IDA: net_attrAnimScrbRunner = registerSCRB(..., 6, 7018, ..., 0x4188000)
+	_attrAnimScrbFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 7000), 7018, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_04000000_OVERLAY);
+	
+	// Feedback SCRB runner at 10018
+	// IDA: net_feedbackScrbRunner = registerSCRB(..., 6, 10018, ..., 0x188000)
+	_feedbackScrbFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), 10018, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_00100000_PLAY_ONCE);
+	
+	// Attribute column SCRB runners at random offsets
+	// IDA: net_attrCol0ScrbRunner (only if diff>=2), net_attrCol1ScrbRunner, net_attrCol2ScrbRunner
+	if (_difficultyLevel >= 2) {
+		_attrColScrbFeatures[0] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 10000), 10002 + _randAttrColOffset[0], 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
+	}
+	_attrColScrbFeatures[1] = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), 10007 + _randAttrColOffset[1], 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
+	_attrColScrbFeatures[2] = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 10000), 10012 + _randAttrColOffset[2], 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
+	
+	// Exit SCRB runner at 7000
+	// IDA: net_exitScrbRunner = registerSCRB(..., 6, 7000, ..., 0x4180000)
+	_exitScrbFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 7000), 7000, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_04000000_OVERLAY);
+}
+
+bool ZoombiniInteractiveNet::attrSlots_preRender(ZmbFeature *feature) {
+	// IDA: net_invalidateVisualRects2 (0x4367A4)
+	// Toggles dirty flags based on puzzle state and marks rects for redraw.
+	//
+	// The original function manages dirty rect invalidation:
+	// - If net_advanceReady changes, toggle _advanceButtonDirty and invalidate rect
+	// - Always set _columnLabelDirty and invalidate that rect
+	//
+	// In ScummVM we use simpler per-feature dirty tracking, so this just
+	// manages our internal flags.
+
+	// Check if advance button state changed
+	if (_bAdvanceReady) {
+		if (!_advanceButtonDirty) {
+			_advanceButtonDirty = true;
+		}
+	} else {
+		if (_advanceButtonDirty) {
+			_advanceButtonDirty = false;
+		}
+	}
+
+	// Column label is always marked dirty (feature always renders)
+	_columnLabelDirty = true;
+	
+	// Return true to continue with rendering
+	return true;
+}
+
+ZmbRenderResult ZoombiniInteractiveNet::attrSlots_render(ZmbFeature *feature) {
+	// IDA: fleens_renderAllAttrSlots_436785 (0x436785)
+	// Renders the attribute slot button sprites.
+	//
+	// The original calls:
+	//   fleens_renderAttrSlotSCRB(0, 0, 1) — always render slot 1 (label area)
+	//   fleens_renderAttrSlotSCRB(0, 0, 2) — render slot 2 (advance button, state-dependent)
+	//
+	// fleens_renderAttrSlotSCRB maps slot types:
+	//   slot 1 -> SCRB shape 5/6 (label)
+	//   slot 2 -> SCRB shape 1/2/3 (advance button, depends on net_advanceReady)
+	//
+	// For now, we rely on:
+	// - Label feature (_labelScrbFeature) renders the column labels
+	// - Go button (base class) handles advance state
+	// So this callback is effectively a no-op until full puzzle logic is added.
+	
+	// Clear dirty flags after render
+	_advanceButtonDirty = false;
+	_columnLabelDirty = false;
+	
+	return ZmbRenderResult::kRendered;
 }
 
 } // End of namespace Mohawk

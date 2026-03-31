@@ -73,6 +73,7 @@ void ZoombiniInteractiveSlides::loadFeatures() {
 	// Preload shape images
 	// IDA: shape_loadSubShapesFromArchive(&stru_4A3B20, 0x1770u) — shapes at tBMP 6000
 	_vm->_gfx->preloadImage(6000);
+	_vm->_gfx->preloadImage(8000);
 
 	// Load feature groups
 	// IDA: scrb_useFeatureGroup(0, 0, 7000)
@@ -89,7 +90,7 @@ void ZoombiniInteractiveSlides::loadFeatures() {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 3; i++) {
 			parent = loadSubFeature(parent,
-				ZmbResource(ZmbArchiveKind::kPage, 6000), 8000 + i);
+				ZmbResource(ZmbArchiveKind::kPage, 8000), 8000 + i);
 		}
 	}
 
@@ -135,9 +136,8 @@ void ZoombiniInteractiveSlides::loadFeatures() {
 void ZoombiniInteractiveSlides::onGoButtonActivated() {
 	// IDA: slides_onClickHandler case 2 -> puzzle_pendingTransitionTarget = 5 (BC2)
 	// Route 2: Slides -> Fleens (via Xfer)
-	_vm->_xferSrcSiPage = ZMB_SI_SLIDES_09;
-	_vm->setNextPage(ZoombiniPageType::kXfer);
-	close();
+	_departXferSrcSiPage = ZMB_SI_SLIDES_09;
+	ZoombiniInteractive::onGoButtonActivated();
 }
 
 void ZoombiniInteractiveSlides::loadZoombinisFromPack() {

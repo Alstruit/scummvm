@@ -150,16 +150,16 @@ ZmbFeature::~ZmbFeature() {
 	clear();
 }
 
-void ZmbFeature::initValues(uint32 currentFrameCounter) {
+void ZmbFeature::initValues() {
 	// Handle flags
 	if (hasFlag(ZmbFeature::FLAG_00008000_LOOP_ANIM) && 0 < _frameIdxMax) {
 		activateRender();
-		activateAnimate(currentFrameCounter);
+		activateAnimate();
 	}
 
 	if (hasFlag(ZmbFeature::FLAG_02000000_RANDOM_FRAME) && 0 < _frameIdxMax) {
 		activateRender();
-		activateAnimate(currentFrameCounter);
+		activateAnimate();
 	}
 
 	// IDA: PLAY_ONCE is NOT checked in the initial-load path of
@@ -191,7 +191,7 @@ void ZmbFeature::initValues(uint32 currentFrameCounter) {
 	// Set guessing fields
 	if (!_hsFrameMap.empty()) {
 		_hasClickRect = 0;
-		_bUnk002E = 1;
+		_skipFirstAdvance = 1;
 		if (hasFlag(ZmbFeature::FLAG_00800000_POS_DELTA)) {
 			assert(getHotspotGroup(0) != nullptr);
 			assert(0 < getHotspotGroup(0)->getHotspotCount());
@@ -290,12 +290,6 @@ ZmbEventHandleResult ZmbFeature::onWheelDown(ZoombiniPage *page, const Common::P
 	return (page->*(_eventHooks._wheelDownFunc))(this, absPos);
 }
 
-ZmbEventHandleResult ZmbFeature::onQuit(ZoombiniPage *page) {
-	if (!_eventHooks._quitFunc || !page)
-		return ZmbEventHandleResult::kPassthrough;
-	return (page->*(_eventHooks._quitFunc))(this);
-}
-
 void ZmbFeature::parseStream(Common::SeekableReadStream *stream) {
 	if (!stream) {
 		error("ZmbScrb: Invalid stream");
@@ -351,12 +345,48 @@ void ZmbFeature::setVirtualHotspots(const Common::Array<ZmbHotspot> &hotspots) {
 	ZmbHotspotGroup *hsGroup = new ZmbHotspotGroup(_id, 0);
 	_hsFrameMap[0] = hsGroup;
 	_frameIdxMax = 0;
-	_lastFrameIdx = -1;
+	_lastFrameIdx = 0;
 	_isAnimateActivated = false;
 
 	hsGroup->setHotspots(hotspots);
 
 	debug(1, "ZmbScrb: Set virtual feature with %u hotspots", hotspots.size());
+}
+
+void ZmbFeature::loadScrbData(Common::SeekableReadStream *stream, bool scheduleRender) {
+	// IDA: scrb_loadOnRunner (0x460384) — swap SCRB data on an existing runner.
+	// Clears existing hotspot data & draw records, parses new SCRB stream,
+	// resets animation state, and re-runs initValues().
+	// Preserves: identity (_id), flags, callbacks, _pointRef (immutable position).
+
+	// Clear existing hotspot data and draw records (like the runner being reloaded)
+	clearDrawRecords();
+	for (auto it = _hsFrameMap.begin(); it != _hsFrameMap.end(); it++)
+		delete it->_value;
+	_hsFrameMap.clear();
+
+	// Reset animation state (IDA: wGroupFrameIdx=0, dwHotspotIdx=1, dNextRenderFrame=0)
+	_lastFrameIdx = 0;
+	_frameIdxMax = 0;
+	_lastSoundedFrameIdx = -1;
+	_nextRenderFrame = 0;
+	_frameTimingReady = true;
+
+	// IDA: bHasClickRect=0, _skipFirstAdvance=1
+	_hasClickRect = false;
+	_skipFirstAdvance = true;
+
+	// Parse new SCRB data
+	parseStream(stream);
+
+	// Re-initialize flag-dependent state
+	initValues();
+
+	// IDA: wBoolDoRender = wBoolScheduleRender
+	if (scheduleRender) {
+		activateRender();
+		activateAnimate();
+	}
 }
 
 ZmbHotspotGroup *ZmbFeature::getHotspotGroupExact(int32 frameId) const {
@@ -408,31 +438,52 @@ uint16 ZmbFeature::getHotspotIdCount() const {
 }
 
 int32 ZmbFeature::defaultSelectRenderFrame(uint32 currentFrameCounter) {
+	// IDA runner_preRenderStandard 0x461B0C + 0x461D24–D6F:
+	// Timing gate: dNextRenderFrame <= scrb_dwFrameRenderTime.  In the original
+	// this is a local (wBoolDoRender[0]) that gates the entire preRender body.
+	// Without the paired hotspot slot system (wHotspotIdxToDraw / renderPhaseArr),
+	// it reduces to the dNextRenderFrame check.  _frameTimingReady propagates
+	// the gate result to preRenderFeature().
+
+	// RANDOM_FRAME: pick a random frame index each qualifying tick.
+	// IDA 0x461D24: nextRand(wScriptFrameCount) + scrb_seekToFrameGroup
 	if (hasFlag(ZmbFeature::FLAG_02000000_RANDOM_FRAME)) {
-		if (_frameInterval <= currentFrameCounter - _lastDrawnFrameCounter) {
+		_frameTimingReady = (_nextRenderFrame <= currentFrameCounter);
+		if (_frameTimingReady) {
+			_nextRenderFrame = currentFrameCounter + _frameInterval;
 			_lastFrameIdx = _vm->_rnd->getRandomNumber(_frameIdxMax);
-			_lastDrawnFrameCounter = currentFrameCounter;
 		}
 		return _lastFrameIdx;
 	}
 
+	// DEFER_ANIM: dormant until externally activated via activateAnimate().
 	if (hasFlag(ZmbFeature::FLAG_00080000_DEFER_ANIM) && !_isAnimateActivated)
 		return 0;
 
 	if (isAnimateActivated()) {
-		uint32 frameCounter = currentFrameCounter;
-		if (_animationStartFrameCounter <= currentFrameCounter)
-			frameCounter = currentFrameCounter - _animationStartFrameCounter;
-		// IDA 0x461D66: binary increments frame each tick (frameInterval gates
-		// how often preRender is called, not frame advancement within it).
-		// frameInterval=0 means advance every tick.
-		if (_frameInterval > 0)
-			_lastFrameIdx = (frameCounter / _frameInterval) % (_frameIdxMax + 1);
-		else
-			_lastFrameIdx = frameCounter % (_frameIdxMax + 1);
-		_lastDrawnFrameCounter = currentFrameCounter;
-	} else {
-		_lastFrameIdx = 0;
+		// Timing gate: IDA dNextRenderFrame <= scrb_dwFrameRenderTime
+		_frameTimingReady = (_nextRenderFrame <= currentFrameCounter);
+		if (_frameTimingReady) {
+			_nextRenderFrame = currentFrameCounter + _frameInterval;
+
+			// IDA 0x461C05–D6F: end-of-cycle check and frame advance are
+			// mutually exclusive.  _skipFirstAdvance only applies in the advance branch
+			// (when _lastFrameIdx < _frameIdxMax).  When at/past max, always
+			// increment to signal end-of-cycle to preRenderFeature.
+			if (_lastFrameIdx < _frameIdxMax) {
+				// IDA 0x461D60: _skipFirstAdvance — skip first frame advance after SCRB load
+				if (_skipFirstAdvance) {
+					_skipFirstAdvance = false;
+				} else {
+					// IDA 0x461D66: ++wGroupFrameIdx
+					_lastFrameIdx++;
+				}
+			} else {
+				// At or past max: advance past _frameIdxMax to trigger end-of-cycle
+				// detection in preRenderFeature.
+				_lastFrameIdx++;
+			}
+		}
 	}
 	return _lastFrameIdx;
 }
@@ -575,15 +626,16 @@ void ZmbFeature::clear() {
 	_hsFrameMap.clear();
 }
 
-void ZmbFeature::activateAnimate(uint32 animateStartFrameCounter) {
+void ZmbFeature::activateAnimate() {
 	_isAnimateActivated = true;
+	_animEndCallbackFired = false;
+	_frameTimingReady = true;
 	_lastSoundedFrameIdx = -1;
-	scheduleAnimateForFrames(animateStartFrameCounter, _frameIdxMax);
+	scheduleAnimateForFrames(_frameIdxMax);
 }
 
 void ZmbFeature::deactivateAnimate() {
 	_isAnimateActivated = false;
-	_animationStartFrameCounter = UINT32_MAX;
 }
 
 void ZmbFeature::setSelectRenderFrameFunc(OnSelectRenderFrameFunc func) {
@@ -594,10 +646,10 @@ bool ZmbFeature::isAnimateActivated() const {
 	return _isAnimateActivated;
 }
 
-void ZmbFeature::scheduleAnimateForFrames(uint32 animateStartFrameCounter, uint16 frames) {
-	_lastFrameIdx = -1;
+void ZmbFeature::scheduleAnimateForFrames(uint16 frames) {
+	// IDA: wGroupFrameIdx = 0 after SCRB load — start at first frame.
+	_lastFrameIdx = 0;
 	_frameIdxMax = frames;
-	_animationStartFrameCounter = animateStartFrameCounter;
 }
 
 bool ZmbFeature::isAnimationCycleRunning() const {
@@ -611,12 +663,12 @@ bool ZmbFeature::isAnimationCycleRunning() const {
 bool ZmbFeature::isEndOfAnimationCycle() const {
 	if (!isAnimateActivated())
 		return false;
-	// IDA runner_preRenderStandard 0x461C03: end-of-cycle is checked
-	// unconditionally (wGroupFrameIdx >= wScriptFrameCount), regardless of
-	// LOOP_ANIM. LOOP_ANIM controls render-list placement (stays in
-	// loopAnimList), not cycle detection. PLAY_ONCE and DEFER_ANIM
-	// handlers fire at end-of-cycle even when LOOP_ANIM is set.
-	return _lastFrameIdx == _frameIdxMax;
+	// IDA runner_preRenderStandard 0x461C03: end-of-cycle fires when
+	// wGroupFrameIdx >= wScriptFrameCount.  With the incremental model,
+	// defaultSelectRenderFrame advances _lastFrameIdx past _frameIdxMax
+	// to signal end-of-cycle.  The last valid frame (== _frameIdxMax) is
+	// displayed on the previous tick; end-of-cycle fires one tick later.
+	return _lastFrameIdx > _frameIdxMax;
 }
 
 void ZmbFeature::runSubFeature(ZoombiniPage *page) {
@@ -631,7 +683,7 @@ void ZmbFeature::runSubFeature(ZoombiniPage *page) {
 
 	// Reset and start the sub-feature's animation from the beginning
 	_refSubFeature->activateRender();
-	_refSubFeature->activateAnimate(page->getCurrentFrameCounter());
+	_refSubFeature->activateAnimate();
 
 	// Register it into the page's active scrb feature map for independent rendering.
 	// Ownership stays with this parent feature; the page will detach (not delete) it
@@ -705,7 +757,7 @@ void ZmbSnoid::startScrsPlayback(Common::SeekableReadStream *scrsStream, bool hi
 	// Start at frame 0. activateAnimate enables voice/sound event processing.
 	setLastFrameIdx(0);
 	setLastSoundedFrameIdx(-1);
-	activateAnimate(0);
+	activateAnimate();
 
 	// Set the select-render-frame hook so blitShapes reads _lastFrameIdx
 	// instead of time-cycling via defaultSelectRenderFrame.
@@ -1648,16 +1700,26 @@ void ZmbSnoid::updateWalkHotspots(ZoombiniPage *page, int dirBucket, int phase) 
 	if (fr.entryCount == 0)
 		return;
 
-	// IDA: zmb_setBodyLayerShapes keeps arrangement 0 (front-facing) throughout walk.
-	// Arrangement 0: slot1=body(base=0), slot2=nose.  SCRS data for all directions
-	// (including variant=1 dirs 3/4) encodes body scrsEntry at slot1 and nose scrsEntry
-	// at slot2 to match this fixed layout.  Do NOT swap based on anim.variant.
+	// IDA: zmb_setBodyLayerShapes: variant (wAnimKind from SCRS) determines slot layout.
+	// On direction change, the original calls zmb_setBodyLayerShapes(pNewDirHotspots->hsArr[0].shapeid, pZmb)
+	// which rearranges wArrBodyLayerShapeId[] based on the variant from the walk SCRS.
+	//   variant 0: [foot, body(0), nose, eye, head]  — dirs 0,1,2 (down/horizontal)
+	//   variant 1: [foot, nose, body(0), eye, head]  — dirs 3,4 (upward)
+	//   variant 2: [body(0), eye, nose, foot, head]  — (unused in walk anims)
 	int16 traitBase[5];
-	traitBase[0] = static_cast<int16>(footTbl[foot]);
-	traitBase[1] = 0;                                 // slot 1 always = body base
-	traitBase[2] = static_cast<int16>(noseTbl[nose]); // slot 2 always = nose base
-	traitBase[3] = static_cast<int16>(eyeTbl[eye]);
-	traitBase[4] = static_cast<int16>(headTbl[head]);
+	if (anim.variant == 1) {
+		traitBase[0] = static_cast<int16>(footTbl[foot]);
+		traitBase[1] = static_cast<int16>(noseTbl[nose]); // slot 1 = nose
+		traitBase[2] = 0;                                 // slot 2 = body base
+		traitBase[3] = static_cast<int16>(eyeTbl[eye]);
+		traitBase[4] = static_cast<int16>(headTbl[head]);
+	} else {
+		traitBase[0] = static_cast<int16>(footTbl[foot]);
+		traitBase[1] = 0;                                 // slot 1 = body base
+		traitBase[2] = static_cast<int16>(noseTbl[nose]); // slot 2 = nose
+		traitBase[3] = static_cast<int16>(eyeTbl[eye]);
+		traitBase[4] = static_cast<int16>(headTbl[head]);
+	}
 
 	Common::Array<ZmbHotspot> hotspots;
 	for (int s = 0; s < 5; s++)

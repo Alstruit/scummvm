@@ -356,11 +356,11 @@ void ZoombiniInteractiveBridge::loadZoombinisFromPack() {
 void ZoombiniInteractiveBridge::onGoButtonActivated() {	// IDA: bridge_funcOnClick_4157EB case 2
 	// Play departing SFX and start walk-off animation, then fade out when SFX finishes.
 	if (_anyZmbCrossed) {
-		playDepartSfx();
+		_departXferSrcSiPage = ZMB_SI_BRIDGE_02;
 
 		// IDA: zmbMoveAnimation_45479D(45, 316, 680) — walk to (680, 316), stagger 45
 		startDepartWalkAnimation(Common::Point(680, 316));
-		_pendingGoDepart = true;
+		ZoombiniInteractive::onGoButtonActivated();
 	}
 }
 
@@ -785,20 +785,13 @@ void ZoombiniInteractiveBridge::bridgeVisuals_postRender(ZmbFeature *feature) {
 
 // ---------------------------------------------------------------------------
 // Helper: Reload SCRB animation data on an existing feature.
-// IDA: loadSCRB_460384(1, newScrbId, featureRunner)
+// Delegates to ZoombiniPage::loadScrbOntoFeature (IDA: scrb_loadOnRunner 0x460384).
 // ---------------------------------------------------------------------------
 void ZoombiniInteractiveBridge::reloadScrbAnimation(uint16 featureId, uint16 newScrbId) {
 	auto it = _scrbFeatureMap.find(featureId);
 	if (it == _scrbFeatureMap.end())
 		return;
-	ZmbFeature *feature = it->second;
-	Common::SeekableReadStream *stream = _vm->getResource(ID_SCRB, ZmbResource(ZmbArchiveKind::kPage, newScrbId));
-	if (!stream)
-		return;
-	feature->parseStream(stream);
-	feature->initValues(getCurrentFrameCounter());
-	feature->activateAnimate(getCurrentFrameCounter());
-	feature->activateRender();
+	loadScrbOntoFeature(it->second, newScrbId);
 }
 
 // ---------------------------------------------------------------------------
@@ -864,19 +857,11 @@ void ZoombiniInteractiveBridge::onEveryFrame() {
 	_processingFrame = true;
 
 	// -----------------------------------------------------------------------
-	// [0] Pending Go departure: fade out when SFX finishes.
+	// [0] Pending Go departure: skip normal frame logic while waiting.
+	// Base class onAnimFrame() handles the actual departure transition.
 	// IDA: wMouseClickedPuzzleIdx_4B0424 branch in puzzleBridge_onHover_4152C3
 	// -----------------------------------------------------------------------
 	if (_pendingGoDepart) {
-		if (isDepartSfxDone()) {
-			_pendingGoDepart = false;
-			_processingFrame = false;
-			_vm->_xferSrcSiPage = ZMB_SI_BRIDGE_02;
-			_vm->setNextPage(ZoombiniPageType::kXfer);
-			close();
-			return;
-		}
-		// While waiting, skip the normal frame logic.
 		_processingFrame = false;
 		return;
 	}

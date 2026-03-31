@@ -458,6 +458,7 @@ public:
 	bool loadGame(int slot);
 	bool saveGame(int slot);
 	bool deleteGame(int slot);
+	bool deleteGameAndShiftRoster(int slot);
 
 	/**
 	 * Scans all living Zoombini entries (active packs and stored chunks) and marks

@@ -50,6 +50,17 @@ protected:
 
 private:
 	void loadZoombinisFromPack();
+	
+	/**
+	 * Build trait transformation data for Zoombinis. 
+	 * IDA: ferry_buildZmbRunners_41D9F4
+	 * Selects mismatch zoombinis and generates trait transformation offsets.
+	 */
+	void buildZmbTraitSetup();
+
+	// Attribute slot render callbacks
+	bool attrSlots_preRender(ZmbFeature *feature);
+	ZmbRenderResult attrSlots_render(ZmbFeature *feature);
 
 	static const Common::Point kSnoidPositions[16];
 
@@ -58,6 +69,37 @@ private:
 
 	/** Route difficulty level. IDA: fleens_routeLevel */
 	int16 _difficultyLevel = 0;
+
+	// --- Puzzle state (IDA: fleens_initAndSetupPuzzle globals) ---
+	
+	/** Whether the raft is ready to depart. IDA: fleens_bRaftReady (word_4AB202) */
+	bool _bRaftReady = false;
+	
+	/** Whether player interaction is allowed. IDA: fleens_bInteractionAllowed (word_4AB204) */
+	bool _bInteractionAllowed = false;
+	
+	/** Number of Zoombinis that don't match. IDA: fleens_mismatchCount */
+	int16 _mismatchCount = 0;
+	
+	/** Indices of mismatched Zoombinis (1-based). IDA: word_4AB1BC, word_4AB1BE, word_4AB1C0 */
+	int16 _mismatchIdx[3] = {0, 0, 0};
+	
+	/** Trait transformation offsets per attribute type (mod-5). IDA: g_pGameState->wTransitionsDisable[1]+j */
+	uint8 _traitOffsets[4] = {0, 0, 0, 0};
+	
+	/** Second set of trait slot indices (for higher difficulty). IDA: g_pGameState->wTransitionsDisable[3]+j */
+	uint8 _traitSlotOrder[4] = {0, 0, 0, 0};
+
+	// --- Dirty flags for attr slot rendering ---
+	
+	/** Dirty flag for raft button rect. IDA: word_4A1030 */
+	bool _raftButtonDirty = false;
+	
+	/** Dirty flag for attr slot 1 rect. IDA: word_4A1032 */
+	bool _attrSlot1Dirty = false;
+	
+	/** Dirty flag for attr slot 2 rect. IDA: word_4A1034 */
+	bool _attrSlot2Dirty = false;
 
 	// Puzzle-specific feature runners
 	/** Animation runner (SCRB 1000). IDA: word_4AB1A4 */

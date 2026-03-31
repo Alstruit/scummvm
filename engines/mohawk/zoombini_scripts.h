@@ -431,14 +431,47 @@ public:
 	virtual ~ZmbFeature();
 public:
 
-	void initValues(uint32 currentFrameCounter);
+	void initValues();
 
-	// Render & Event
+	// ── Render callback typedefs ──────────────────────────────────────
+	// These correspond to the 4 function pointers in the original engine's
+	// CFeatureRunnerBase structure (see runner_registerAndAllocate 0x45F60C):
+	//
+	//   Original pPreRenderFunc (+0x0C)
+	//     → _preRenderFunc: boolean gate hook that runs BEFORE the standard
+	//       pre-render logic (preRenderFeature). Return false to skip standard
+	//       logic entirely, modelling the original's "custom pre-render replaces
+	//       runner_preRenderStandard" pattern.
+	//     → _selectRenderFrameFunc: frame selection extracted from the standard
+	//       pre-render logic. No separate original callback; the default
+	//       selectRenderFrame() mirrors the original's integrated frame advance.
+	//
+	//   Original onPreRenderShapeFunc (+0x14)
+	//     → _preRenderShapeFunc: called per-frame after hotspot data is parsed,
+	//       before shape rendering. Direct equivalent.
+	//
+	//   Original pPostRenderFunc (+0x08)
+	//     → _renderFunc: shape blitting (default: blitShapes). Direct equivalent
+	//       of runner_postRenderStandard.
+	//     → _postRenderFunc: additional processing after blit (ScummVM split).
+	//
+	//   Original onHotspotShapeOrFrameFunc (+0x10)
+	//     → Modelled as the virtual method onFeatureAnimEvent() on ZoombiniPage,
+	//       NOT as an EventHook. One-shot semantics (cleared after -1 fires)
+	//       are tracked by _animEndCallbackFired.
+	//
 	typedef bool (ZoombiniPage::*OnPreRenderFunc)(ZmbFeature *feature);
 	typedef int32 (ZoombiniPage::*OnSelectRenderFrameFunc)(ZmbFeature *feature);
 	typedef void (ZoombiniPage::*OnPreRenderShapeFunc)(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
 	typedef ZmbRenderResult (ZoombiniPage::*OnRenderFunc)(ZmbFeature *feature);
 	typedef void (ZoombiniPage::*OnPostRenderFunc)(ZmbFeature *feature);
+
+	// ── Input event callback typedefs ─────────────────────────────────
+	// These have NO per-feature equivalent in the original engine. In the
+	// original, mouse/keyboard events are dispatched centrally through each
+	// puzzle's CPuzzleFuncTable (funcOnHover + funcOnKeyInput). ScummVM uses
+	// per-feature dispatch for cleaner OOP design.
+	//
 	typedef ZmbEventHandleResult (ZoombiniPage::*OnMouseMoveFunc)(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 	typedef ZmbEventHandleResult (ZoombiniPage::*OnLButtonDownFunc)(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 	typedef ZmbEventHandleResult (ZoombiniPage::*OnLButtonUpFunc)(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
@@ -446,100 +479,69 @@ public:
 	typedef ZmbEventHandleResult (ZoombiniPage::*OnKeyUpFunc)(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);
 	typedef ZmbEventHandleResult (ZoombiniPage::*OnWheelUpFunc)(ZmbFeature *feature, const Common::Point &absPos);
 	typedef ZmbEventHandleResult (ZoombiniPage::*OnWheelDownFunc)(ZmbFeature *feature, const Common::Point &absPos);
-	typedef ZmbEventHandleResult (ZoombiniPage::*OnQuitFunc)(ZmbFeature *feature);
 
 	/**
 	 * Event hooks for the feature script.
+	 *
+	 * Render hooks map to the original engine's CFeatureRunnerBase callbacks
+	 * (runner_registerAndAllocate 0x45F60C). Input event hooks are ScummVM
+	 * extensions — the original dispatches input centrally via CPuzzleFuncTable.
 	 */
 	struct EventHooks {
-		OnPreRenderFunc _preRenderFunc = nullptr;
-		OnSelectRenderFrameFunc _selectRenderFrameFunc = nullptr;
-		OnPreRenderShapeFunc _preRenderShapeFunc = nullptr;
-		OnRenderFunc _renderFunc = nullptr;
-		OnPostRenderFunc _postRenderFunc = nullptr;
+		// ── Render hooks (original engine equivalents) ────────────────
+		OnPreRenderFunc _preRenderFunc = nullptr;             ///< IDA: pPreRenderFunc (+0x0C) — boolean gate
+		OnSelectRenderFrameFunc _selectRenderFrameFunc = nullptr; ///< Extracted from runner_preRenderStandard
+		OnPreRenderShapeFunc _preRenderShapeFunc = nullptr;   ///< IDA: onPreRenderShapeFunc (+0x14)
+		OnRenderFunc _renderFunc = nullptr;                   ///< IDA: pPostRenderFunc (+0x08) — shape blitting
+		OnPostRenderFunc _postRenderFunc = nullptr;           ///< ScummVM split of pPostRenderFunc
+
+		// ── Input event hooks (ScummVM extensions) ────────────────────
 		OnMouseMoveFunc _mouseMoveFunc = nullptr;
 		OnLButtonDownFunc _lButtonDownFunc = nullptr;
 		OnLButtonUpFunc _lButtonUpFunc = nullptr;
 		OnKeyDownFunc _keyDownFunc = nullptr;
 		OnKeyUpFunc _keyUpFunc = nullptr;
-		OnWheelUpFunc _wheelUpFunc = nullptr;	
+		OnWheelUpFunc _wheelUpFunc = nullptr;
 		OnWheelDownFunc _wheelDownFunc = nullptr;
-		OnQuitFunc _quitFunc = nullptr;
+
+		// ── Render hook setters ───────────────────────────────────────
 
 		/**
-		 * Register an event procedure to be called before rendering starts, to control whether the rendering should be done.
-		 * @param preRenderFunc The pre-render callback function
+		 * IDA: pPreRenderFunc (+0x0C).
+		 * Boolean gate that runs before standard pre-render logic.
+		 * Return false to skip preRenderFeature() entirely.
 		 */
 		void setPreRenderFunc(OnPreRenderFunc preRenderFunc) { _preRenderFunc = preRenderFunc; }
 		/**
-		 * Register an event procedure to select the frame index to render.
-		 * @param onSelectRenderFrameFunc The select-render-frame callback function
-		 * @return The frame index to render
+		 * Frame selection hook, extracted from runner_preRenderStandard.
+		 * Default selectRenderFrame() mirrors the original integrated frame advance.
 		 */
 		void setSelectRenderFrameFunc(OnSelectRenderFrameFunc onSelectRenderFrameFunc) { _selectRenderFrameFunc = onSelectRenderFrameFunc; }
 		/**
-		 * Register an event procedure to be called before rendering shapes, such as patching shape indexes, etc.
-		 * @param preRenderShapeFunc The pre-render shape callback function
+		 * IDA: onPreRenderShapeFunc (+0x14).
+		 * Called per-frame after hotspot data is parsed, before shape rendering.
 		 */
 		void setPreRenderShapeFunc(OnPreRenderShapeFunc preRenderShapeFunc) { _preRenderShapeFunc = preRenderShapeFunc; }
 		/**
-		 * Register an event procedure for rendering.
-		 * @param renderFunc The render callback function
+		 * IDA: pPostRenderFunc (+0x08) — shape blitting.
+		 * Default is blitShapes (runner_postRenderStandard equivalent).
 		 */
 		void setRenderFunc(OnRenderFunc renderFunc) { _renderFunc = renderFunc; }
 		/**
-		 * Register an event procedure for post-render tasks, such as drawing texts, handling post-animation events, etc.
-		 * @param postRenderFunc The post-render callback function
+		 * Additional post-render processing (ScummVM split of pPostRenderFunc).
+		 * Called after renderFunc completes successfully.
 		 */
 		void setPostRenderFunc(OnPostRenderFunc postRenderFunc) { _postRenderFunc = postRenderFunc; }
-		/**
-		 * Register an event procedure for mouse move.
-		 * @param mouseMoveFunc The mouse move callback function
-		 * @return True if an event is consumed
-		 */
+
+		// ── Input event hook setters (ScummVM extensions) ─────────────
+
 		void setMouseMoveFunc(OnMouseMoveFunc mouseMoveFunc) { _mouseMoveFunc = mouseMoveFunc; }
-		/**
-		 * Register an event procedure for mouse down.
-		 * @param lButtonDownFunc The mouse down callback function
-		 * @return True if an event is consumed
-		 */
 		void setLButtonDownFunc(OnLButtonDownFunc lButtonDownFunc) { _lButtonDownFunc = lButtonDownFunc; }
-		/**
-		 * Register an event procedure for mouse up.
-		 * @param lButtonUpFunc The mouse up callback function
-		 * @return True if an event is consumed
-		 */
 		void setLButtonUpFunc(OnLButtonUpFunc lButtonUpFunc) { _lButtonUpFunc = lButtonUpFunc; }
-		/**
-		 * Register an event procedure for key down.
-		 * @param keyDownFunc The key down callback function
-		 * @return True if an event is consumed
-		 */
 		void setKeyDownFunc(OnKeyDownFunc keyDownFunc) { _keyDownFunc = keyDownFunc; }
-		/**
-		 * Register an event procedure for key up.
-		 * @param keyUpFunc The key up callback function
-		 * @return True if an event is consumed
-		 */
 		void setKeyUpFunc(OnKeyUpFunc keyUpFunc) { _keyUpFunc = keyUpFunc; }
-		/**
-		 * Register an event procedure for mouse wheel up.
-		 * @param wheelUpFunc The mouse wheel up callback function
-		 * @return True if an event is consumed
-		 */
 		void setWheelUpFunc(OnWheelUpFunc wheelUpFunc) { _wheelUpFunc = wheelUpFunc; }
-		/**
-		 * Register an event procedure for mouse wheel down.
-		 * @param wheelDownFunc The mouse wheel down callback function
-		 * @return True if an event is consumed
-		 */
 		void setWheelDownFunc(OnWheelDownFunc wheelDownFunc) { _wheelDownFunc = wheelDownFunc; }
-		/**
-		 * Register an event procedure for quit event.
-		 * @param quitFunc The quit callback function
-		 * @return True if an event is consumed
-		 */
-		void setQuitFunc(OnQuitFunc quitFunc) { _quitFunc = quitFunc; }
 	};
 
 	/**
@@ -615,12 +617,6 @@ public:
 	 * @param page The page to handle the event
 	 */
 	ZmbEventHandleResult onWheelDown(ZoombiniPage *page, const Common::Point &absPos);
-	/**
-	 * Invoke the quit event hook.
-	 * @param page The page to handle the event
-	 */
-	ZmbEventHandleResult onQuit(ZoombiniPage *page);
-
 
 	/**
 	 * Parse hotspot groups from a SCRB resource stream.
@@ -632,6 +628,18 @@ public:
 	 * @param hotspots The hotspots to set
 	 */
 	void setVirtualHotspots(const Common::Array<ZmbHotspot> &hotspots);
+
+	/**
+	 * Swap the SCRB data on this feature, matching IDA scrb_loadOnRunner (0x460384).
+	 *
+	 * Clears existing hotspot data, parses new SCRB stream, resets animation state
+	 * (frame index, sound index, render timers), and re-runs initValues().
+	 * Preserves: identity (_id), flags, callbacks, position (unless POS_DELTA recalculates).
+	 *
+	 * @param stream               New SCRB resource stream (takes ownership; deleted internally)
+	 * @param scheduleRender       If true, activates rendering after swap (IDA: wBoolScheduleRender=1)
+	 */
+	void loadScrbData(Common::SeekableReadStream *stream, bool scheduleRender = true);
 
 	uint16 getId() const { return _id; }
 	ZmbResource getResource() const { return _imgResource; }
@@ -689,9 +697,27 @@ public:
 	void activateRender() { _isRenderActivated = true; }
 	void deactivateRender() { _isRenderActivated = false; }
 	bool isRenderActivated() const { return _isRenderActivated; }
-	void activateAnimate(uint32 animateStartFrameCounter);
+	void activateAnimate();
 	void deactivateAnimate();
 	void setSelectRenderFrameFunc(OnSelectRenderFrameFunc func);
+
+	/**
+	 * IDA one-shot callback state.  After the end-of-cycle -1 callback fires
+	 * once (matching onHotspotShapeOrFrameFunc = 0 in the original), this flag
+	 * suppresses further -1 dispatches until the next activateAnimate() call.
+	 */
+	bool hasAnimEndCallbackFired() const { return _animEndCallbackFired; }
+	void markAnimEndCallbackFired() { _animEndCallbackFired = true; }
+
+	/**
+	 * IDA: wBoolDoRender[0] local in runner_preRenderStandard.  True when the
+	 * dNextRenderFrame timing gate passed on this tick.  Set by
+	 * defaultSelectRenderFrame(), used by preRenderFeature() to gate all
+	 * animation processing (matching the original where the timing gate wraps
+	 * the entire function body).  Custom selectRenderFrame hooks leave this
+	 * as true (no timing gate — the hook drives frame advancement directly).
+	 */
+	bool isFrameTimingReady() const { return _frameTimingReady; }
 	/**
 	 * Check if this feature should be animated.
 	 * @return True if this feature is being animated in animation frame
@@ -700,7 +726,7 @@ public:
 	/**
 	 * Schedule this feature to animate for specific frames.
 	 */
-	void scheduleAnimateForFrames(uint32 animateStartFrameCounter, uint16 animateFrames);
+	void scheduleAnimateForFrames(uint16 animateFrames);
 	/**
 	 * Check if an animation cycle is running based on the current frame counter.
 	 * @param currentFrameCounter The current frame counter to check against
@@ -719,6 +745,15 @@ public:
 	void removeFlag(Flag flag) { _flags &= ~flag; }
 	const Common::Rect &getSortRect() const { return _sortRect; }
 	void setSortRect(const Common::Rect &rect) { _sortRect = rect; }
+
+	/**
+	 * Set the SCRB ID to chain to at end-of-animation-cycle (CHAIN_SCRIPT).
+	 * IDA: wOtherScriptId. 0 = no target. Negative = also set RANDOM_FRAME on load.
+	 * Cleared automatically after the swap in preRenderFeature().
+	 */
+	void setChainedScrbId(int16 id) { _chainedScrbId = id; }
+	int16 getChainedScrbId() const { return _chainedScrbId; }
+
 	/**
 	 * Link another subFeature to this one, to be used for FLAG_00040000_CHAIN_SCRIPT behaviour.
 	 * The subFeature's lifetime is managed internally; this is an owning reference.
@@ -767,8 +802,6 @@ public:
 	ConstMapIterator find(int32 frameid) const { return _hsFrameMap.find(frameid); }
 	ConstMapIterator end() const { return _hsFrameMap.end(); }
 
-	// Guessing fields
-	bool _bUnk002E = false;
 
 protected:
 	/**
@@ -781,6 +814,12 @@ protected:
 private:
 	MohawkEngine_Zoombini *_vm;
 	int16 _id = 0;
+
+	/**
+	 * SCRB ID to chain to at end-of-animation-cycle when FLAG_00040000_CHAIN_SCRIPT is set.
+	 * IDA: wOtherScriptId. 0 = no chain target. Negative = set RANDOM_FRAME on load.
+	 */
+	int16 _chainedScrbId = 0;
 
 	ZmbFeature *_refSubFeature = nullptr;
 
@@ -804,7 +843,10 @@ private:
 	Common::StableMap<uint32, ZmbDrawRecord*> _drawnRecordMap;
 
 	/**
-	 * Guessing field for click area of the feature
+	 * IDA: bHasClickRect at runner+0x2D.  Always 0 after scrb_loadOnRunner
+	 * (0x4604D0 unconditionally clears it).  The initial-load path in
+	 * runner_preRenderStandard (0x461B1E) that checks this field is therefore
+	 * DEAD CODE in the original binary.
 	 */
 	Common::Rect _clickRect;
 	bool _hasClickRect = false;
@@ -827,12 +869,31 @@ private:
 	 */
 	Common::Point _pointRef;
 
-	// [*] Frame controls for animation	
-	int32 _lastFrameIdx = -1;
+	// [*] Frame controls for animation
+	int32 _lastFrameIdx = 0;
 	int32 _frameIdxMax = 0;
 	int32 _lastSoundedFrameIdx = -1;
-	uint32 _lastDrawnFrameCounter = 0;
-	uint32 _animationStartFrameCounter = UINT32_MAX;
+	/**
+	 * IDA: dNextRenderFrame — absolute frame counter at which the next
+	 * animation advance is allowed.  Compared as _nextRenderFrame <= currentFrameCounter.
+	 */
+	uint32 _nextRenderFrame = 0;
+	/**
+	 * IDA: cUnk002E at runner+0x2E.  Set to 1 after SCRB load; causes the first
+	 * frame advance to be skipped (holding frame 0 for one extra tick).  Cleared
+	 * after the skip in defaultSelectRenderFrame().
+	 */
+	bool _skipFirstAdvance = false;
+	/**
+	 * IDA: wBoolDoRender[0] local in runner_preRenderStandard (0x461B0C).
+	 * Result of the timing gate: dNextRenderFrame <= scrb_dwFrameRenderTime.
+	 * In the original, this local gates the entire preRender body (end-of-cycle,
+	 * frame advance, flag checks, hotspot walk, sound dispatch).  Without the
+	 * paired hotspot slot system (wHotspotIdxToDraw / hotspot_renderPhaseArr),
+	 * it reduces to the dNextRenderFrame timing check.
+	 * Set by defaultSelectRenderFrame(), checked by preRenderFeature().
+	 */
+	bool _frameTimingReady = true;
 
 	// [*] Z-sort rect: bounding box of all shapes drawn in the previous frame.
 	// Updated at the end of each blitShapes() call; used by renderFeatures() for sorting.
@@ -842,6 +903,14 @@ private:
 	bool _isCloseScheduled = false;
 	bool _isAnimateActivated = false;
 	bool _isRenderActivated = true;
+	/**
+	 * IDA one-shot callback: onHotspotShapeOrFrameFunc (runner offset 0x10) is
+	 * cleared to 0 after the end-of-cycle -1 callback fires
+	 * (runner_preRenderStandard 0x461F67 / 0x461D03).  In ScummVM the page
+	 * virtual onFeatureAnimEvent() is always present, so this flag models the
+	 * "pointer already consumed" state.  Reset on activateAnimate().
+	 */
+	bool _animEndCallbackFired = false;
 
 	// [*] Callbacks
 	EventHooks _eventHooks;
