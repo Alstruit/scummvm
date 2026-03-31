@@ -842,8 +842,18 @@ ZmbRenderResult ZoombiniPage::blitShapes(ZmbFeature *feature) {
 	//   if (wBoolDoRender || (HIBYTE(bitmask) & 1) == 0) { draw }
 	// = skip only when wBoolDoRender=0 AND FLAG_01000000_DEFER_RENDER is set.
 	// Features without DEFER_RENDER always draw (their positions come from last preRender run).
-	if (!feature->isRenderActivated() && feature->hasFlag(ZmbFeature::FLAG_01000000_DEFER_RENDER))
-		return ZmbRenderResult::kSkipped;
+	//
+	// EXCEPTION: Snoids use a different callback in the original (onPostRender_ZoombiniAnimation_452ADD)
+	// which only checks wBoolDoRender WITHOUT the bitmask check (IDA 0x452ae6):
+	//   if ( featureRunner->core188.wBoolDoRender ) { ... render ... }
+	// So for snoids, skip rendering when _isRenderActivated=false regardless of flags.
+	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+		if (!feature->isRenderActivated())
+			return ZmbRenderResult::kSkipped;
+	} else {
+		if (!feature->isRenderActivated() && feature->hasFlag(ZmbFeature::FLAG_01000000_DEFER_RENDER))
+			return ZmbRenderResult::kSkipped;
+	}
 
 	// Use frame index computed during preRender pass
 	int32 frameIdx = feature->getLastFrameIdx();
