@@ -28,6 +28,7 @@
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_pages/basecamp2.h"
+#include "mohawk/zoombini_random.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 #include "mohawk/zoombini_text.h"
@@ -262,16 +263,21 @@ void ZoombiniInteractiveBasecampTwo::loadFeatures() {
 	// Compute total loaded zoombini count (for _canGoEnabled)
 	int16 totalLoadedCount = static_cast<int16>(_snoidMap.size());
 
-	// IDA: bc2_bNotFirstArrival = (generatedCount >= 625) && (bc0Count + storedBC2Count < 16)
-	_notFirstArrival = (f._zmbGeneratedCount >= 625) &&
-		(static_cast<int16>(f._zmbPackIsle._wPackZmbCount) + f._zmbStoredBC2Count < 16);
+	// IDA: bc2_bNotFirstArrival = (generatedCount >= 625) && (bc0Count + storedBC1Count + storedBC2Count < 16)
+	// NOTE: Endgame check uses all three basecamp stored counts
+	int16 totalStoredCount = static_cast<int16>(f._zmbPackIsle._wPackZmbCount) +
+		f._zmbStoredBC1Count + f._zmbStoredBC2Count;
+	_notFirstArrival = (f._zmbGeneratedCount >= 625) && (totalStoredCount < 16);
 	if (_notFirstArrival) {
-		_canGoEnabled = (totalLoadedCount > 0) &&
-			(static_cast<int16>(f._zmbPackIsle._wPackZmbCount) + f._zmbStoredBC2Count <= totalLoadedCount);
+		_canGoEnabled = (totalLoadedCount > 0) && (totalStoredCount <= totalLoadedCount);
 	} else {
 		_canGoEnabled = (16 <= totalLoadedCount);
 	}
 	setGoButtonsEnabled(_canGoEnabled);
+
+	// Play arrival voice line based on difficulty
+	// IDA: bc2_initAndSetupPuzzle (~0x4133E0–0x4134CD)
+	playArrivalVoice();
 
 	// Persist leftmost column index back to state
 	f._storedChunkBC2._leftmostColumnIdx = static_cast<uint16>(_storageLeftmostColumnIdx);
@@ -296,7 +302,7 @@ bool ZoombiniInteractiveBasecampTwo::storage_preRender(ZmbFeature *feature) {
 	feature->setSortRect(Common::Rect());
 
 	if (_scrollDirection == kScrollDir_LeftMax) {
-		// Scroll left by 5 columns at a time
+		// IDA: 0x41433C - Scroll left by 5 columns at a time
 		int16 step = 5;
 		if (!_scrollAnimating && _storageLeftmostColumnIdx - 5 < 0)
 			step = 0;
@@ -316,6 +322,7 @@ bool ZoombiniInteractiveBasecampTwo::storage_preRender(ZmbFeature *feature) {
 		if (!_scrollAnimating)
 			_scrollDirection = kScrollDir_None;
 	} else if (_scrollDirection == kScrollDir_LeftOne) {
+		// IDA: 0x41435A - Scroll left by 1 column
 		// Expand storage capacity if we are at the leftmost column
 		if (!_storageLeftmostColumnIdx)
 			expandStorageCapacity();
@@ -333,15 +340,14 @@ bool ZoombiniInteractiveBasecampTwo::storage_preRender(ZmbFeature *feature) {
 		if (!_scrollAnimating)
 			_scrollDirection = kScrollDir_None;
 	} else if (_scrollDirection == kScrollDir_RightOne) {
-		// Scroll right by 1 column
+		// IDA: 0x4143F2 - Scroll right by 1 column
 		if (_scrollAnimating) {
 			_scrollAnimating = false;
-			int16 newVal = _storageLeftmostColumnIdx + 1;
-			if (_storageColumnCount - 5 <= newVal) {
+			++_storageLeftmostColumnIdx;
+			if (_storageColumnCount - 5 <= _storageLeftmostColumnIdx) {
 				_storageLeftmostColumnIdx = _storageColumnCount - 5;
 				if (120 < _storageColumnCount - 5)
 					_storageLeftmostColumnIdx = 120;
-				// reached right edge
 			}
 		} else if (_storageLeftmostColumnIdx + 1 <= 120) {
 			_scrollAnimating = (_storageLeftmostColumnIdx < _storageColumnCount - 5);
@@ -350,7 +356,7 @@ bool ZoombiniInteractiveBasecampTwo::storage_preRender(ZmbFeature *feature) {
 		if (!_scrollAnimating)
 			_scrollDirection = kScrollDir_None;
 	} else if (_scrollDirection == kScrollDir_RightMax) {
-		// Scroll right by 5 columns at a time
+		// IDA: 0x4143C8 - Scroll right by 5 columns at a time
 		int16 step = 5;
 		if (!_scrollAnimating && _storageColumnCount - 5 < _storageLeftmostColumnIdx + 5)
 			step = 0;
@@ -380,7 +386,8 @@ bool ZoombiniInteractiveBasecampTwo::storage_preRender(ZmbFeature *feature) {
 }
 
 void ZoombiniInteractiveBasecampTwo::storage_postRender(ZmbFeature *feature) {
-	// Mirrors sub_4144A0: draws honeycomb/lattice/border + stored Zoombinis.
+	// IDA: bridge_renderAttrSlots_4144A0
+	// Z-order: 1) honeycomb, 2) snoids, 3) lattice, 4) border
 
 	ZoombiniGraphics::ScreenKind screenKind = ZoombiniGraphics::kShapeScreen;
 	const ZmbStateStoredChunk &chunk = _vm->_state->_f._storedChunkBC2;
@@ -406,15 +413,15 @@ void ZoombiniInteractiveBasecampTwo::storage_postRender(ZmbFeature *feature) {
 	// Resource 8000 uses the SHPL system: shape N lives as a separate tBMP at resource (8000 + N - 1).
 	// drawShape's sub-image path (decodeImages) cannot decode these single-image resources.
 	// Use drawBackground with individual resource IDs instead (single-image decode path).
-	_vm->_gfx->drawImage(screenKind, kResBitmapShape8000_Storage + honeycombShape - 1, Common::Point(140, 23));
-	_vm->_gfx->drawImage(screenKind, kResBitmapShape8000_Storage + latticeShape - 1, Common::Point(latticeOffX, latticeOffY));
-	_vm->_gfx->drawImage(screenKind, kResBitmapShape8000_Storage + kShape8000_StorageBorder - 1, Common::Point(101, 0));
 
-	// Draw stored Zoombinis in grid
+	// 1) Draw honeycomb (background of storage belt)
+	_vm->_gfx->drawImage(screenKind, kResBitmapShape8000_Storage + honeycombShape - 1, Common::Point(140, 23));
+
+	// 2) Draw stored Zoombinis in grid (on top of honeycomb, below lattice)
 	int visibleCols = _scrollAnimating ? 6 : 5;
 	int slotIdx = 5 * col0;
 	int col = 0;
-    int row = 0;
+	int row = 0;
 
 	for (int i = 0; i < visibleCols * 5; i++, slotIdx++) {
 		int wrappedSlot = slotIdx % _storageCapacity;
@@ -440,6 +447,12 @@ void ZoombiniInteractiveBasecampTwo::storage_postRender(ZmbFeature *feature) {
 			++col;
 		}
 	}
+
+	// 3) Draw lattice (overlay on top of snoids)
+	_vm->_gfx->drawImage(screenKind, kResBitmapShape8000_Storage + latticeShape - 1, Common::Point(latticeOffX, latticeOffY));
+
+	// 4) Draw border (outermost frame)
+	_vm->_gfx->drawImage(screenKind, kResBitmapShape8000_Storage + kShape8000_StorageBorder - 1, Common::Point(101, 0));
 }
 
 void ZoombiniInteractiveBasecampTwo::buttons_postRender(ZmbFeature *feature) {
@@ -486,6 +499,32 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::goButton_onLButtonDown(ZmbF
 		_vm->setNextPage(ZoombiniPageType::kRodMap);
 		close();
 		return ZmbEventHandleResult::kConsumed;
+	}
+
+	if (_helpButtonRect.contains(absPos)) {
+		// Case 4: Help button — play click SFX and open help dialog.
+		// IDA: dlg_openHelpDialog()
+		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound999_Button),
+								  Audio::Mixer::kSFXSoundType, false);
+		// TODO: Open help dialog when implemented
+		return ZmbEventHandleResult::kConsumed;
+	}
+
+	// Cases 5-8: Scroll buttons
+	// IDA: buttonId - 5 < 4, set direction = buttonId - 4
+	for (int i = 0; i < 4; i++) {
+		if (_scrollButtonRects[i].contains(absPos)) {
+			// Set scroll direction: 1=LeftMax, 2=LeftOne, 3=RightOne, 4=RightMax
+			_scrollDirection = i + 1;
+			_currentScrollButton = i + 5; // Matches IDA button IDs 5-8
+			_scrollAnimating = false;
+
+			// Start scroll sound
+			_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound2000_StorageScrolling),
+									  Audio::Mixer::kSFXSoundType, true);
+			_scrollSoundState = 1;
+			return ZmbEventHandleResult::kConsumed;
+		}
 	}
 
 	return ZmbEventHandleResult::kPassthrough;
@@ -558,6 +597,21 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonDown(const Common:
 }
 
 ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+	// Handle scroll button release
+	// IDA: caves_entranceBridge_funcOnClick_413740 scroll loop exit
+	if (_currentScrollButton != 0) {
+		_scrollDirection = kScrollDir_None;
+		_currentScrollButton = 0;
+		_scrollAnimating = false;
+
+		// Stop scroll sound and play end sound
+		_vm->_sound->stopZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound2000_StorageScrolling));
+		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound2001_StorageScrollEnd),
+								  Audio::Mixer::kSFXSoundType, false);
+		_scrollSoundState = 0;
+		return ZmbEventHandleResult::kConsumed;
+	}
+
 	if (!isDragging())
 		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
 
@@ -733,6 +787,110 @@ void ZoombiniInteractiveBasecampTwo::deactivatePedestalHover() {
 			it->second->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
 		}
 		_hoveredPedestalIdx = -1;
+	}
+}
+
+void ZoombiniInteractiveBasecampTwo::updateButtonAnimations(const Common::Point &cursorPos) {
+	// IDA: bc2_onHotspotHover (0x41392D) button hotspot loop
+	// When dragging, check if cursor is over one of the decorative button hotspots
+	// and trigger the corresponding animation if it's not already playing.
+
+	for (int16 i = 0; i < 10; i++) {
+		if (!_buttonHotspotRects[i].contains(cursorPos))
+			continue;
+
+		// Get the runner for this button animation
+		if (i >= 10 || _buttonAnimRunnerIdxs[i] == 0)
+			continue;
+
+		auto it = _scrbFeatureMap.find(_buttonAnimRunnerIdxs[i]);
+		if (it == _scrbFeatureMap.end() || it->second == nullptr)
+			continue;
+
+		ZmbFeature *runner = it->second;
+
+		// Skip if animation is already playing
+		if (runner->isRenderActivated())
+			continue;
+
+		// Handle special button behaviors (IDA switch at 0x413DD5)
+		switch (i) {
+		case 1:
+			// Cycles SCRB: 6011 → 6012 → 6013 → 6011
+			// IDA: if (resId == 6013) load 6011, else load resId+1
+			{
+				uint16 curResId = runner->getId();
+				uint16 nextResId;
+				if (curResId == 6013)
+					nextResId = 6011;
+				else if (curResId >= 6011 && curResId < 6013)
+					nextResId = curResId + 1;
+				else
+					nextResId = 6011;
+				loadScrbOntoFeature(runner, nextResId);
+			}
+			break;
+
+		case 3:
+			// Round-trip toggle: 6002 ↔ 6003
+			// IDA: if (toggle) { toggle=0; load 6002 } else { toggle=1; load 6003 }
+			if (_roundTripToggle) {
+				_roundTripToggle = false;
+				loadScrbOntoFeature(runner, kResScrb6002_ButtonRoundTripA);
+			} else {
+				_roundTripToggle = true;
+				loadScrbOntoFeature(runner, kResScrb6003_ButtonRoundTripB);
+			}
+			break;
+
+		case 9:
+			// Transport trigger: loads SCRB 0 and sets armed flag
+			// IDA: if (!bridge_beltButton9Used) { load 0; armed=1; }
+			if (!_transportButtonArmed) {
+				loadScrbOntoFeature(runner, 0);
+				_transportButtonArmed = true;
+			}
+			break;
+
+		default:
+			// Other buttons: just activate the animation
+			loadScrbOntoFeature(runner, 0);
+			break;
+		}
+
+		// Activate the animation and play frame sounds
+		runner->activateRender();
+		runner->activateAnimate();
+		break; // Only one button at a time
+	}
+}
+
+void ZoombiniInteractiveBasecampTwo::playArrivalVoice() {
+	// IDA: bc2_initAndSetupPuzzle (~0x4133E0–0x4134CD)
+	// Plays a random arrival voice line.
+	// Simplified: plays a random voice from the available BC2 voice set.
+
+	ZmbResource soundId;
+
+	// Random selection from available voices
+	int rand = _vm->_rnd->getRandomNumber(3);
+	switch (rand) {
+	case 0:
+		soundId = ZmbResource(ZmbArchiveKind::kSystem, kResSound20082_BC2Voice1);
+		break;
+	case 1:
+		soundId = ZmbResource(ZmbArchiveKind::kSystem, kResSound20084_BC2Voice2);
+		break;
+	case 2:
+		soundId = ZmbResource(ZmbArchiveKind::kSystem, kResSound20085_BC2Voice3);
+		break;
+	default:
+		soundId = ZmbResource(ZmbArchiveKind::kSystem, 20051);
+		break;
+	}
+
+	if (soundId.hasId()) {
+		_vm->_sound->playZmbSound(soundId, Audio::Mixer::kSpeechSoundType, false);
 	}
 }
 
