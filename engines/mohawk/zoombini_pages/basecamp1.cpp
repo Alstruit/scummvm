@@ -981,6 +981,16 @@ int16 ZoombiniInteractiveBasecampOne::findNearestEmptyPedestal(const Common::Poi
 }
 
 void ZoombiniInteractiveBasecampOne::endDrag(const Common::Point &dropPos) {
+	// Deactivate pedestal hover highlight if any
+	if (_hoveredPedestalIdx >= 0) {
+		auto it = _scrbFeatureMap.find(kResScrb1200_Pedestal + _hoveredPedestalIdx);
+		if (it != _scrbFeatureMap.end() && it->second != nullptr) {
+			ZmbFeature *pedestal = it->second;
+			pedestal->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
+		}
+		_hoveredPedestalIdx = -1;
+	}
+
 	ZmbSnoid *snoid = finishSnoidDrag();
 
 	ZmbStateFile &f = _vm->_state->_f;
@@ -1159,6 +1169,79 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampOne::onLButtonUp(const Common::P
 	// Non-sticky mode: button release ends drag
 	endDrag(absPos);
 	return ZmbEventHandleResult::kConsumed;
+}
+
+ZmbEventHandleResult ZoombiniInteractiveBasecampOne::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
+	// Update pedestal hover state during drag
+	if (isDragging()) {
+		updatePedestalHover(_draggedSnoid->getPointLoc());
+	}
+
+	// Delegate to parent for standard drag handling (snoid position update, etc.)
+	return ZoombiniInteractive::onMouseMove(absPos, relPos);
+}
+
+void ZoombiniInteractiveBasecampOne::updatePedestalHover(const Common::Point &snoidPos) {
+	// IDA: beginDragFeatureRunner_45360F (~0x453A23–0x453B4B)
+	// Find nearest empty pedestal within hover radius
+	int16 nearestIdx = -1;
+	int32 nearestDistSq = (kPedestalHoverRadius + 1) * (kPedestalHoverRadius + 1);
+
+	for (int16 i = 0; i < 16; i++) {
+		// Check if pedestal is occupied by another snoid
+		bool isOccupied = false;
+		for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+			if (it->second == _draggedSnoid)
+				continue; // Skip the currently dragged snoid
+			Common::Point opos = it->second->getPointLoc();
+			int32 dx = opos.x - _pedestalPoints[i].x;
+			int32 dy = opos.y - _pedestalPoints[i].y;
+			if (dx * dx + dy * dy < 100) { // within 10px of pedestal center
+				isOccupied = true;
+				break;
+			}
+		}
+
+		if (isOccupied)
+			continue;
+
+		// Check distance from snoid to pedestal
+		int32 dx = snoidPos.x - _pedestalPoints[i].x;
+		int32 dy = snoidPos.y - _pedestalPoints[i].y;
+		int32 distSq = dx * dx + dy * dy;
+
+		if (distSq < nearestDistSq) {
+			nearestDistSq = distSq;
+			nearestIdx = i;
+		}
+	}
+
+	// If hovering the same pedestal, nothing to do
+	if (nearestIdx == _hoveredPedestalIdx)
+		return;
+
+	// Deactivate previous highlight if any
+	if (_hoveredPedestalIdx >= 0) {
+		auto it = _scrbFeatureMap.find(kResScrb1200_Pedestal + _hoveredPedestalIdx);
+		if (it != _scrbFeatureMap.end() && it->second != nullptr) {
+			ZmbFeature *pedestal = it->second;
+			// IDA: highlightRunner->bitmask |= 0x10000u; highlightRunner->dNextRenderFrame = 0;
+			pedestal->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
+		}
+	}
+
+	// Activate new highlight if any
+	if (nearestIdx >= 0) {
+		auto it = _scrbFeatureMap.find(kResScrb1200_Pedestal + nearestIdx);
+		if (it != _scrbFeatureMap.end() && it->second != nullptr) {
+			ZmbFeature *pedestal = it->second;
+			// IDA: wBoolDoRender = 1; wGroupFrameIdx0098 = 0; dwHotspotIdx009A = 1;
+			pedestal->activateRender();
+			pedestal->activateAnimate();
+		}
+	}
+
+	_hoveredPedestalIdx = nearestIdx;
 }
 
 int16 ZoombiniInteractiveBasecampOne::loadZoombinisFromPack(ZmbStateActivePack &pack, bool loadNonOccupied) {

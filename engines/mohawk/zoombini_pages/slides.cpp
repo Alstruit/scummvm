@@ -48,8 +48,8 @@ void ZoombiniInteractiveSlides::open() {
 }
 
 void ZoombiniInteractiveSlides::setBackgroundMusic() {
-	// IDA: sound_activeHandle = 20078
-	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20078), Audio::Mixer::kMusicSoundType);
+	// IDA: slides_puzzleInit (0x441f0c) has no music playback call on page load.
+	// sound_activeHandle = 20078 is stored at end of funcInit for F1 replay only.
 }
 
 void ZoombiniInteractiveSlides::setBackgroundBitmap() {

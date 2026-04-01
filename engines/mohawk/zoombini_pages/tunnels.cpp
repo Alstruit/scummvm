@@ -55,8 +55,8 @@ void ZoombiniInteractiveTunnels::open() {
 }
 
 void ZoombiniInteractiveTunnels::setBackgroundMusic() {
-	// IDA: sound_activeHandle = nextRand_410705(20069, 20070)
-	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, _vm->_rnd->getRandomNumber(20069, 20070)), Audio::Mixer::kMusicSoundType);
+	// IDA: puzzleTunnels_459DCB (0x459dcb) has no music playback call on page load.
+	// sound_activeHandle = random(20069,20070) is stored at end of funcInit for F1 replay only.
 }
 
 void ZoombiniInteractiveTunnels::setBackgroundBitmap() {

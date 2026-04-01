@@ -22,6 +22,7 @@
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_pages/lilly.h"
+#include "mohawk/zoombini_random.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 
@@ -38,11 +39,8 @@ void ZoombiniInteractiveLilly::open() {
 }
 
 void ZoombiniInteractiveLilly::setBackgroundMusic() {
-	// IDA: diff == 2 -> random(20076,20077); diffLevel <= 1 -> 20075; else random(20075,20077)
-	if (_difficultyLevel <= 1)
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20075), Audio::Mixer::kMusicSoundType);
-	else
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20075), Audio::Mixer::kMusicSoundType);
+	// IDA: lilly_puzzleInit (0x422de4) has no music playback call on page load.
+	// sound_activeHandle is stored at end of funcInit for F1 replay only.
 }
 
 void ZoombiniInteractiveLilly::setBackgroundBitmap() {
@@ -172,11 +170,22 @@ void ZoombiniInteractiveLilly::loadFeatures() {
 	loadGoMapButtonsFeature(7000);
 	loadHelpButtonFeature();
 
-	// Get difficulty
-	_vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagLilly);
-
-	// IDA: sound_activeHandle = 20075 — lilly narrator voice (F1 key replay)
-	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, 20075);
+	// IDA: v2 = getDifficultyIdFromPuzzleFlag(LILLY_FLAG)
+	//   v2==2 (LEVEL2)         → random(20076, 20077)
+	//   diffLevel <= 1 (1-based) → 20075 (easy voice)
+	//   else                   → random(20075, 20077)
+	{
+		ZMB_DIFFICULTY_ID diffId = _vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagLilly);
+		uint16 helpSoundId;
+		if (diffId == ZMB_DIFFICULTY_LEVEL2_02) {
+			helpSoundId = _vm->_rnd->getRandomNumber(20076, 20077);
+		} else if (_difficultyLevel <= 1) {
+			helpSoundId = 20075;
+		} else {
+			helpSoundId = _vm->_rnd->getRandomNumber(20075, 20077);
+		}
+		_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, helpSoundId);
+	}
 }
 
 void ZoombiniInteractiveLilly::onGoButtonActivated() {

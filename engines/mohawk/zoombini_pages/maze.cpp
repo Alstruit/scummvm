@@ -69,8 +69,8 @@ void ZoombiniInteractiveMaze::open() {
 }
 
 void ZoombiniInteractiveMaze::setBackgroundMusic() {
-	// IDA: sound_activeHandle = 20068
-	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20068), Audio::Mixer::kMusicSoundType);
+	// IDA: maze2_initAndSetup (0x42e47c) has no music playback call on page load.
+	// sound_activeHandle = 20068 is stored at end of funcInit for F1 replay only.
 }
 
 void ZoombiniInteractiveMaze::setBackgroundBitmap() {

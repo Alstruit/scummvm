@@ -904,9 +904,13 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 	if (_delayUntilFrame != 0) {
 		if (page->getCurrentFrameCounter() < _delayUntilFrame)
 			return false;
-		// Delay expired: resume rendering and clear
+		// Delay expired: clear the delay gate.
+		// IDA: dNextRenderFrame gates only the pre-render (animation tick)
+		// in onRender_ZoombiniAnimation_452B9C.  The post-render callback
+		// (onPostRender_ZoombiniAnimation_452ADD) always draws when
+		// wBoolDoRender=1, so _isRenderActivated is NOT changed by
+		// stagger delays — only animation timing is gated.
 		_delayUntilFrame = 0;
-		activateRender();
 	}
 	// IDA 0x452BBC: hidden snoids (wBoolDoRender=0) skip the entire animation
 	// state machine.  Without this, SCRS pool snoids that were hidden after

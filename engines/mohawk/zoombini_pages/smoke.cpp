@@ -52,8 +52,8 @@ void ZoombiniInteractiveSmoke::open() {
 }
 
 void ZoombiniInteractiveSmoke::setBackgroundMusic() {
-	// IDA: sound_activeHandle = nextRand_410705(20067, 20066)
-	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, _vm->_rnd->getRandomNumber(20066, 20067)), Audio::Mixer::kMusicSoundType);
+	// IDA: smoke_init (0x44983c) has no music playback call on page load.
+	// sound_activeHandle = random(20067,20066) is stored at end of funcInit for F1 replay only.
 }
 
 void ZoombiniInteractiveSmoke::setBackgroundBitmap() {

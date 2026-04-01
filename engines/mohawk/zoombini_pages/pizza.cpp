@@ -54,11 +54,8 @@ void ZoombiniInteractivePizza::open() {
 }
 
 void ZoombiniInteractivePizza::setBackgroundMusic() {
-	// IDA: sound_activeHandle = 20071 (level 0) or 20072 (level 1+)
-	if (_difficultyLevel > 0)
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20072), Audio::Mixer::kMusicSoundType);
-	else
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20071), Audio::Mixer::kMusicSoundType);
+	// IDA: pizza_init (0x43b394) has no music playback call on page load.
+	// sound_activeHandle is stored at end of funcInit for F1 replay only.
 }
 
 void ZoombiniInteractivePizza::setBackgroundBitmap() {
@@ -239,11 +236,10 @@ void ZoombiniInteractivePizza::loadFeatures() {
 	loadGoMapButtonsFeature(6000);
 	loadHelpButtonFeature();
 
-	// Get difficulty
+	// IDA: if (pizza_difficultyLevel) sound_activeHandle = 20072; else 20071
+	// pizza_difficultyLevel is 0-based routeLevel.
 	_vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagPizza);
-
-	// IDA: sound_activeHandle = 20072 — pizza narrator voice (F1 key replay)
-	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, 20072);
+	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, (_difficultyLevel > 0) ? 20072 : 20071);
 }
 
 void ZoombiniInteractivePizza::onGoButtonActivated() {

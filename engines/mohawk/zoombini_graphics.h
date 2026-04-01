@@ -476,6 +476,18 @@ public:
 	bool isFading() const;
 	void dimPalette(uint16 idx, uint16 steps);
 
+	/**
+	 * Scale a range of palette entries by a percentage and apply to the screen.
+	 * Does NOT modify the stored _paletteBytes reference. Entries outside [startEntry,
+	 * startEntry+count) keep their original values.
+	 * IDA: picker_applyBrightnessDim_42185D — scales entries 10..245 by 88/90/92%.
+	 *
+	 * @param startEntry First palette entry index to scale (0-based).
+	 * @param count      Number of entries to scale.
+	 * @param scalePercent Scale factor in percent (e.g. 88 = 88%).
+	 */
+	void scalePalettePartial(uint16 startEntry, uint16 count, uint8 scalePercent);
+
 	static constexpr uint16 kScreenWidth = 640;
 	static constexpr uint16 kScreenHeight = 480;
 

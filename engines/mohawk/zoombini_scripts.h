@@ -747,6 +747,12 @@ public:
 	void setSortRect(const Common::Rect &rect) { _sortRect = rect; }
 
 	/**
+	 * Get the rect used for Z-sorting. IDA uses clickRect (set once from first render).
+	 * Falls back to sortRect if clickRect hasn't been set yet (first frame).
+	 */
+	const Common::Rect &getZSortRect() const { return _hasClickRect ? _clickRect : _sortRect; }
+
+	/**
 	 * Set the SCRB ID to chain to at end-of-animation-cycle (CHAIN_SCRIPT).
 	 * IDA: wOtherScriptId. 0 = no target. Negative = also set RANDOM_FRAME on load.
 	 * Cleared automatically after the swap in preRenderFeature().

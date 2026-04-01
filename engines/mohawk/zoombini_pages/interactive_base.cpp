@@ -291,6 +291,9 @@ void ZoombiniInteractive::executeDeparture() {
 void ZoombiniInteractive::startDepartWalkAnimation(const Common::Point &target, uint32 stagger) {
 	// IDA: zmbMoveAnimation_45479D(staggerDelay, toY, toX)
 	// Iterates idle snoids and sets walk-to-target animation with staggered timing.
+	// IDA: only sets dNextRenderFrame for timing — does NOT touch wBoolDoRender.
+	// Snoids remain visible at their current positions until their stagger
+	// delay expires and the walk animation begins.
 	uint32 frameBase = getCurrentFrameCounter();
 	uint16 walkerIdx = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
@@ -304,7 +307,6 @@ void ZoombiniInteractive::startDepartWalkAnimation(const Common::Point &target, 
 		snoid->setAnimState(kSnoidAnimArrivalMotion, nullptr);
 
 		if (walkerIdx > 0) {
-			snoid->deactivateRender();
 			snoid->setDelayUntilFrame(frameBase + walkerIdx * stagger);
 		}
 		walkerIdx++;
@@ -811,12 +813,15 @@ void ZoombiniInteractive::assignStaggeredWalkDelays() {
 
 	// IDA: iterate from count-1 to 0 so the highest-Y (front-most) snoid starts first,
 	// with subsequent snoids staggered 45 frames apart.
-	// First walker (highest Y, walkerIdx=0) starts immediately without deactivation.
+	// IDA: picker_assignWalkStartPositions_4545EE only sets dNextRenderFrame
+	// (timing gate for the pre-render callback onRender_ZoombiniAnimation_452B9C).
+	// wBoolDoRender is NOT touched — the post-render callback
+	// (onPostRender_ZoombiniAnimation_452ADD) still draws the snoid at its
+	// current position while the animation delay has not expired.
 	const uint32 baseFrame = getCurrentFrameCounter();
 	uint16 walkerIdx = 0;
 	for (int i = (int)walkers.size() - 1; i >= 0; i--) {
 		if (walkerIdx > 0) {
-			walkers[i]->deactivateRender();
 			walkers[i]->setDelayUntilFrame(baseFrame + walkerIdx * 45);
 		}
 		walkerIdx++;

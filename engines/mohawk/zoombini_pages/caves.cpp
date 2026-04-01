@@ -58,7 +58,8 @@ void ZoombiniInteractiveCaves::open() {
 }
 
 void ZoombiniInteractiveCaves::setBackgroundMusic() {
-	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20065), Audio::Mixer::kMusicSoundType);
+	// IDA: caves_funcInit (0x416978) has no music playback call on page load.
+	// sound_activeHandle = 20065 is stored at end of funcInit for F1 replay only.
 }
 
 void ZoombiniInteractiveCaves::setBackgroundBitmap() {

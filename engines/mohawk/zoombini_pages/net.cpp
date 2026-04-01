@@ -47,8 +47,8 @@ void ZoombiniInteractiveNet::open() {
 }
 
 void ZoombiniInteractiveNet::setBackgroundMusic() {
-	// IDA: sound_activeHandle = 20064
-	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20064), Audio::Mixer::kMusicSoundType);
+	// IDA: net_puzzleInit (0x4361d4) has no music playback call on page load.
+	// sound_activeHandle = 20064 is stored at end of funcInit for F1 replay only.
 }
 
 void ZoombiniInteractiveNet::setBackgroundBitmap() {

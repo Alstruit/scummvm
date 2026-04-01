@@ -50,13 +50,8 @@ void ZoombiniInteractiveFleens::open() {
 }
 
 void ZoombiniInteractiveFleens::setBackgroundMusic() {
-	// IDA: diff == 2 -> 20080; routeLevel 1||3 -> random(20079,20080); else 20079
-	if (_difficultyLevel == 2)
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20080), Audio::Mixer::kMusicSoundType);
-	else if (_difficultyLevel > 0)
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20079), Audio::Mixer::kMusicSoundType);
-	else
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20079), Audio::Mixer::kMusicSoundType);
+	// IDA: fleens_initAndSetupPuzzle (0x41c1e0) has no music playback call on page load.
+	// sound_activeHandle is stored at end of funcInit for F1 replay only.
 }
 
 void ZoombiniInteractiveFleens::setBackgroundBitmap() {
@@ -197,11 +192,22 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 	loadGoMapButtonsFeature(4000);
 	loadHelpButtonFeature();
 
-	// Get difficulty
-	_vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagFleens);
-
-	// IDA: sound_activeHandle = nextRand(20079, 20080) — fleens narrator voice (F1 key replay)
-	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, _vm->_rnd->getRandomNumber(20079, 20080));
+	// IDA: v2 = getDifficultyIdFromPuzzleFlag(FLEENS_FLAG)
+	//   v2==2 (LEVEL2)         → 20080 (hard voice)
+	//   routeLevel==1 || ==3   → random(20079, 20080)
+	//   else                   → 20079
+	{
+		ZMB_DIFFICULTY_ID diffId = _vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagFleens);
+		uint16 helpSoundId;
+		if (diffId == ZMB_DIFFICULTY_LEVEL2_02) {
+			helpSoundId = 20080;
+		} else if (_difficultyLevel == 1 || _difficultyLevel == 3) {
+			helpSoundId = _vm->_rnd->getRandomNumber(20079, 20080);
+		} else {
+			helpSoundId = 20079;
+		}
+		_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, helpSoundId);
+	}
 }
 
 void ZoombiniInteractiveFleens::onGoButtonActivated() {

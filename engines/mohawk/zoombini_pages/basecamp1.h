@@ -38,6 +38,7 @@ public:
 
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;
+	ZmbEventHandleResult onMouseMove(const Common::Point &absPos, const Common::Point &relPos) override;
 
 	void onMapButtonActivated() override;
 
@@ -118,6 +119,15 @@ protected:
 	 * @return Pedestal index (0–15), or -1 if none within snap radius.
 	 */
 	int16 findNearestEmptyPedestal(const Common::Point &pos) const;
+
+	/**
+	 * Updates pedestal highlight during snoid drag.
+	 * Activates blink animation on nearest empty pedestal within hover radius;
+	 * deactivates the previous highlight if hovering a different pedestal or none.
+	 * IDA: beginDragFeatureRunner_45360F (~0x453A23–0x453B4B)
+	 * @param snoidPos Current snoid position during drag.
+	 */
+	void updatePedestalHover(const Common::Point &snoidPos);
 
 	/**
 	 * End the current drag operation. Determines drop target and places the snoid:
@@ -368,11 +378,23 @@ protected:
 	int16 _dragStorageOriginSlot = -1;
 
 	/**
+	 * Index of the pedestal currently highlighted during drag (-1 if none).
+	 * IDA: wFeatureRunnerIdx in beginDragFeatureRunner_45360F
+	 */
+	int16 _hoveredPedestalIdx = -1;
+
+	/**
 	 * Snap radius (squared) for pedestal drop target detection.
 	 * IDA: wClickZoneRadius_4B6D3E is 15 for BC1 (default from puzzleDispatch_sharedCleanup).
 	 * We use squared distance for efficiency: 20^2 = 400.
 	 */
 	static const int32 kPedestalSnapRadiusSq = 400;
+
+	/**
+	 * Hover radius for pedestal highlight during drag (same as zmb_clickZoneRadius = 15).
+	 * IDA: beginDragFeatureRunner_45360F uses zmb_clickZoneRadius for drop zone detection.
+	 */
+	static const int16 kPedestalHoverRadius = 15;
 };
 
 } // End of namespace Mohawk

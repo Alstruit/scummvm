@@ -38,6 +38,41 @@ const Common::Point ZoombiniInteractiveFerry::kSnoidPositions[20] = {
 	Common::Point( 57, 146), Common::Point( 71, 182), Common::Point( 25, 145), Common::Point( 27, 183),
 };
 
+// IDA: qword_4A0EBC — dock area rect
+const Common::Rect ZoombiniInteractiveFerry::kDockRect(0, 130, 469, 240);
+
+// IDA: word_4A0CFC — boat approach SCRB pool (4 entries)
+const uint16 ZoombiniInteractiveFerry::kBoatScrbPool[4] = { 1800, 1801, 1802, 1803 };
+
+// IDA: word_4A0D08 — captain idle fidget SCRB pool (5 entries)
+const uint16 ZoombiniInteractiveFerry::kFidgetScrbPool[5] = { 1823, 1824, 1825, 1826, 1827 };
+
+// IDA: word_4A0D18 — correct placement reaction SCRB pool (2 entries)
+const uint16 ZoombiniInteractiveFerry::kGoodReactionPool[2] = { 1817, 1818 };
+
+// IDA: word_4A0D20 — wrong placement reaction SCRB pool (11 entries)
+const uint16 ZoombiniInteractiveFerry::kBadReactionPool[11] = {
+	1804, 1805, 1806, 1807, 1808, 1809, 1810, 1811, 1812, 1813, 1814
+};
+
+// IDA: word_4A0D4C — moved-from-dock reaction SCRB pool (3 entries)
+const uint16 ZoombiniInteractiveFerry::kMoveReactionPool[3] = { 1820, 1821, 1822 };
+
+// ---------------------------------------------------------------------------
+// Non-repeat random pool helper (IDA: e2GetPoolValue_nonRepeatRandom_46EE10)
+// ---------------------------------------------------------------------------
+static uint16 getNonRepeatRandom(ZoombiniRandom *rnd, uint16 poolSize, uint32 &bitmask) {
+	uint32 fullMask = (poolSize < 32) ? ((1u << poolSize) - 1u) : 0xFFFFFFFFu;
+	if ((bitmask & fullMask) == fullMask)
+		bitmask = 0;
+
+	uint16 idx = rnd->getRandomNumber(poolSize - 1);
+	while (bitmask & (1u << idx))
+		idx = (idx + 1) % poolSize;
+	bitmask |= (1u << idx);
+	return idx;
+}
+
 ZoombiniInteractiveFerry::ZoombiniInteractiveFerry(MohawkEngine_Zoombini *vm) : ZoombiniInteractive(vm, ZoombiniPageType::kFerry) {
 }
 
@@ -49,13 +84,11 @@ void ZoombiniInteractiveFerry::open() {
 }
 
 void ZoombiniInteractiveFerry::setBackgroundMusic() {
-	// IDA: diff == 2 -> 20074; routeLevel > 0 -> random(20073,20074); else 20073
-	if (_difficultyLevel == 2)
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20074), Audio::Mixer::kMusicSoundType);
-	else if (_difficultyLevel > 0)
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20073), Audio::Mixer::kMusicSoundType);
-	else
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20073), Audio::Mixer::kMusicSoundType);
+	// IDA: ferry_funcInit (0x41a394) has NO music playback call on page load.
+	// sound_activeHandle (20073/20074) is stored at the END of funcInit for F1 replay only.
+	// scrb_enqueueSoundResource(0, SND_00997_MOVE_SHORT_SFX) plays a UI click via SCRB when
+	// walk animations start — it is NOT a narrator voice and is handled by the SCRB system.
+	// Therefore no sound plays here; the narrator voice must not auto-play on page load.
 }
 
 void ZoombiniInteractiveFerry::setBackgroundBitmap() {
@@ -67,9 +100,9 @@ void ZoombiniInteractiveFerry::setBackgroundBitmap() {
 void ZoombiniInteractiveFerry::loadFeatures() {
 	// IDA: ferry_funcInit (0x41a394)
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
+	_visitCounter++;
 
 	// IDA: ferry_selectSCRB (0x41bc4e) — calculate SCRB ID based on difficulty and zoombini count
-	// Formula: scrbBase = 1510 + (level * 5); scrbId = base + (clamp(zmbCount, 16, 20) - 16)
 	{
 		int16 zmbCount = _vm->_state->_f._zmbPackActive._wPackZmbCount;
 		if (zmbCount < 16)
@@ -96,20 +129,13 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 	_vm->_gfx->preloadImage(1700);
 	_vm->_gfx->preloadImage(1800);
 
-	// Load feature groups
-	// IDA: scrb_useFeatureGroup(0, 0, 1500)
-	// IDA: scrb_useFeatureGroup(0, 1, 1600)
-	// IDA: scrb_useFeatureGroup(0, 2, 1700)
-	// IDA: scrb_useFeatureGroup(0, 3, 1800)
-	// IDA: scrb_useFeatureGroup(0, 4, 1450)
-
 	// Load main features: 10 SCRBs at 1500
-	// IDA: scrb_loadMainFeatureSet(10, 1500)
+	// IDA: scrb_preloadMainFeatureSet(10, 1500)
 	ZmbFeature *mainFeature = createMainFeatureHead(
 		ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 		ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY);
 
-	// IDA: scrb_loadSubFeatureSet(0, 10, 0x640) — 10 subs at 1600
+	// IDA: scrb_preloadSubFeatureSet(0, 10, 0x640) — 10 subs at 1600
 	{
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 10; i++) {
@@ -118,7 +144,7 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 		}
 	}
 
-	// IDA: scrb_loadSubFeatureSet(0, 7, 0x6A4) — 7 subs at 1700
+	// IDA: scrb_preloadSubFeatureSet(0, 7, 0x6A4) — 7 subs at 1700
 	{
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 7; i++) {
@@ -127,7 +153,7 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 		}
 	}
 
-	// IDA: scrb_loadSubFeatureSet(5, 33, 0x708) — 33 subs at 1800
+	// IDA: scrb_preloadSubFeatureSet(5, 33, 0x708) — 33 subs at 1800
 	{
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 33; i++) {
@@ -136,7 +162,7 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 		}
 	}
 
-	// IDA: scrb_loadSubFeatureSet(0, 3, 0x5AA) — 3 subs at 1450
+	// IDA: scrb_preloadSubFeatureSet(0, 3, 0x5AA) — 3 subs at 1450
 	{
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 3; i++) {
@@ -169,12 +195,20 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 		ZmbResource(ZmbArchiveKind::kPage, 1600), 1601, 6,
 		ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM);
 
-	// IDA: word_4AB17A = runner_registerAndAllocate(..., 6, boatScrb, standard, standard, 0x188000)
-	// Boat animation runner — SCRB 1803 on first visit, random from pool on subsequent visits
-	_boatAnimFeature = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 1800), 1803, 6,
-		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
-		ZmbFeature::FLAG_00100000_PLAY_ONCE);
+	// IDA: word_4AB17A — boat animation runner. First visit uses 1803; subsequent visits random from pool.
+	{
+		uint16 boatScrb;
+		if (_visitCounter == 1) {
+			boatScrb = 1803;
+		} else {
+			uint16 idx = getNonRepeatRandom(_vm->_rnd, 4, _boatRandomState);
+			boatScrb = kBoatScrbPool[idx];
+		}
+		_boatAnimFeature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 1800), boatScrb, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+			ZmbFeature::FLAG_00100000_PLAY_ONCE);
+	}
 
 	// IDA: conditional on !g_pGameState->wMoreActionFlag0020
 	// Boat approach runners — only loaded when "more action" mode is active (lessAction=false)
@@ -188,10 +222,6 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 		_boatApproachB = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 1600), 1603, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM);
-
-		// NOTE: Original engine called scrb_linkRunnersToHotspotSlot(word_4AB140, word_4AB13E)
-		// to pair both features on the same hotspot slot. ScummVM handles hotspot-per-feature
-		// independently through findDrawRecordAtPoint(), so shared slots are not needed.
 	}
 
 	// IDA: word_4AB142 = runner_registerAndAllocate(..., 6, 0x6A8, standard, standard, 0x1188000)
@@ -230,18 +260,63 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 	loadGoMapButtonsFeature(1400);
 	loadHelpButtonFeature();
 
-	// Get difficulty
-	_vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagFerry);
+	// Compute adjacency matrix from seat bounding boxes
+	// IDA: ferry_drawAdjacencyLines(0) — called after ferry_selectSCRB + layout
+	buildAdjacencyMatrix();
 
-	// IDA: sound_activeHandle = 20073 — ferry narrator voice (F1 key replay)
-	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, 20073);
+	// IDA: v2 = getDifficultyIdFromPuzzleFlag(FERRY_FLAG) - 2
+	//   v2 == 0 (diff == LEVEL2) → 20074 (hard voice)
+	//   else if routeLevel > 0   → random(20073, 20074)
+	//   else                     → 20073
+	{
+		ZMB_DIFFICULTY_ID diffId = _vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagFerry);
+		uint16 helpSoundId;
+		if (diffId == ZMB_DIFFICULTY_LEVEL2_02) {
+			helpSoundId = 20074;
+		} else if (_difficultyLevel > 0) {
+			helpSoundId = _vm->_rnd->getRandomNumber(20073, 20074);
+		} else {
+			helpSoundId = 20073;
+		}
+		_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, helpSoundId);
+	}
+
+	// Initialize idle fidget timer
+	// IDA: dword_4AB10C = nextRand_410705(10800, 5400)
+	_nextFidgetTime = _currentFrameTime + _vm->_rnd->getRandomNumber(5400, 10800);
+
+	// IDA: word_4AB196 = zmb_countFeatureRunners()
+	_totalZmbCount = 0;
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		if (it->first >= 10000)
+			_totalZmbCount++;
+	}
+
+	_isActive = true;
+	_seatedCount = 0;
+	_interactionLocked = false;
+	_pendingFrogmanScrb = 0;
+	_rejectWalkPending = false;
+	_departAnimPending = false;
+	_departAnimDone = false;
+	_goButtonPressed = false;
+	_consecutiveSuccesses = 0;
+	_consecutiveFailures = 0;
+	_successThreshold = 1;
+	_hasReactedOnce = false;
+	_ambientStarted = false;
+	_matchBitmask = 0;
+	_attrDisplaySnoid = 0;
+	_rejectSnoidId = 0;
 }
 
 void ZoombiniInteractiveFerry::onGoButtonActivated() {
 	// IDA: ferry_onClickHandler case 2 -> word_4AB17C=1 -> puzzle_pendingTransitionTarget = 11
 	// Route 2: Ferry -> Slides (via Xfer)
 	_departXferSrcSiPage = ZMB_SI_FERRY_07;
-	ZoombiniInteractive::onGoButtonActivated();
+	if (_rejectWalkPending)
+		_interactionLocked = true;
+	_goButtonPressed = true;
 }
 
 void ZoombiniInteractiveFerry::loadZoombinisFromPack() {
@@ -265,6 +340,618 @@ void ZoombiniInteractiveFerry::loadZoombinisFromPack() {
 			snoid->setupIdleHotspots();
 		}
 		posIdx++;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// buildAdjacencyMatrix: Compute adjacency between seat positions.
+// IDA: ferry_drawAdjacencyLines (0x41bcc7) with arg0=0 (no draw).
+//
+// For every pair of seats, test if their expanded bounding boxes overlap.
+// Two overlap test orientations are always tried (vertical + horizontal expand).
+// Difficulty >= 3 adds a third test (raw overlap with no expansion).
+// Matching pairs store 1-based neighbor IDs in the adjacency matrix (max 8 per seat).
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveFerry::buildAdjacencyMatrix() {
+	memset(_adjacencyMatrix, 0, sizeof(_adjacencyMatrix));
+
+	// Gather seat bounding rects from seat runners
+	// IDA: each runner's core188 at offset +206/+210 stores clickRect leftTop/rightBottom
+	Common::Rect seatRects[20];
+	for (int16 i = 0; i < _seatCount; i++) {
+		ZmbFeature *seatRunner = _scrbFeatureMap[_seatRunnerIds[i]];
+		if (seatRunner) {
+			seatRects[i] = seatRunner->getClickRect();
+		}
+	}
+
+	for (int16 k = 0; k < _seatCount; k++) {
+		int16 slotCount = 0;
+		const Common::Rect &rectK = seatRects[k];
+		int16 halfHeight = (rectK.bottom - rectK.top) / 2 - 2;
+
+		for (int16 m = 0; m < _seatCount; m++) {
+			if (m == k)
+				continue;
+
+			const Common::Rect &rectM = seatRects[m];
+			bool adjacent = false;
+
+			// Test 1: Vertical expansion — expand top/bottom by halfHeight
+			{
+				Common::Rect expandedK(rectK.left + halfHeight, rectK.top - halfHeight,
+				                       rectK.right - halfHeight, rectK.bottom + halfHeight);
+				adjacent = expandedK.intersects(rectM);
+			}
+
+			// Test 2: Horizontal expansion — expand left/right by halfHeight
+			if (!adjacent) {
+				Common::Rect expandedK(rectK.left - halfHeight, rectK.top + halfHeight,
+				                       rectK.right + halfHeight, rectK.bottom - halfHeight);
+				adjacent = expandedK.intersects(rectM);
+			}
+
+			// Test 3: Raw overlap (difficulty >= 3 only)
+			if (!adjacent && _difficultyLevel >= 3) {
+				adjacent = rectK.intersects(rectM);
+			}
+
+			if (adjacent && slotCount < 8) {
+				_adjacencyMatrix[k][slotCount] = static_cast<byte>(m + 1); // 1-based
+				slotCount++;
+			}
+		}
+	}
+
+	debugC(kZmbDebugPage, "Ferry: built adjacency matrix for %d seats", _seatCount);
+}
+
+// ---------------------------------------------------------------------------
+// getDropTargetSeat: Test if a point is near any seat position.
+// IDA: getDropTargetResult_453571 + click_testZoneRadius_455DFB
+// Returns 1-based seat index, or 0 if no match.
+// ---------------------------------------------------------------------------
+int16 ZoombiniInteractiveFerry::getDropTargetSeat(const Common::Point &pos) const {
+	for (int16 i = 0; i < _seatCount; i++) {
+		ZmbFeature *seatRunner = nullptr;
+		auto it = _scrbFeatureMap.find(_seatRunnerIds[i]);
+		if (it != _scrbFeatureMap.end())
+			seatRunner = it->second;
+		if (!seatRunner)
+			continue;
+
+		// Test if point is within the seat's click rect
+		Common::Rect clickRect = seatRunner->getClickRect();
+		if (clickRect.contains(pos.x, pos.y))
+			return i + 1; // 1-based
+	}
+	return 0;
+}
+
+// ---------------------------------------------------------------------------
+// testAdjacentMatch: Check if a dropped snoid shares any trait with
+// any occupied adjacent seat.
+// IDA: ferry_onClickHandler case 4, the inner loop
+// Returns true if valid placement, also sets _matchBitmask.
+// ---------------------------------------------------------------------------
+bool ZoombiniInteractiveFerry::testAdjacentMatch(int16 seatIdx, ZmbSnoid *droppedSnoid) {
+	// seatIdx is 1-based
+	_matchBitmask = 0;
+	bool anyNeighborFound = false;
+
+	for (int16 slot = 0; slot < 8; slot++) {
+		byte neighborIdx = _adjacencyMatrix[seatIdx - 1][slot];
+		if (neighborIdx == 0)
+			continue;
+
+		// Find the snoid occupying this adjacent seat
+		// IDA: runner_findByIndex(word_4B7E36[adjacency_entry])
+		// In ScummVM, we need to find a pack snoid whose position corresponds to this seat.
+		// Seat runners are tracked by _seatRunnerIds[]. We need to find
+		// a snoid that's been placed at this adjacent seat position.
+		ZmbFeature *neighborSeatRunner = nullptr;
+		auto it = _scrbFeatureMap.find(_seatRunnerIds[neighborIdx - 1]);
+		if (it != _scrbFeatureMap.end())
+			neighborSeatRunner = it->second;
+		if (!neighborSeatRunner)
+			continue;
+
+		// Find a snoid at this seat position
+		ZmbSnoid *neighborSnoid = nullptr;
+		Common::Rect seatRect = neighborSeatRunner->getClickRect();
+		for (auto snoidIt = _snoidMap.begin(); snoidIt != _snoidMap.end(); ++snoidIt) {
+			if (snoidIt->first < 10000)
+				continue;
+			ZmbSnoid *candidate = snoidIt->second;
+			// A snoid is "seated" if it has been placed and is not idle/dragging at dock
+			if (candidate->_packIsOccupied && seatRect.contains(candidate->getPointLoc().x, candidate->getPointLoc().y)) {
+				neighborSnoid = candidate;
+				break;
+			}
+		}
+
+		if (!neighborSnoid)
+			continue;
+
+		anyNeighborFound = true;
+
+		// IDA: Compare 4 trait bytes (foot, nose, eye, head — indices 0-3)
+		// The trait struct layout is: _head(0), _eye(1), _nose(2), _foot(3)
+		const byte *droppedTraits = reinterpret_cast<const byte *>(&droppedSnoid->_trait);
+		const byte *neighborTraits = reinterpret_cast<const byte *>(&neighborSnoid->_trait);
+		bool matchFound = false;
+		for (int16 j = 0; j < 4; j++) {
+			if (droppedTraits[j] == neighborTraits[j]) {
+				// IDA: bit0=foot(j=0 maps to _head, but the original uses the raw byte order)
+				// Original: j=0 → |=1, j=1 → |=2, j=2 → |=4, j=3 → |=8
+				_matchBitmask |= (1u << j);
+				matchFound = true;
+			}
+		}
+		if (matchFound)
+			return true;
+	}
+
+	return !anyNeighborFound; // If no neighbors exist (first seat), always valid
+}
+
+// ---------------------------------------------------------------------------
+// findIdlePackSnoid: Find idle Zoombini from pack (IDs >= 10000).
+// IDA: zmb_findIdleFeatureRunner (0x456A95)
+// ---------------------------------------------------------------------------
+ZmbSnoid *ZoombiniInteractiveFerry::findIdlePackSnoid(uint16 preferredId) {
+	if (preferredId > 0) {
+		ZmbSnoid *snoid = getSnoid(preferredId);
+		if (snoid && snoid->getAnimState() == kSnoidAnimIdle)
+			return snoid;
+	}
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		if (it->first < 10000)
+			continue;
+		ZmbSnoid *snoid = it->second;
+		if (snoid->getAnimState() == kSnoidAnimIdle)
+			return snoid;
+	}
+	return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// startRejectWalk: Set up the reject walk animation.
+// IDA: puzzleFerry_1705_1706_41BA30
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveFerry::startRejectWalk(int16 destination) {
+	_rejectDestination = destination;
+
+	if (_rejectSnoidId == 0)
+		return;
+
+	// IDA: Select reject walk SCRB based on destination
+	if (destination >= 10 || destination == 0) {
+		// Dock exit
+		_rejectWalkScrb = 1605;
+		_rejectWalkDest = Common::Point(122, 164); // IDA: 0xA4007A
+	} else if (destination >= 1 && destination <= 6) {
+		// Rowboat ride — 50/50 chance of 1604 or 1606
+		if (_vm->_rnd->getRandomNumber(1, 100) > 50)
+			_rejectWalkScrb = 1606;
+		else
+			_rejectWalkScrb = 1604;
+		_rejectWalkDest = _savedDragOrigin;
+	} else if (destination >= 7 && destination <= 9) {
+		// Raft ride — uses SCRB 1607 with extra departure runners
+		_rejectWalkScrb = 1607;
+
+		// Free existing departure runners and create new ones for raft
+		// IDA: word_4AB144, word_4AB146
+		if (_departRunnerA) {
+			_departRunnerA->deactivateAnimate();
+			_departRunnerA = nullptr;
+		}
+		if (_departRunnerB) {
+			_departRunnerB->deactivateAnimate();
+			_departRunnerB = nullptr;
+		}
+
+		_departRunnerA = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 1700), 1705, 6,
+			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+			ZmbFeature::FLAG_01000000_DEFER_RENDER);
+
+		// IDA: coordPair.x = dword_4AB114 - 14; coordPair.y = HIWORD(dword_4AB114) - 14
+		Common::Point raftPos(_savedDragOrigin.x - 14, _savedDragOrigin.y - 14);
+		_departRunnerB = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 1700), 1706, 6,
+			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+			ZmbFeature::FLAG_00800000_POS_DELTA | ZmbFeature::FLAG_01000000_DEFER_RENDER);
+
+		_rejectWalkDest = Common::Point(236, 474); // IDA: 0x1DA00EC
+		_rejectWalkPos2 = _savedDragOrigin;
+	}
+
+	// Load reject walk SCRB onto boat runner and set approach callback
+	// IDA: scrb_loadOnRunner(1, word_4AB19E, v2)
+	if (_boatAnimFeature) {
+		loadScrbOntoFeature(_boatAnimFeature, _rejectWalkScrb);
+	}
+
+	_departAnimPending = true;
+}
+
+// ---------------------------------------------------------------------------
+// handleRejectWalkSetup: Called from onEveryFrame when reject walk is pending.
+// IDA: ferry_funcOnHover, word_4AB12A branch
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveFerry::handleRejectWalkSetup() {
+	_rejectWalkPending = false;
+
+	// IDA: picker_findOpenSlotForZmb — find an open slot to send the rejected zmb to
+	// In ScummVM, pick a non-repeat random destination from 0-9 range
+	int16 dest;
+	bool retry;
+	do {
+		retry = false;
+		dest = getNonRepeatRandom(_vm->_rnd, 10, _rejectWalkRandomState);
+
+		// IDA: destinations 7-9 require checking if certain back-row slots are available
+		// (zmb_sortedRunnerIds[19], [17], [15] etc. for rows 11-19 odd indices)
+		if (dest >= 7 && dest <= 9) {
+			// Check if back row positions are available
+			bool backRowAvailable = false;
+			for (int16 i = 19; i >= 11; i -= 2) {
+				if (i < static_cast<int16>(_seatCount * 2)) {
+					// Check if this position slot is unoccupied
+					backRowAvailable = true;
+					break;
+				}
+			}
+			if (!backRowAvailable)
+				retry = true;
+		}
+
+		// IDA: destination 0 check — dock positions must be available
+		if (dest == 0) {
+			// Dock area must have space
+			// In IDA: unk_4B6DE6 || unk_4B6DEA check — dock occupancy
+		}
+	} while (retry);
+
+	_savedDragOrigin = kSnoidPositions[MIN<int16>(dest, 19)];
+	startRejectWalk(dest);
+}
+
+// ---------------------------------------------------------------------------
+// onEveryFrame: Per-frame tick for ferry puzzle.
+// IDA: ferry_funcOnHover (0x41a9f6)
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveFerry::onEveryFrame() {
+	if (!_isActive)
+		return;
+
+	// -----------------------------------------------------------------------
+	// [0] Pending Go departure
+	// IDA: word_4AB17C && !word_4AB12A && !word_4AB118
+	// -----------------------------------------------------------------------
+	if (_goButtonPressed && !_rejectWalkPending && !_interactionLocked) {
+		_goButtonPressed = false;
+
+		// Free landscape and approach runners
+		// IDA: runner_freeByIndex(word_4AB13A), runner_freeByIndex(word_4AB13E/word_4AB140)
+		if (_landscapeFeature) {
+			_landscapeFeature->deactivateAnimate();
+			_landscapeFeature->deactivateRender();
+			_landscapeFeature = nullptr;
+		}
+		if (_boatApproachA) {
+			_boatApproachA->deactivateAnimate();
+			_boatApproachA->deactivateRender();
+		}
+		if (_boatApproachB) {
+			_boatApproachB->deactivateAnimate();
+			_boatApproachB->deactivateRender();
+		}
+
+		// Play departure SCRB (random 1608-1609)
+		// IDA: scrb_initRunnerWithScript(0, caves_shiftRunnerPositions_41BBEA, rand(1608,1609), ...)
+		uint16 departScrb = _vm->_rnd->getRandomNumber(1608, 1609);
+		if (_boatAnimFeature) {
+			loadScrbOntoFeature(_boatAnimFeature, departScrb);
+		}
+
+		_departAnimDone = false;
+
+		// Set transition target: Ferry → Slides (page 11)
+		// IDA: puzzle_pendingTransitionTarget = 11
+		executeDeparture();
+		return;
+	}
+
+	// -----------------------------------------------------------------------
+	// [1] Pending frogman SCRB animation
+	// IDA: word_4AB128 branch
+	// -----------------------------------------------------------------------
+	if (_pendingFrogmanScrb != 0) {
+		uint16 scrb = _pendingFrogmanScrb;
+		_pendingFrogmanScrb = 0;
+
+		if (_boatAnimFeature) {
+			loadScrbOntoFeature(_boatAnimFeature, scrb);
+		}
+	}
+	// -----------------------------------------------------------------------
+	// [2] Departure animation pending (reject walk overlay)
+	// IDA: word_4AB12C branch
+	// -----------------------------------------------------------------------
+	else if (_departAnimPending) {
+		_departAnimPending = false;
+
+		// Activate departure overlay runners
+		// IDA: scrb_initRunnerWithScript(0, tunnels_zmbApproachGateCallback, 0, word_4AB142)
+		if (_departOverlayFeature) {
+			_departOverlayFeature->activateAnimate();
+			_departOverlayFeature->activateRender();
+		}
+		if (_departRunnerA) {
+			_departRunnerA->activateAnimate();
+			_departRunnerA->activateRender();
+		}
+	}
+	// -----------------------------------------------------------------------
+	// [3] Reject walk pending — set up reject animation
+	// IDA: word_4AB12A branch — waits for frogman animation to complete
+	// -----------------------------------------------------------------------
+	else if (_rejectWalkPending) {
+		// IDA: Wait for frogman hotspot group to clear before starting reject walk
+		// Check if frogman animation is no longer playing
+		if (_boatAnimFeature && !_boatAnimFeature->isAnimateActivated()) {
+			handleRejectWalkSetup();
+		}
+	}
+	// -----------------------------------------------------------------------
+	// [4] Idle fidget timer
+	// IDA: getElapsedFrameTime > dword_4AB10C branch
+	// -----------------------------------------------------------------------
+	else if (_currentFrameTime > _nextFidgetTime) {
+		// Select random fidget SCRB
+		// IDA: word_4A0D08[e2GetPoolValue_nonRepeatRandom(0, 5, &dword_4A0D14)]
+		uint16 idx = getNonRepeatRandom(_vm->_rnd, 5, _fidgetRandomState);
+		_pendingFrogmanScrb = kFidgetScrbPool[idx];
+
+		// Reset fidget timer: 5400-10800 ms
+		_nextFidgetTime = _currentFrameTime + _vm->_rnd->getRandomNumber(5400, 10800);
+	}
+
+	// -----------------------------------------------------------------------
+	// [5] Attribute display scheduling
+	// IDA: word_4AB18E branch — schedule attribute match display on a snoid
+	// -----------------------------------------------------------------------
+	if (_attrDisplaySnoid != 0) {
+		ZmbSnoid *snoid = findIdlePackSnoid(_attrDisplaySnoid);
+		if (snoid) {
+			// IDA: snoid[1].core188.u.s.pcStr1[9] = word_4AB18C
+			// Store match bitmask for attribute display
+			_matchBitmask = 0;
+			_attrDisplaySnoid = 0;
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// [6] Update Go button enabled state
+	// -----------------------------------------------------------------------
+	setGoButtonsEnabled(_seatedCount > 0);
+
+	// -----------------------------------------------------------------------
+	// [7] Ambient sound scheduling
+	// IDA: word_4AB138 check — start ambient after drag lock releases
+	// -----------------------------------------------------------------------
+	if (!_ambientStarted && !isDragging()) {
+		_ambientStarted = true;
+	}
+
+	// Ambient sound is driven by the base interactive frame loop
+}
+
+// ---------------------------------------------------------------------------
+// onLButtonDown: Click handler.
+// IDA: ferry_onClickHandler (0x41ae20)
+// ---------------------------------------------------------------------------
+ZmbEventHandleResult ZoombiniInteractiveFerry::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+	// Handle sticky mouse drop on second click
+	if (isDragging() && _vm->_state->getEnableStickyMouse()) {
+		endDrag(absPos);
+		return ZmbEventHandleResult::kConsumed;
+	}
+
+	// Let interactive base handle Go/Map/Help buttons
+	ZmbEventHandleResult result = ZoombiniInteractive::onLButtonDown(absPos, relPos);
+	if (result == ZmbEventHandleResult::kConsumed)
+		return result;
+
+	// Guard: don't allow dragging during interaction lock or departure
+	if (_interactionLocked || _goButtonPressed)
+		return ZmbEventHandleResult::kPassthrough;
+	if (isDragging())
+		return ZmbEventHandleResult::kPassthrough;
+
+	// Find snoid at click position
+	ZmbSnoid *snoid = findSnoidAtPoint(absPos);
+	if (!snoid)
+		return ZmbEventHandleResult::kPassthrough;
+
+	// Guard: can't drag during reject walk or departure
+	if (_departAnimDone || _goButtonPressed)
+		return ZmbEventHandleResult::kPassthrough;
+
+	// IDA: save the pcStr1[11] (seated state) and reset it
+	// IDA: dword_4AB114 = snoid->core188.posLoc
+	_savedDragOrigin = snoid->getPointLoc();
+
+	// Begin drag
+	startSnoidDrag(snoid, absPos);
+
+	// Play move SFX: pick from kMoveReactionPool if in dock area
+	// IDA: click_testZoneRadius(posLoc) check
+	if (!_pendingFrogmanScrb && kDockRect.contains(_savedDragOrigin.x, _savedDragOrigin.y)) {
+		uint16 idx = getNonRepeatRandom(_vm->_rnd, 3, _moveReactionRandomState);
+		_pendingFrogmanScrb = kMoveReactionPool[idx];
+	}
+
+	return ZmbEventHandleResult::kConsumed;
+}
+
+// ---------------------------------------------------------------------------
+// onLButtonUp: Release drag.
+// ---------------------------------------------------------------------------
+ZmbEventHandleResult ZoombiniInteractiveFerry::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+	if (!isDragging())
+		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
+
+	// In sticky mouse mode, don't end on button-up
+	if (_vm->_state->getEnableStickyMouse())
+		return ZmbEventHandleResult::kConsumed;
+
+	endDrag(absPos);
+	return ZmbEventHandleResult::kConsumed;
+}
+
+// ---------------------------------------------------------------------------
+// endDrag: Process drag completion.
+// IDA: ferry_onClickHandler case 4, after beginDragFeatureRunner
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveFerry::endDrag(const Common::Point &mousePos) {
+	ZmbSnoid *snoid = finishSnoidDrag();
+	if (!snoid)
+		return;
+
+	Common::Point snoidPos = snoid->getPointLoc();
+	_dropTargetSeat = getDropTargetSeat(snoidPos);
+
+	if (_dropTargetSeat > 0) {
+		// Dropped on a seat — test adjacency matching
+		bool valid = testAdjacentMatch(_dropTargetSeat, snoid);
+
+		if (valid) {
+			// ---------------------------------------------------------------
+			// [CORRECT PLACEMENT]
+			// IDA: word_4AB192 = 0; ++word_4AB190 (if not already seated)
+			// ---------------------------------------------------------------
+			_consecutiveFailures = 0;
+			_consecutiveSuccesses++;
+
+			// IDA: Check if success threshold met for good reaction
+			if (_seatedCount + 1 == _totalZmbCount || _consecutiveSuccesses == _successThreshold) {
+				_successThreshold += _vm->_rnd->getRandomNumberSigned(3, 5);
+
+				if (_hasReactedOnce) {
+					uint16 idx = getNonRepeatRandom(_vm->_rnd, 2, _goodReactionRandomState);
+					_pendingFrogmanScrb = kGoodReactionPool[idx];
+				} else {
+					_hasReactedOnce = true;
+					_pendingFrogmanScrb = 1816; // IDA: first good reaction = 1816
+				}
+			}
+
+			// Mark snoid as seated
+			snoid->_packIsOccupied = true;
+			snoid->setAnimState(kSnoidAnimIdle);
+			snoid->setupIdleHotspots();
+
+			// IDA: if matching bitmask && practice level, show attribute match
+			if (_matchBitmask && _vm->_state->readActivePageRouteLevel() > 0) {
+				_attrDisplaySnoid = snoid->getId();
+			}
+
+			_seatedCount++;
+		} else {
+			// ---------------------------------------------------------------
+			// [WRONG PLACEMENT]
+			// IDA: ++word_4AB192; word_4AB190=0; word_4AB194=1
+			// ---------------------------------------------------------------
+			_consecutiveFailures++;
+			_consecutiveSuccesses = 0;
+			_successThreshold = 1;
+			_interactionLocked = true;
+
+			// Mark snoid for rejection
+			snoid->_packIsOccupied = false;
+			_rejectSnoidId = snoid->getId();
+
+			// IDA: word_4AB148 = word_4AB14C[word_4AB148]
+			// Store rejected seat for animation target
+
+			// Select rejection reaction SCRB
+			// IDA: if (nextRand(5,3) == word_4AB192) → 1815 (harsh), else random from bad pool
+			if (_vm->_rnd->getRandomNumberSigned(3, 5) == _consecutiveFailures) {
+				_pendingFrogmanScrb = 1815;
+				_consecutiveFailures = 5; // prevent further harsh rejects
+			} else {
+				uint16 idx = getNonRepeatRandom(_vm->_rnd, 11, _badReactionRandomState);
+				_pendingFrogmanScrb = kBadReactionPool[idx];
+			}
+
+			_rejectWalkPending = true;
+		}
+	} else {
+		// Dropped outside any seat — check if in dock rect
+		// IDA: v3.p236[1].core188.u.s.pcStr1[8] == 4 branch
+		if (kDockRect.contains(snoidPos.x, snoidPos.y)) {
+			// Valid dock placement — keep at current position
+			snoid->setAnimState(kSnoidAnimIdle);
+			snoid->setupIdleHotspots();
+		} else {
+			// Outside dock — validate against terrain, or return to origin
+			if (!validateTerrainDrop(snoid)) {
+				snoid->setPointLoc(_savedDragOrigin);
+			}
+			snoid->setAnimState(kSnoidAnimIdle);
+			snoid->setupIdleHotspots();
+		}
+
+		// IDA: if !word_4AB128 && click_testZoneRadius(posLoc)
+		if (!_pendingFrogmanScrb && kDockRect.contains(snoidPos.x, snoidPos.y)) {
+			uint16 idx = getNonRepeatRandom(_vm->_rnd, 3, _moveReactionRandomState);
+			_pendingFrogmanScrb = kMoveReactionPool[idx];
+		}
+	}
+
+	// IDA: word_4AB136 = getLoadedZmbRunnerCount()
+	// Update seated count — count all pack snoids that are currently seated
+	_seatedCount = 0;
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		if (it->first < 10000)
+			continue;
+		ZmbSnoid *s = it->second;
+		// A snoid is "seated" if it's on a seat position
+		Common::Point sPos = s->getPointLoc();
+		if (getDropTargetSeat(sPos) > 0)
+			_seatedCount++;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// onFeatureAnimEvent: Animation event callback.
+// IDA: dispatched via hotspot group callbacks
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveFerry::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+	if (feature == _boatAnimFeature) {
+		// Frogman/boat animation completed
+		if (eventCode == -1) {
+			// IDA: End of SCRB chain — frogman returns to idle
+			_frogmanHotspotGroup = 0;
+		}
+	} else if (feature == _departOverlayFeature || feature == _departRunnerA || feature == _departRunnerB) {
+		// Departure overlay completed
+		if (eventCode == -1) {
+			_departAnimDone = true;
+			_interactionLocked = false;
+		}
+	} else if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+		// Snoid animation event
+		ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
+		if (eventCode == -1) {
+			// SCRS playback completed — return snoid to idle
+			snoid->setAnimState(kSnoidAnimIdle);
+			snoid->setupIdleHotspots();
+		}
 	}
 }
 

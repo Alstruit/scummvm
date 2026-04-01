@@ -656,6 +656,22 @@ void ZoombiniGraphics::dimPalette(uint16 idx, uint16 steps) {
 	_vm->_system->updateScreen();
 }
 
+void ZoombiniGraphics::scalePalettePartial(uint16 startEntry, uint16 count, uint8 scalePercent) {
+	const size_t bufSize = ARRAYSIZE(_paletteBytes);
+	byte *modified = new byte[bufSize];
+	memcpy(modified, _paletteBytes, bufSize);
+
+	uint16 endEntry = (uint16)MIN<uint32>((uint32)startEntry + count, 256);
+	for (uint16 i = startEntry; i < endEntry; i++) {
+		for (int c = 0; c < 3; c++) {
+			modified[i * 3 + c] = (byte)(((uint16)modified[i * 3 + c]) * scalePercent / 100);
+		}
+	}
+
+	_vm->_system->getPaletteManager()->setPalette(modified, 0, bufSize / 3);
+	delete[] modified;
+}
+
 MohawkSurface *ZoombiniGraphics::findImage(ZmbResource imgResource) {
 	switch (imgResource._archiveKind) {
 	case ZmbArchiveKind::kSystem:

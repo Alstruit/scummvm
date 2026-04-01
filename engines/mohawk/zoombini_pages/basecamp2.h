@@ -37,6 +37,7 @@ public:
 	void loadFeatures() override;
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;
+	ZmbEventHandleResult onMouseMove(const Common::Point &absPos, const Common::Point &relPos) override;
 
 protected:
 	void executeDeparture() override;
@@ -82,6 +83,20 @@ protected:
 
 	// [*] Scroll sound helper (sub_414981)
 	void updateScrollSound(int scrollDir, bool forceReset);
+
+	/**
+	 * Updates pedestal highlight during snoid drag.
+	 * Activates blink animation on nearest empty pedestal within hover radius;
+	 * deactivates the previous highlight if hovering a different pedestal or none.
+	 * IDA: beginDragFeatureRunner_45360F (~0x453A23–0x453B4B)
+	 * @param snoidPos Current snoid position during drag.
+	 */
+	void updatePedestalHover(const Common::Point &snoidPos);
+
+	/**
+	 * Deactivates any active pedestal highlight when drag ends.
+	 */
+	void deactivatePedestalHover();
 
 	// -----------------------------------------------------------------------
 	// Resource IDs
@@ -151,7 +166,11 @@ protected:
 		kShape9000_ScrollRMaxNormal_13 = 13,
 		kShape9000_ScrollRMaxPressed_14 = 14,
 		kShape9000_GoDisabled_15 = 15,
-		// Help/Save button (slot 3 in bridge_drawSegmentsSCRB, IDA: shape 24)
+		// Help/Save button (slot 3): IDA uses shape 24 via the SCRB shape-table path
+		// (gfx_blitBitmapShape, result >= 24 branch).  There are no tBMP 9023/9024 —
+		// 9000-9015 are the only tBMP files.  The help button is rendered by the SCRB
+		// runner automatically; renderButtons() skips slot 3 entirely.
+		// These constants are kept for documentation only.
 		kShape9000_HelpNormal_24 = 24,
 		kShape9000_HelpPressed_25 = 25,
 	};
@@ -357,6 +376,18 @@ protected:
 
 	/** Storage slot index the dragged snoid was picked from (-1 if not from storage). */
 	int16 _dragStorageOriginSlot = -1;
+
+	/**
+	 * Index of the pedestal currently highlighted during drag (-1 if none).
+	 * IDA: wFeatureRunnerIdx in beginDragFeatureRunner_45360F
+	 */
+	int16 _hoveredPedestalIdx = -1;
+
+	/**
+	 * Hover radius for pedestal highlight during drag (same as zmb_clickZoneRadius = 15).
+	 * IDA: beginDragFeatureRunner_45360F uses zmb_clickZoneRadius for drop zone detection.
+	 */
+	static const int16 kPedestalHoverRadius = 15;
 
 	/** Index of the currently held scroll button (word_4AACD2; 0 = none). */
 	int16 _currentScrollButton = 0;

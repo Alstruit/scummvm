@@ -371,10 +371,12 @@ void ZoombiniPage::categorizeFeature(ZmbFeature *feature, Common::Array<ZmbFeatu
 }
 
 /**
- * Sort features ascending by (sortRect.bottom, sortRect.left).
+ * Sort features ascending by (clickRect.bottom, clickRect.left).
+ *
+ * IDA uses clickRect (set once from first render) for stable Z-ordering.
+ * Falls back to sortRect if clickRect hasn't been set yet (first frame).
  *
  * Features with FLAG_00001000_TOPMOST skip past all sorted entries and are appended at the tail of their group (render last within the group).
- * sortRect is populated from clickRect updated during the previous frame.
  */
 void ZoombiniPage::insertionSortFeatures(Common::Array<ZmbFeature *> &list) {
 	if (list.size() <= 1)
@@ -397,10 +399,10 @@ void ZoombiniPage::insertionSortFeatures(Common::Array<ZmbFeature *> &list) {
 			continue;
 		}
 
-		const Common::Rect &keyRect = key->getSortRect();
+		const Common::Rect &keyRect = key->getZSortRect();
 		int32 j = (int32)i - 1;
 		while (j >= 0) {
-			const Common::Rect &cRect = list[j]->getSortRect();
+			const Common::Rect &cRect = list[j]->getZSortRect();
 			// Shift right when existing has larger sort key.
 			// No TOPMOST barrier check on existing — binary walks past them.
 			if (cRect.bottom > keyRect.bottom ||
@@ -462,7 +464,7 @@ void ZoombiniPage::mergeSortedListInto(Common::Array<ZmbFeature *> &existingList
 			continue;
 		}
 
-		const Common::Rect &inRect = incoming->getSortRect();
+		const Common::Rect &inRect = incoming->getZSortRect();
 		uint32 insertPos = existingList.size(); // default: append at end
 		bool found = false;
 
@@ -476,7 +478,7 @@ void ZoombiniPage::mergeSortedListInto(Common::Array<ZmbFeature *> &existingList
 				break;
 			}
 
-			const Common::Rect &exRect = existing->getSortRect();
+			const Common::Rect &exRect = existing->getZSortRect();
 
 			// Sort key comparison: incoming should go before existing?
 			// IDA 0x460BB0: incoming.bottom < existing.bottom, or

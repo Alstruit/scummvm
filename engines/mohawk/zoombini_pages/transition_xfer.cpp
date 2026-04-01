@@ -27,47 +27,20 @@
 
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
-#include "mohawk/zoombini_pages/transition_xfer.h"
 #include "mohawk/zoombini_random.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 #include "mohawk/zoombini_text.h"
+#include "mohawk/zoombini_pages/transition_xfer.h"
 
 namespace Mohawk {
 
-// Route path flood-fill seed coordinates table (IDA: word_4A7EA0).
-// 16 entries: 4 views × 4 route bands, indexed by (view-1)*4 + (route-1).
-// IDA: v2 = word_4B9804 + 4 * xfer_wViewType - 5
-static const Common::Point kRoutePathSeeds[16] = {
-	// XFER_1 (BigBadHungry): indices 0-3
-	{3, 105},
-	{130, 146},
-	{1, 2},
-	{6, 60},
-	// XFER_2 (WhosBayou): indices 4-7
-	{42, 194},
-	{1, 106},
-	{1, 1},
-	{1, 4},
-	// XFER_3 (DeepDarkForest): indices 8-11
-	{1, 1},
-	{1, 1},
-	{1, 53},
-	{102, 162},
-	// XFER_4 (MountainDespair): indices 12-15
-	{1, 12},
-	{57, 154},
-	{1, 1},
-	{2, 109},
-};
-
-ZoombiniTransitionXfer::ZoombiniTransitionXfer(MohawkEngine_Zoombini *vm) : ZoombiniTransition(vm, ZoombiniPageType::kXfer) {
+ZoombiniTransitionXfer::ZoombiniTransitionXfer(MohawkEngine_Zoombini *vm) :
+	ZoombiniTransition(vm, ZoombiniPageType::kXfer) {
 	_useFadeEffect = true;
 }
 
 ZoombiniTransitionXfer::~ZoombiniTransitionXfer() {
-	delete[] _routePathPixels;
-	_routePathPixels = nullptr;
 }
 
 void ZoombiniTransitionXfer::open() {
@@ -242,32 +215,21 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 			if (routeLevel >= 2 && routeLevel <= 3) {
 				// Higher route level: 6 choices including hard voice
 				switch (_vm->_rnd->getRandomNumber(1, 6)) {
-				case 1:
-					return 20094;
-				case 2:
-					return 20095;
-				case 3:
-					return 20096;
-				case 4:
-					return 20097;
-				case 5:
-					return 20098; // hard voice
-				default:
-					return 20099; // no-voice
+				case 1: return 20094;
+				case 2: return 20095;
+				case 3: return 20096;
+				case 4: return 20097;
+				case 5: return 20098; // hard voice
+				default: return 20099; // no-voice
 				}
 			} else {
 				// Low route level: 5 choices, no hard voice
 				switch (_vm->_rnd->getRandomNumber(1, 5)) {
-				case 1:
-					return 20094;
-				case 2:
-					return 20095;
-				case 3:
-					return 20096;
-				case 4:
-					return 20097;
-				default:
-					return 20099; // no-voice
+				case 1: return 20094;
+				case 2: return 20095;
+				case 3: return 20096;
+				case 4: return 20097;
+				default: return 20099; // no-voice
 				}
 			}
 			break;
@@ -300,12 +262,9 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 				return 20008;
 			} else if (difficulty == ZMB_DIFFICULTY_NOTVISITED_00) {
 				switch (_vm->_rnd->getRandomNumber(1, 3)) {
-				case 1:
-					return 20007;
-				case 2:
-					return 20008;
-				default:
-					return 20009; // no-voice
+				case 1: return 20007;
+				case 2: return 20008;
+				default: return 20009; // no-voice
 				}
 			} else {
 				return 20007;
@@ -345,12 +304,9 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 		case ZoombiniPageType::kBasecamp2:
 			// BC2 via bayou: random no-voice from ferry/lilly/slides
 			switch (_vm->_rnd->getRandomNumber(1, 3)) {
-			case 1:
-				return 20016; // ferry no-voice
-			case 2:
-				return 20020; // lilly no-voice
-			default:
-				return 20024; // slides no-voice
+			case 1: return 20016; // ferry no-voice
+			case 2: return 20020; // lilly no-voice
+			default: return 20024; // slides no-voice
 			}
 			break;
 
@@ -360,23 +316,16 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 				if (routeLevel >= 2) {
 					// Higher level: 4 choices including hard
 					switch (_vm->_rnd->getRandomNumber(1, 4)) {
-					case 1:
-						return 20013;
-					case 2:
-						return 20014;
-					case 3:
-						return 20015; // hard
-					default:
-						return 20016; // no-voice
+					case 1: return 20013;
+					case 2: return 20014;
+					case 3: return 20015; // hard
+					default: return 20016; // no-voice
 					}
 				} else {
 					switch (_vm->_rnd->getRandomNumber(1, 3)) {
-					case 1:
-						return 20013;
-					case 2:
-						return 20014;
-					default:
-						return 20016; // no-voice
+					case 1: return 20013;
+					case 2: return 20014;
+					default: return 20016; // no-voice
 					}
 				}
 				break;
@@ -396,23 +345,16 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 			case ZMB_DIFFICULTY_NOTVISITED_00:
 				if (routeLevel >= 2) {
 					switch (_vm->_rnd->getRandomNumber(1, 4)) {
-					case 1:
-						return 20017;
-					case 2:
-						return 20018;
-					case 3:
-						return 20019; // hard
-					default:
-						return 20020; // no-voice
+					case 1: return 20017;
+					case 2: return 20018;
+					case 3: return 20019; // hard
+					default: return 20020; // no-voice
 					}
 				} else {
 					switch (_vm->_rnd->getRandomNumber(1, 3)) {
-					case 1:
-						return 20017;
-					case 2:
-						return 20018;
-					default:
-						return 20020; // no-voice
+					case 1: return 20017;
+					case 2: return 20018;
+					default: return 20020; // no-voice
 					}
 				}
 				break;
@@ -431,12 +373,9 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 		case ZoombiniPageType::kSlides:
 			if (difficulty == ZMB_DIFFICULTY_NOTVISITED_00) {
 				switch (_vm->_rnd->getRandomNumber(1, 3)) {
-				case 1:
-					return 20021;
-				case 2:
-					return 20022;
-				default:
-					return 20024; // no-voice
+				case 1: return 20021;
+				case 2: return 20022;
+				default: return 20024; // no-voice
 				}
 			} else {
 				// difficulty 1, 2, 4, 5 → voice
@@ -457,12 +396,9 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 		case ZoombiniPageType::kBasecamp2:
 			// BC2 via forest: random no-voice from fleens/hotel/net
 			switch (_vm->_rnd->getRandomNumber(1, 3)) {
-			case 1:
-				return 20028; // fleens no-voice
-			case 2:
-				return 20031; // hotel no-voice
-			default:
-				return 20034; // net no-voice
+			case 1: return 20028; // fleens no-voice
+			case 2: return 20031; // hotel no-voice
+			default: return 20034; // net no-voice
 			}
 			break;
 
@@ -472,24 +408,17 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 				if (routeLevel == 1 || routeLevel == 3) {
 					// Low difficulty levels: 3 choices, no hard
 					switch (_vm->_rnd->getRandomNumber(1, 3)) {
-					case 1:
-						return 20025;
-					case 2:
-						return 20026;
-					default:
-						return 20028; // no-voice
+					case 1: return 20025;
+					case 2: return 20026;
+					default: return 20028; // no-voice
 					}
 				} else {
 					// Higher: 4 choices including hard
 					switch (_vm->_rnd->getRandomNumber(1, 4)) {
-					case 1:
-						return 20025;
-					case 2:
-						return 20026;
-					case 3:
-						return 20027; // hard
-					default:
-						return 20028; // no-voice
+					case 1: return 20025;
+					case 2: return 20026;
+					case 3: return 20027; // hard
+					default: return 20028; // no-voice
 					}
 				}
 				break;
@@ -507,12 +436,9 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 		case ZoombiniPageType::kHotel:
 			if (difficulty == ZMB_DIFFICULTY_NOTVISITED_00) {
 				switch (_vm->_rnd->getRandomNumber(1, 3)) {
-				case 1:
-					return 20029;
-				case 2:
-					return 20030;
-				default:
-					return 20031; // no-voice
+				case 1: return 20029;
+				case 2: return 20030;
+				default: return 20031; // no-voice
 				}
 			} else {
 				return 20030;
@@ -522,12 +448,9 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 		case ZoombiniPageType::kNet:
 			if (difficulty == ZMB_DIFFICULTY_NOTVISITED_00) {
 				switch (_vm->_rnd->getRandomNumber(1, 3)) {
-				case 1:
-					return 20032;
-				case 2:
-					return 20033;
-				default:
-					return 20034; // no-voice
+				case 1: return 20032;
+				case 2: return 20033;
+				default: return 20034; // no-voice
 				}
 			} else {
 				return 20033;
@@ -547,12 +470,9 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 		case ZoombiniPageType::kCaves:
 			if (difficulty == ZMB_DIFFICULTY_NOTVISITED_00) {
 				switch (_vm->_rnd->getRandomNumber(1, 3)) {
-				case 1:
-					return 20035;
-				case 2:
-					return 20036;
-				default:
-					return 20037; // no-voice
+				case 1: return 20035;
+				case 2: return 20036;
+				default: return 20037; // no-voice
 				}
 			} else {
 				return 20036;
@@ -564,23 +484,16 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 			case ZMB_DIFFICULTY_NOTVISITED_00:
 				if (routeLevel >= 2) {
 					switch (_vm->_rnd->getRandomNumber(1, 4)) {
-					case 1:
-						return 20000;
-					case 2:
-						return 20001;
-					case 3:
-						return 20002; // hard
-					default:
-						return 20003; // no-voice
+					case 1: return 20000;
+					case 2: return 20001;
+					case 3: return 20002; // hard
+					default: return 20003; // no-voice
 					}
 				} else {
 					switch (_vm->_rnd->getRandomNumber(1, 3)) {
-					case 1:
-						return 20000;
-					case 2:
-						return 20001;
-					default:
-						return 20003; // no-voice
+					case 1: return 20000;
+					case 2: return 20001;
+					default: return 20003; // no-voice
 					}
 				}
 				break;
@@ -598,12 +511,9 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 		case ZoombiniPageType::kMaze:
 			if (difficulty == ZMB_DIFFICULTY_NOTVISITED_00) {
 				switch (_vm->_rnd->getRandomNumber(1, 3)) {
-				case 1:
-					return 20004;
-				case 2:
-					return 20005;
-				default:
-					return 20006; // no-voice
+				case 1: return 20004;
+				case 2: return 20005;
+				default: return 20006; // no-voice
 				}
 			} else {
 				return 20005;
@@ -623,14 +533,10 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 			return 20100;
 		}
 		switch (_vm->_rnd->getRandomNumber(1, 4)) {
-		case 1:
-			return 20100;
-		case 2:
-			return 20101;
-		case 3:
-			return 20102;
-		default:
-			return 20103; // no-voice
+		case 1: return 20100;
+		case 2: return 20101;
+		case 3: return 20102;
+		default: return 20103; // no-voice
 		}
 		break;
 
@@ -644,6 +550,13 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 void ZoombiniTransitionXfer::setBackgroundBitmap() {
 	computeXferRoute();
 	_vm->_gfx->setPalette(_xferBgId);
+
+	// XFER_0 (from picker) doesn't need common palette - it uses picker's full palette.
+	// All other routes need common predefined colors (indices 10-45) for snoid sprites/UI.
+	if (_xferView != XFER_ROUTE_FROM_ISLE) {
+		
+	}
+
 	_vm->_gfx->drawBackground(_xferBgId);
 }
 
@@ -658,13 +571,13 @@ void ZoombiniTransitionXfer::loadFeatures() {
 	//   [0] main overlay: 0x0C10C000 (NO_DIRTY_MERGE | LOOP_ANIM | PLAY_ONCE | OVERLAY | REGION_TRACK)
 	//   [1],[2] static shapes: flags = 0
 	const uint32 kEnvScrbFlags = ZmbFeature::FLAG_00008000_LOOP_ANIM |
-								 ZmbFeature::FLAG_00080000_DEFER_ANIM |
-								 ZmbFeature::FLAG_00100000_PLAY_ONCE |
-								 ZmbFeature::FLAG_01000000_DEFER_RENDER;
+	                              ZmbFeature::FLAG_00080000_DEFER_ANIM |
+	                              ZmbFeature::FLAG_00100000_PLAY_ONCE |
+	                              ZmbFeature::FLAG_01000000_DEFER_RENDER;
 
 	const bool isMidRoute = (_xferView >= XFER_ROUTE_BIG_BAD_HUNGRY &&
-							 _xferView <= XFER_ROUTE_MOUNTAIN_OF_DESPAIR);
-	const bool isToTown = (_xferView == XFER_ROUTE_TO_TOWN);
+	                         _xferView <= XFER_ROUTE_MOUNTAIN_OF_DESPAIR);
+	const bool isToTown   = (_xferView == XFER_ROUTE_TO_TOWN);
 	const bool isFromIsle = (_xferView == XFER_ROUTE_FROM_ISLE);
 
 	// Initialize callback state.
@@ -694,58 +607,47 @@ void ZoombiniTransitionXfer::loadFeatures() {
 		// IDA: word_4B97D4[0..3] are used for random env activation.
 		// These map to SCRBs 5102-5105 (the first 4 animated env SCRBs).
 		for (int i = 0; i < 4; i++)
-			_envScrbIds[i] = _xferShapesId + 2 + i; // 5102-5105
+			_envScrbIds[i] = _xferShapesId + 2 + i;  // 5102-5105
 
 		// IDA: word_4B97D2 = one-shot env SCRB 5108.
-		_envOneShotScrbId = _xferShapesId + 8; // 5108
+		_envOneShotScrbId = _xferShapesId + 8;  // 5108
 		_envOneShotAvailable = true;
 
 		// IDA: word_4B97E8[0..1] = 1 — one-shot flags for events 10-11 (SCRBs 5102-5103).
-		_envEventTriggerFlags[0] = true; // event 10 → SCRB 5102
-		_envEventTriggerFlags[1] = true; // event 11 → SCRB 5103
+		_envEventTriggerFlags[0] = true;  // event 10 → SCRB 5102
+		_envEventTriggerFlags[1] = true;  // event 11 → SCRB 5103
 
 		// IDA: sub_4572C5(0) swaps body tables to small variants and loads SHPL 3200.
 		_useSmallSnoids = true;
 	} else if (isToTown) {
 		// XFER_5 (IDA LABEL_295): 6108 (animated far bg), 6105 (static), 6104 (static)
 		// appear BEHIND the snoids; 6100-6103, 6106-6107 appear in front (loaded below).
-		loadScrbFeature(xferShapes, _xferShapesId + 8, 6, kEnvScrbFlags);                         // 6108 animated
-		loadScrbFeature(xferShapes, _xferShapesId + 5, 0, ZmbFeature::FLAG_00000000_TYPE_SHAPES); // 6105
-		loadScrbFeature(xferShapes, _xferShapesId + 4, 0, ZmbFeature::FLAG_00000000_TYPE_SHAPES); // 6104
+		loadScrbFeature(xferShapes, _xferShapesId + 8, 6, kEnvScrbFlags);  // 6108 animated
+		loadScrbFeature(xferShapes, _xferShapesId + 5, 0, ZmbFeature::FLAG_00000000_TYPE_SHAPES);  // 6105
+		loadScrbFeature(xferShapes, _xferShapesId + 4, 0, ZmbFeature::FLAG_00000000_TYPE_SHAPES);  // 6104
 
 		// IDA: word_4B97E6 = runner for 6108 (activated when completionCounter > 4).
-		_finalEnvScrbId = _xferShapesId + 8; // 6108
+		_finalEnvScrbId = _xferShapesId + 8;  // 6108
 
 		// IDA: word_4B97E2 = runner for 6104 (linked to snoids on callback event 26).
-		_linkTargetScrbId = _xferShapesId + 4; // 6104
+		_linkTargetScrbId = _xferShapesId + 4;  // 6104
 
 		// IDA: word_4B9802 = runner for 6105 (activated by event 50).
-		_xfer5EventScrbId = _xferShapesId + 5; // 6105
+		_xfer5EventScrbId = _xferShapesId + 5;  // 6105
 	} else {
 		// XFER_1-4: main overlay SCRB with patch hook + sub-feature go before snoids.
 		const uint32 kMainScrbFlags = ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE |
-									  ZmbFeature::FLAG_00008000_LOOP_ANIM |
-									  ZmbFeature::FLAG_00100000_PLAY_ONCE |
-									  ZmbFeature::FLAG_04000000_OVERLAY |
-									  ZmbFeature::FLAG_08000000_REGION_TRACK;
+		                               ZmbFeature::FLAG_00008000_LOOP_ANIM |
+		                               ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		                               ZmbFeature::FLAG_04000000_OVERLAY |
+		                               ZmbFeature::FLAG_08000000_REGION_TRACK;
 		loadScrbFeature(xferShapes, _xferShapesId, 6, kMainScrbFlags);
 
 		// Sub-feature SCRB at bgId+200 (e.g. 1200, 2200, …) — foreground overlay detail.
 		// IDA: loadSubFeatureSCRB_45FE2C(0, 1, bgId+200) with overlay flags.
-		// IDA: xfer_loadArrowOverlay_467FF1 sets up post-render callback for path arrow flood-fill
-		// and a pre-render shape callback (rodmap_selectRouteBand_4683D4) to select the active band.
 		const uint16 subId = _xferBgId + 200;
-		ZmbFeature::EventHooks routePathHooks;
-		routePathHooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(
-			&ZoombiniTransitionXfer::routePath_selectBand));
-		routePathHooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(
-			&ZoombiniTransitionXfer::routePath_onPostRender));
-		_routePathFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, subId), subId, 4,
-											ZmbFeature::FLAG_04000000_OVERLAY, routePathHooks);
-
-		// Compute the route band position (1-4) and color level (1-4).
-		computeRoutePathLevel();
-		computeRoutePathColorLevel();
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, subId), subId, 4,
+		                ZmbFeature::FLAG_04000000_OVERLAY);
 	}
 
 	// -----------------------------------------------------------------------
@@ -780,12 +682,12 @@ void ZoombiniTransitionXfer::loadFeatures() {
 		}
 
 		ZmbSnoid *snoid = loadSnoidFromPack(static_cast<uint16>(kSnoidPackBase) + _nextPackSnoidId++,
-											startPos, snoidFlags);
+		                                    startPos, snoidFlags);
 		if (!snoid)
 			continue;
 
 		snoid->_trait = entry._traits;
-		snoid->_name = entry.getU32Name(_vm);
+		snoid->_name  = entry.getU32Name(_vm);
 
 		if (_useSmallSnoids) {
 			// IDA: sub_4572C5(0) swaps body tables to small variants and loads SHPL 0xC80=3200.
@@ -829,7 +731,7 @@ void ZoombiniTransitionXfer::loadFeatures() {
 		loadScrbFeature(xferShapes, _xferShapesId + 0, 0, ZmbFeature::FLAG_00000000_TYPE_SHAPES);
 		loadScrbFeature(xferShapes, _xferShapesId + 1, 0, ZmbFeature::FLAG_00000000_TYPE_SHAPES);
 
-		_linkTargetScrbId = _xferShapesId + 0; // 5100
+		_linkTargetScrbId = _xferShapesId + 0;  // 5100
 	} else if (isToTown) {
 		// 6100-6103 static foreground, 6106-6107 animated foreground — above snoid walkers.
 		for (uint16 i = 0; i <= 3; i++)
@@ -837,10 +739,10 @@ void ZoombiniTransitionXfer::loadFeatures() {
 
 		// IDA: kEnvScrbFlagsNoLoop for 6106/6107 (no LOOP flag — DEFER_ANIM | PLAY_ONCE | DEFER_RENDER).
 		const uint32 kEnvScrbFlagsNoLoop = ZmbFeature::FLAG_00080000_DEFER_ANIM |
-										   ZmbFeature::FLAG_00100000_PLAY_ONCE |
-										   ZmbFeature::FLAG_01000000_DEFER_RENDER;
-		loadScrbFeature(xferShapes, _xferShapesId + 6, 6, kEnvScrbFlagsNoLoop); // 6106
-		loadScrbFeature(xferShapes, _xferShapesId + 7, 6, kEnvScrbFlagsNoLoop); // 6107
+		                                    ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		                                    ZmbFeature::FLAG_01000000_DEFER_RENDER;
+		loadScrbFeature(xferShapes, _xferShapesId + 6, 6, kEnvScrbFlagsNoLoop);  // 6106
+		loadScrbFeature(xferShapes, _xferShapesId + 7, 6, kEnvScrbFlagsNoLoop);  // 6107
 	} else if (isMidRoute) {
 		// shapes[1] and shapes[2] are static overlapping edges above the walker overlay.
 		loadScrbFeature(xferShapes, _xferShapesId + 1, 0, ZmbFeature::FLAG_00000000_TYPE_SHAPES);
@@ -857,11 +759,11 @@ void ZoombiniTransitionXfer::loadFeatures() {
 	if (isFromIsle) {
 		// IDA: dword_4B97BC = currentFrame + 30 * rand(3,6) — delay first trigger.
 		_scrsNextTriggerFrame = getCurrentFrameCounter() + 30 * _vm->_rnd->getRandomNumber(3, 6);
-		_scrsResIdBase = 5199;
+		_scrsResIdBase = 5200;
 	} else if (isToTown) {
 		// IDA: dword_4B97BC starts at 0 → first trigger fires immediately.
 		_scrsNextTriggerFrame = 0;
-		_scrsResIdBase = 6199;
+		_scrsResIdBase = 6200;
 	}
 
 	// Play voice sound for this xfer route.
@@ -882,20 +784,20 @@ void ZoombiniTransitionXfer::loadFeatures() {
 		//   View 3 (DeepDarkForest):  left=127, top=29,  right=299, bottom=81
 		//   View 4 (MountainDespair): left=135, top=29,  right=323, bottom=82
 		static const Common::Rect kRouteTextRects[4] = {
-			Common::Rect(43, 54, 226, 107), // View 1
-			Common::Rect(371, 33, 613, 65), // View 2
-			Common::Rect(127, 29, 299, 81), // View 3
-			Common::Rect(135, 29, 323, 82), // View 4
+			Common::Rect( 43, 54, 226, 107),  // View 1
+			Common::Rect(371, 33, 613,  65),  // View 2
+			Common::Rect(127, 29, 299,  81),  // View 3
+			Common::Rect(135, 29, 323,  82),  // View 4
 		};
 		const uint32 textKey = static_cast<uint32>(ZoombiniText::Key::kRoute1) + _xferView - 1;
 		const Common::Rect &textRect = kRouteTextRects[_xferView - 1];
 
 		ZoombiniGraphics::TextConf tc;
-		tc._outlineEffect = true;
-		tc._textPalette = ZoombiniGraphics::kColor0A_White;    // palette #10 (fg)
-		tc._outlinePalette = ZoombiniGraphics::kColor2D_Black; // palette #45 (shadow)
-		tc._hAlign = Graphics::kTextAlignCenter;
-		tc._vAlign = Graphics::kTextAlignCenter;
+		tc._outlineEffect  = true;
+		tc._textPalette    = ZoombiniGraphics::kColor0A_White;  // palette #10 (fg)
+		tc._outlinePalette = ZoombiniGraphics::kColor2D_Black;  // palette #45 (shadow)
+		tc._hAlign         = Graphics::kTextAlignCenter;
+		tc._vAlign         = Graphics::kTextAlignCenter;
 		_vm->_gfx->drawText(ZoombiniGraphics::kShapeScreen, textKey, textRect, tc);
 	}
 }
@@ -924,7 +826,7 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 	if (getCurrentFrameCounter() >= _scrsNextTriggerFrame) {
 		// IDA: if (word_4B97E4 > 4) — 5+ snoids completed, activate final env SCRB.
 		if (_completionCounter > 4) {
-			_completionCounter = -1; // Disable further counting
+			_completionCounter = -1;  // Disable further counting
 			if (_finalEnvScrbId != 0)
 				activateEnvScrb(_finalEnvScrbId);
 			// IDA: sets callback to xfer_commitDestPuzzleId_467F4D (event 30 → page transition).
@@ -965,14 +867,9 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 					uint16 snoidId = static_cast<uint16>(kSnoidPackBase) + _scrsTriggerIdx;
 					ZmbSnoid *snoid = getSnoid(snoidId);
 					if (snoid && snoid->getAnimState() == kSnoidAnimIdle) {
-						// IDA 0x4676B3: SCRS resource = foot trait + 5199.
-						// Each foot type (1-5) gets a different walk animation path.
-						uint16 scrsId = _scrsResIdBase + snoid->_trait._foot;
 						Common::SeekableReadStream *scrsStream =
-							_vm->getResource(ID_SCRS, ZmbResource(ZmbArchiveKind::kPage, scrsId));
+							_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, _scrsResIdBase));
 						if (scrsStream) {
-							// IDA 0x4676A2: chIsFacingLeft = 0 before SCRS playback.
-							snoid->setFacingLeft(false);
 							snoid->startScrsPlayback(scrsStream, true /* hideOnComplete */, true /* rejectState */);
 						}
 					}
@@ -985,7 +882,7 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 		// XFER_5: periodic SCRS trigger — same structure as XFER_0.
 		// IDA: wXferView == 5 branch.
 		// Timer: 40 * rand(3,6) = 120-240 frames between triggers.
-		// SCRS resource per-snoid: foot trait + 6199 (IDA 0x4677E2).
+		// 100% snoid triggers (no env SCRB split), using SCRS 6200.
 		// -------------------------------------------------------------------
 		if (_xferView == XFER_ROUTE_TO_TOWN && _xferSnoidCount > 0) {
 			_scrsNextTriggerFrame = getCurrentFrameCounter() + 40 * _vm->_rnd->getRandomNumber(3, 6);
@@ -994,13 +891,9 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 				uint16 snoidId = static_cast<uint16>(kSnoidPackBase) + _scrsTriggerIdx;
 				ZmbSnoid *snoid = getSnoid(snoidId);
 				if (snoid && snoid->getAnimState() == kSnoidAnimIdle) {
-					// IDA 0x4677E2: SCRS resource = foot trait + 6199.
-					uint16 scrsId = _scrsResIdBase + snoid->_trait._foot;
 					Common::SeekableReadStream *scrsStream =
-						_vm->getResource(ID_SCRS, ZmbResource(ZmbArchiveKind::kPage, scrsId));
+						_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, _scrsResIdBase));
 					if (scrsStream) {
-						// IDA 0x4677D8: chIsFacingLeft = 0 before SCRS playback.
-						snoid->setFacingLeft(false);
 						snoid->startScrsPlayback(scrsStream, true /* hideOnComplete */, true /* rejectState */);
 					}
 				}
@@ -1053,7 +946,7 @@ void ZoombiniTransitionXfer::onFeatureAnimEvent(ZmbFeature *feature, int16 event
 		// IDA: word_4B97E0 = scrbIdx - 239 (applied on next event 0).
 		// ---------------------------------------------------------------
 		else if (eventCode >= 240 && eventCode <= 243) {
-			_bodyArrangementOverride = eventCode - 239; // 1-4
+			_bodyArrangementOverride = eventCode - 239;  // 1-4
 		}
 		// ---------------------------------------------------------------
 		// Events 250-253: Direct body arrangement change.
@@ -1086,16 +979,17 @@ void ZoombiniTransitionXfer::onFeatureAnimEvent(ZmbFeature *feature, int16 event
 	} else if (eventCode == 0) {
 		// ---------------------------------------------------------------
 		// Event 0: Toggle visibility, apply pending arrangement, inc cycle.
-		// IDA 0x467E92: *(callbackData+290) = *(callbackData+290) == 0.
-		// Offset 290 = CFeatureRunner307 offset 0x122 = FeatureCore259 offset 0xF2
-		// = chIsFacingLeft. This toggles facing direction, NOT render visibility.
+		// IDA: *(callbackData+290) = *(callbackData+290) == 0 — toggle render.
 		// IDA: if word_4B97E0: setAnimShape(word_4B97E0 - 1), clear override.
 		// IDA: ++*(callbackData+288) — increment cycle counter.
 		// IDA: if XFER_0 && cycleCount == 2: linkFeatureRunner(word_4B97E2, 1, idx).
 		// ---------------------------------------------------------------
 		if (snoid) {
-			// Toggle facing direction (left ↔ right).
-			snoid->setFacingLeft(!snoid->isFacingLeft());
+			// Toggle render visibility.
+			if (snoid->isRenderActivated())
+				snoid->deactivateRender();
+			else
+				snoid->activateRender();
 
 			// Apply pending body arrangement override (set by events 240-243).
 			if (_bodyArrangementOverride != 0) {
@@ -1103,10 +997,10 @@ void ZoombiniTransitionXfer::onFeatureAnimEvent(ZmbFeature *feature, int16 event
 				_bodyArrangementOverride = 0;
 			}
 
-			// Increment per-snoid SCRS facing-toggle counter.
+			// Increment per-snoid SCRS cycle counter.
 			snoid->_scrsAnimCycleCount++;
 
-			// XFER_0: after 2 facing toggles, link snoid after the env overlay.
+			// XFER_0: after 2 visibility cycles, link snoid after the env overlay.
 			// IDA: linkFeatureRunner(word_4B97E2, 1, runnerIdx) — link snoid after env overlay.
 			// In ScummVM, removing OVERLAY moves the snoid from overlayList into entityList
 			// (merged after normalList where env overlay 5100 resides), achieving the "in front" effect.
@@ -1125,446 +1019,15 @@ void ZoombiniTransitionXfer::onFeatureAnimEvent(ZmbFeature *feature, int16 event
 			if (flagIdx < 2 && _envEventTriggerFlags[flagIdx]) {
 				_envEventTriggerFlags[flagIdx] = false;
 				// Activate the corresponding env SCRB (5102 for event 10, 5103 for event 11).
-				uint16 envScrbId = _xferShapesId + 2 + flagIdx; // 5102 or 5103
+				uint16 envScrbId = _xferShapesId + 2 + flagIdx;  // 5102 or 5103
 				activateEnvScrb(envScrbId);
 			}
 		}
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Path Arrow Route Level Calculation
-// IDA: Derives from source puzzle, maps to band index within the current view.
-// The route level (1-4) tells which route band to highlight.
-// ---------------------------------------------------------------------------
-void ZoombiniTransitionXfer::computeRoutePathLevel() {
-	// Route level is 1-based (1-4 for most views, though not all routes use 4 bands).
-	// Based on source puzzle, we determine which crossing this is within the route.
-	ZMB_SI_PAGE src = _vm->_xferSrcSiPage;
-
-	switch (_xferView) {
-	case XFER_ROUTE_BIG_BAD_HUNGRY: // XFER_1
-		// Route 1: Bridge → Tunnels → Pizza → BC1
-		switch (src) {
-		case ZMB_SI_BRIDGE_02:
-			_routePathLevel = 1;
-			break; // First crossing
-		case ZMB_SI_TUNNELS_03:
-			_routePathLevel = 2;
-			break; // Second crossing
-		case ZMB_SI_PIZZA_04:
-			_routePathLevel = 3;
-			break; // Third crossing
-		default:
-			_routePathLevel = 1;
-			break;
-		}
-		break;
-
-	case XFER_ROUTE_WHOS_BAYOU: // XFER_2
-		// Route 2: BC1 → Ferry → Lilly → BC2
-		switch (src) {
-		case ZMB_SI_BC1_NORTH_05:
-			_routePathLevel = 1;
-			break; // First path
-		case ZMB_SI_BC1_SOUTH_06:
-			_routePathLevel = 1;
-			break; // Alt first path
-		case ZMB_SI_FERRY_07:
-			_routePathLevel = 2;
-			break; // Second crossing
-		case ZMB_SI_LILLY_08:
-			_routePathLevel = 3;
-			break; // Third crossing
-		default:
-			_routePathLevel = 1;
-			break;
-		}
-		break;
-
-	case XFER_ROUTE_DEEP_DARK_FOREST: // XFER_3
-		// Route 3: BC2 via Slides → Fleens → Hotel → Net
-		switch (src) {
-		case ZMB_SI_SLIDES_09:
-			_routePathLevel = 1;
-			break; // First crossing
-		case ZMB_SI_FLEENS_10:
-			_routePathLevel = 2;
-			break; // Second crossing
-		case ZMB_SI_HOTEL_11:
-			_routePathLevel = 3;
-			break; // Third crossing
-		default:
-			_routePathLevel = 1;
-			break;
-		}
-		break;
-
-	case XFER_ROUTE_MOUNTAIN_OF_DESPAIR: // XFER_4
-		// Route 4: BC2 via Net → Tunnels → Smoke → Maze
-		switch (src) {
-		case ZMB_SI_NET_12:
-			_routePathLevel = 1;
-			break; // First crossing
-		case ZMB_SI_BASECAMP2_13:
-			_routePathLevel = 2;
-			break; // Alt path
-		case ZMB_SI_CAVES_14:
-			_routePathLevel = 3;
-			break; // Third crossing
-		case ZMB_SI_SMOKE_15:
-			_routePathLevel = 4;
-			break; // Fourth crossing
-		default:
-			_routePathLevel = 1;
-			break;
-		}
-		break;
-
-	default:
-		_routePathLevel = 1;
-		break;
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Route Path Color Level Calculation
-// IDA: readPuzzleLevelFromState_46788A — derives word_4B97FA (color level)
-// from route difficulty. On first traversal the route level is 0 so the
-// color level defaults to 1 (string "10/.", palette 0x2E-0x31).
-// On subsequent traversals the route level increments, advancing the color
-// tier: 2 → "3210", 3 → "5432", 4 → "7654".
-// ---------------------------------------------------------------------------
-void ZoombiniTransitionXfer::computeRoutePathColorLevel() {
-	uint16 routeIdx;
-	switch (_xferView) {
-	case XFER_ROUTE_BIG_BAD_HUNGRY:       routeIdx = 0; break;
-	case XFER_ROUTE_WHOS_BAYOU:           routeIdx = 1; break;
-	case XFER_ROUTE_DEEP_DARK_FOREST:     routeIdx = 2; break;
-	case XFER_ROUTE_MOUNTAIN_OF_DESPAIR:  routeIdx = 3; break;
-	default: routeIdx = 0; break;
-	}
-	_routePathColorLevel = _vm->_state->_f._routeLevels[routeIdx] + 1;
-	if (_routePathColorLevel > 4)
-		_routePathColorLevel = 4;
-}
-
-// ---------------------------------------------------------------------------
-// Route Band Shape Selection (Pre-Render Shape Callback)
-// IDA: rodmap_selectRouteBand_4683D4 — selects which band shape to render.
-// The SCRB_1200 frame has 4 hotspot entries (one per route band), each
-// referencing a different shape at a different position. This callback keeps
-// only the hotspot for the current band, removing the rest so only one
-// band shape is drawn by the standard renderer.
-// ---------------------------------------------------------------------------
-void ZoombiniTransitionXfer::routePath_selectBand(ZmbFeature * /*feature*/,
-												  ZmbHotspotGroup * /*hsGroup*/,
-												  Common::Array<ZmbHotspot> &hotspots) {
-	uint16 targetIdx = _routePathLevel - 1; // 0-based
-	if (targetIdx >= hotspots.size())
-		return;
-
-	ZmbHotspot target = hotspots[targetIdx];
-	hotspots.clear();
-	hotspots.push_back(target);
-}
-
-// ---------------------------------------------------------------------------
-// Route Path Post-Render Callback
-// IDA: xfer_onPostRenderRoutePath (0x468457)
-// Called after the path overlay feature is rendered. Performs flood-fill animation.
-// ---------------------------------------------------------------------------
-void ZoombiniTransitionXfer::routePath_onPostRender(ZmbFeature *feature) {
-	// Note: This callback is only invoked when the feature was actually rendered.
-
-	// IDA: xfer_onPostRenderPathArrow (0x468457) gates all flood-fill logic
-	// behind chGetDrawnRect, which is only set by runner_preRenderStandard
-	// (0x4619A1) when dNextRenderFrame <= scrb_dwFrameRenderTime. We replicate
-	// this with _routePathNextFrame: skip flood-fill processing until enough
-	// frame ticks have elapsed per the feature's frameInterval.
-	uint32 currentFrame = getCurrentFrameCounter();
-	bool doFloodFill = (currentFrame >= _routePathNextFrame);
-	if (doFloodFill) {
-		_routePathNextFrame = currentFrame + feature->getFrameInterval();
-	}
-
-	// Resolve the current band's hotspot: _routePathLevel (1-4) selects which
-	// of the 4 SCRB hotspot entries to use (each references a different shape
-	// at a different screen position). The pre-render shape callback
-	// (routePath_selectBand) already filtered the hotspot array for the
-	// standard renderer; here we read the original group for shape/position.
-	int32 frameIdx = feature->getLastFrameIdx();
-	ZmbHotspotGroup *hsGroup = feature->getHotspotGroup(frameIdx);
-	if (!hsGroup || hsGroup->getHotspotCount() == 0)
-		return;
-
-	uint16 bandIdx = _routePathLevel - 1; // 0-based
-	if (bandIdx >= hsGroup->getHotspotCount())
-		bandIdx = 0;
-	const ZmbHotspot &hsBand = hsGroup->getHotspot(bandIdx);
-	int16 shapeId = hsBand._shapeIdx;
-	int screenX = hsBand._x;
-	int screenY = hsBand._y;
-
-	if (doFloodFill) {
-		// First frame (counter == 0): Initialize the flood-fill grid.
-		if (_routePathCounter == 0) {
-			// Get the shape surface for the current route band.
-			// IDA: v3 = RMap + offset[hsArr[0].shapeid] — reads the shape
-			// selected by rodmap_selectRouteBand_4683D4.
-			uint16 subId = _xferBgId + 200; // 1200, 2200, 3200, or 4200
-			MohawkSurface *shapeSurf = _vm->_gfx->findShape(ZmbResource(ZmbArchiveKind::kPage, subId), shapeId);
-			if (!shapeSurf || !shapeSurf->getSurface())
-				return;
-
-			Graphics::Surface *surf = shapeSurf->getSurface();
-			_routePathWidth = surf->w;
-			_routePathHeight = surf->h;
-
-			// Allocate working pixel buffer (copy of shape pixels).
-			delete[] _routePathPixels;
-			_routePathPixels = new byte[_routePathWidth * _routePathHeight];
-			memcpy(_routePathPixels, surf->getPixels(), _routePathWidth * _routePathHeight);
-
-			// Calculate seed index: (view-1)*4 + (band-1)
-			// IDA: v2 = word_4B9804 + 4 * xfer_wViewType - 5
-			int seedIdx = (_xferView - 1) * 4 + (_routePathLevel - 1);
-			if (seedIdx < 0 || seedIdx >= 16)
-				seedIdx = 0;
-
-			Common::Point seedPos = kRoutePathSeeds[seedIdx];
-
-			// Select color replacement values based on COLOR level (word_4B97FA),
-			// NOT band position (word_4B9804). The color level is derived from
-			// route difficulty, not which crossing in the route.
-			// IDA: switch(word_4B97FA) selects strings "10/.", "3210", "5432", "7654".
-			byte mark1, mark2, replace1, replace2;
-			switch (_routePathColorLevel) {
-			default:                                                           // Level 1
-				mark1 = ZoombiniGraphics::kRoutePathColor2E_LevelOneBack1;     // 0x2E (46) #D6A55A
-				mark2 = ZoombiniGraphics::kRoutePathColor2F_LevelOneBack2;     // 0x2F (47) #D6AD9C
-				replace1 = ZoombiniGraphics::kRoutePathColor30_LevelOneColor1; // 0x30 (48) #005F41
-				replace2 = ZoombiniGraphics::kRoutePathColor31_LevelOneColor2; // 0x31 (49) #579984
-				break;
-			case 2:                                                            // Level 2
-				mark1 = ZoombiniGraphics::kRoutePathColor30_LevelOneColor1;    // 0x30 (48) #005F41
-				mark2 = ZoombiniGraphics::kRoutePathColor31_LevelOneColor2;    // 0x31 (49) #579984
-				replace1 = ZoombiniGraphics::kRoutePathColor32_LevelTwoColor1; // 0x32 (50) #F4A200
-				replace2 = ZoombiniGraphics::kRoutePathColor33_LevelTwoColor2; // 0x33 (51) #FFC863
-				break;
-			case 3:                                                              // Level 3
-				mark1 = ZoombiniGraphics::kRoutePathColor32_LevelTwoColor1;      // 0x32 (50) #F4A200
-				mark2 = ZoombiniGraphics::kRoutePathColor33_LevelTwoColor2;      // 0x33 (51) #FFC863
-				replace1 = ZoombiniGraphics::kRoutePathColor34_LevelThreeColor1; // 0x34 (52) #FF5711
-				replace2 = ZoombiniGraphics::kRoutePathColor35_LevelThreeColor2; // 0x35 (53) #FF9569
-				break;
-			case 4:                                                             // Level 4
-				mark1 = ZoombiniGraphics::kRoutePathColor34_LevelThreeColor1;   // 0x34 (52) #FF5711
-				mark2 = ZoombiniGraphics::kRoutePathColor35_LevelThreeColor2;   // 0x35 (53) #FF9569
-				replace1 = ZoombiniGraphics::kRoutePathColor36_LevelFourColor1; // 0x36 (54) #BF0218
-				replace2 = ZoombiniGraphics::kRoutePathColor37_LevelFourColor2; // 0x37 (55) #E25161
-				break;
-			}
-
-			// Initialize the flood-fill grid.
-			routePath_initGrid(seedPos.x, seedPos.y, mark1, mark2, replace1, replace2);
-		} else {
-			// Subsequent frames: Expand the flood-fill.
-			routePath_expandFloodFill(_routePathCounter);
-		}
-
-		// Increment animation counter (wraps at 1000).
-		_routePathCounter += 7;
-		if (_routePathCounter > 1000)
-			_routePathCounter = 1000;
-	} // doFloodFill
-
-	// Blit the modified pixel buffer to the shape screen.
-	if (!_routePathPixels)
-		return;
-
-	Graphics::Surface *screen = _vm->_gfx->getShapeScreen();
-	if (!screen)
-		return;
-
-	// Blit at the current band's hotspot position (each band shape has its
-	// own position on screen, selected by routePath_selectBand).
-	for (uint16 y = 0; y < _routePathHeight; y++) {
-		int destY = screenY + y;
-		if (destY < 0 || destY >= screen->h)
-			continue;
-
-		for (uint16 x = 0; x < _routePathWidth; x++) {
-			int destX = screenX + x;
-			if (destX < 0 || destX >= screen->w)
-				continue;
-
-			byte pixel = _routePathPixels[y * _routePathWidth + x];
-			// Only blit non-transparent pixels (palette index 0 = transparent).
-			if (pixel != ZoombiniGraphics::kTransparentKey)
-				*((byte *)screen->getBasePtr(destX, destY)) = pixel;
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Initialize flood-fill grid.
-// IDA: xfer_initRoutePathGrid (0x468078)
-// Scans pixels, replaces mark colors, seeds BFS queue.
-// ---------------------------------------------------------------------------
-void ZoombiniTransitionXfer::routePath_initGrid(int16 seedX, int16 seedY,
-												byte mark1, byte mark2,
-												byte replace1, byte replace2) {
-	// Clear BFS queue.
-	for (int i = 0; i < kRoutePathQueueSize; i++) {
-		_routePathQueueActive[i] = false;
-		_routePathQueueX[i] = 0;
-		_routePathQueueY[i] = 0;
-	}
-
-	// Store color values for expansion.
-	_routePathMark1 = mark1;
-	_routePathMark2 = mark2;
-	_routePathReplace1 = replace1;
-	_routePathReplace2 = replace2;
-
-	// Scan pixels and count replaceable ones.
-	// IDA replaces color 1 → mark1, color 2 → mark2.
-	// We look for specific palette indices that represent the "unfilled" path.
-	_routePathTotalPixels = 0;
-
-	// In the original, colors 1 and 2 are replaced. In our case, we'll look for
-	// palette indices that should be flood-filled (e.g., 0x01 and 0x02).
-	for (uint32 i = 0; i < (uint32)(_routePathWidth * _routePathHeight); i++) {
-		byte pixel = _routePathPixels[i];
-		if (pixel == 0x01) {
-			_routePathPixels[i] = mark1;
-			_routePathTotalPixels++;
-		} else if (pixel == 0x02) {
-			_routePathPixels[i] = mark2;
-			_routePathTotalPixels++;
-		}
-	}
-
-	_routePathRemainingPixels = _routePathTotalPixels;
-
-	// Seed the BFS queue with the starting position.
-	if (seedX >= _routePathWidth)
-		seedX = _routePathWidth - 1;
-	if (seedY >= _routePathHeight)
-		seedY = _routePathHeight - 1;
-	if (seedX < 0)
-		seedX = 0;
-	if (seedY < 0)
-		seedY = 0;
-
-	_routePathQueueActive[0] = true;
-	_routePathQueueX[0] = seedX;
-	_routePathQueueY[0] = seedY;
-}
-
-// ---------------------------------------------------------------------------
-// Expand flood-fill by one iteration.
-// IDA: xfer_expandRoutePathFloodFill (0x4681A8)
-// Processes queued cells and adds neighbors to the queue.
-// ---------------------------------------------------------------------------
-void ZoombiniTransitionXfer::routePath_expandFloodFill(uint32 counter) {
-	if (!_routePathPixels || _routePathTotalPixels == 0)
-		return;
-
-	// Calculate target remaining pixels based on animation progress.
-	// IDA: v5 = dword_4B980C - counter * dword_4B980C / 1000
-	uint32 targetRemaining = _routePathTotalPixels - (counter * _routePathTotalPixels) / 1000;
-
-	// Expand until we reach the target or no more progress.
-	while (_routePathRemainingPixels > targetRemaining) {
-		uint32 prevRemaining = _routePathRemainingPixels;
-
-		// Process each active cell in the queue.
-		for (int i = 0; i < kRoutePathQueueSize; i++) {
-			if (!_routePathQueueActive[i])
-				continue;
-
-			_routePathQueueActive[i] = false;
-			int16 x = _routePathQueueX[i];
-			int16 y = _routePathQueueY[i];
-
-			// Get pixel address.
-			byte *pixelAddr = _routePathPixels + y * _routePathWidth + x;
-
-			// Try to expand to all 8 neighbors.
-			// Row below (y+1)
-			if (y + 1 < _routePathHeight) {
-				byte *below = pixelAddr + _routePathWidth;
-				routePath_reserveSlot(y + 1, x, below);
-				if (x > 0)
-					routePath_reserveSlot(y + 1, x - 1, below - 1);
-				if (x + 1 < _routePathWidth)
-					routePath_reserveSlot(y + 1, x + 1, below + 1);
-			}
-
-			// Row above (y-1)
-			if (y > 0) {
-				byte *above = pixelAddr - _routePathWidth;
-				routePath_reserveSlot(y - 1, x, above);
-				if (x > 0)
-					routePath_reserveSlot(y - 1, x - 1, above - 1);
-				if (x + 1 < _routePathWidth)
-					routePath_reserveSlot(y - 1, x + 1, above + 1);
-			}
-
-			// Same row
-			if (x > 0)
-				routePath_reserveSlot(y, x - 1, pixelAddr - 1);
-			if (x + 1 < _routePathWidth)
-				routePath_reserveSlot(y, x + 1, pixelAddr + 1);
-		}
-
-		// If no progress was made, we're done.
-		if (prevRemaining == _routePathRemainingPixels) {
-			_routePathRemainingPixels = 0;
-			break;
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Reserve a slot in the BFS queue for a pixel.
-// IDA: xfer_reserveGridSlot (0x468312)
-// Checks if pixel matches mark color, adds to queue, replaces with final color.
-// ---------------------------------------------------------------------------
-void ZoombiniTransitionXfer::routePath_reserveSlot(int16 y, int16 x, byte *pixel) {
-	if (*pixel == _routePathMark1) {
-		// Find empty slot in queue.
-		for (int i = 0; i < kRoutePathQueueSize; i++) {
-			if (!_routePathQueueActive[i]) {
-				_routePathQueueX[i] = x;
-				_routePathQueueY[i] = y;
-				_routePathQueueActive[i] = true;
-				if (_routePathRemainingPixels > 0)
-					_routePathRemainingPixels--;
-				*pixel = _routePathReplace1;
-				return;
-			}
-		}
-	} else if (*pixel == _routePathMark2) {
-		// Find empty slot in queue.
-		for (int i = 0; i < kRoutePathQueueSize; i++) {
-			if (!_routePathQueueActive[i]) {
-				_routePathQueueX[i] = x;
-				_routePathQueueY[i] = y;
-				_routePathQueueActive[i] = true;
-				if (_routePathRemainingPixels > 0)
-					_routePathRemainingPixels--;
-				*pixel = _routePathReplace2;
-				return;
-			}
-		}
-	}
-}
-
 void ZoombiniTransitionXfer::close() {
-	_vm->_xferSrcSiPage = ZMB_SI_MINUS1; // Reset for next xfer
+	_vm->_xferSrcSiPage = ZMB_SI_MINUS1;  // Reset for next xfer
 	_vm->setNextPage(_nextPageType);
 	ZoombiniTransition::close();
 }

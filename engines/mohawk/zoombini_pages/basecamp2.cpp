@@ -561,6 +561,9 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonUp(const Common::P
 	if (!isDragging())
 		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
 
+	// Clear pedestal hover highlight before ending drag
+	deactivatePedestalHover();
+
 	ZmbSnoid *snoid = finishSnoidDrag();
 	_dragInProgress = false;
 	_dragActive = false;
@@ -649,6 +652,90 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonUp(const Common::P
 	return ZmbEventHandleResult::kConsumed;
 }
 
+ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
+	// Update pedestal hover state during drag
+	if (isDragging()) {
+		updatePedestalHover(_draggedSnoid->getPointLoc());
+	}
+
+	// Delegate to parent for standard drag handling (snoid position update, etc.)
+	return ZoombiniInteractive::onMouseMove(absPos, relPos);
+}
+
+void ZoombiniInteractiveBasecampTwo::updatePedestalHover(const Common::Point &snoidPos) {
+	// IDA: beginDragFeatureRunner_45360F (~0x453A23–0x453B4B)
+	// Find nearest empty pedestal within hover radius
+	int16 nearestIdx = -1;
+	int32 nearestDistSq = (kPedestalHoverRadius + 1) * (kPedestalHoverRadius + 1);
+
+	for (int16 i = 0; i < 16; i++) {
+		// Check if pedestal is occupied by another snoid
+		bool isOccupied = false;
+		for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+			if (it->second == _draggedSnoid)
+				continue; // Skip the currently dragged snoid
+			Common::Point opos = it->second->getPointLoc();
+			int32 dx = opos.x - _pedestalPoints[i].x;
+			int32 dy = opos.y - _pedestalPoints[i].y;
+			if (dx * dx + dy * dy < 100) { // within 10px of pedestal center
+				isOccupied = true;
+				break;
+			}
+		}
+
+		if (isOccupied)
+			continue;
+
+		// Check distance from snoid to pedestal
+		int32 dx = snoidPos.x - _pedestalPoints[i].x;
+		int32 dy = snoidPos.y - _pedestalPoints[i].y;
+		int32 distSq = dx * dx + dy * dy;
+
+		if (distSq < nearestDistSq) {
+			nearestDistSq = distSq;
+			nearestIdx = i;
+		}
+	}
+
+	// If hovering the same pedestal, nothing to do
+	if (nearestIdx == _hoveredPedestalIdx)
+		return;
+
+	// Deactivate previous highlight if any
+	if (_hoveredPedestalIdx >= 0) {
+		auto it = _scrbFeatureMap.find(kResScrb7000_Pedestal + _hoveredPedestalIdx);
+		if (it != _scrbFeatureMap.end() && it->second != nullptr) {
+			ZmbFeature *pedestal = it->second;
+			// IDA: highlightRunner->bitmask |= 0x10000u; highlightRunner->dNextRenderFrame = 0;
+			pedestal->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
+		}
+	}
+
+	// Activate new highlight if any
+	if (nearestIdx >= 0) {
+		auto it = _scrbFeatureMap.find(kResScrb7000_Pedestal + nearestIdx);
+		if (it != _scrbFeatureMap.end() && it->second != nullptr) {
+			ZmbFeature *pedestal = it->second;
+			// IDA: wBoolDoRender = 1; wGroupFrameIdx0098 = 0; dwHotspotIdx009A = 1;
+			pedestal->activateRender();
+			pedestal->activateAnimate();
+		}
+	}
+
+	_hoveredPedestalIdx = nearestIdx;
+}
+
+void ZoombiniInteractiveBasecampTwo::deactivatePedestalHover() {
+	// Clear any pedestal hover highlight when drag ends
+	if (_hoveredPedestalIdx >= 0) {
+		auto it = _scrbFeatureMap.find(kResScrb7000_Pedestal + _hoveredPedestalIdx);
+		if (it != _scrbFeatureMap.end() && it->second != nullptr) {
+			it->second->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
+		}
+		_hoveredPedestalIdx = -1;
+	}
+}
+
 void ZoombiniInteractiveBasecampTwo::executeDeparture() {
 	// IDA: bc2_cleanupOnExit (0x4134D9)
 	saveSnoidsToPack();
@@ -661,7 +748,6 @@ void ZoombiniInteractiveBasecampTwo::executeDeparture() {
 
 void ZoombiniInteractiveBasecampTwo::renderButtons(bool blit, int group, bool pressed, int singleButton) {
 	ZoombiniGraphics::ScreenKind screenKind = ZoombiniGraphics::kShapeScreen;
-	ZmbResource btnBitmap = ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape9000_Buttons);
 
 	// Determine v4 (start button index) and v12 (end button index, exclusive)
 	int v4, v12;
@@ -685,7 +771,7 @@ void ZoombiniInteractiveBasecampTwo::renderButtons(bool blit, int group, bool pr
 		Common::Point(0x0257, 0x0140), // 0: Go button
 		Common::Point(0x018C, 0x0001), // 1: (unused/notification box)
 		Common::Point(0x0257, 0x0166), // 2: Map/Return button
-		Common::Point(0x0257, 0x018C), // 3: Save/special (SCRB path)
+		Common::Point(0x0257, 0x018C), // 3: Save/Help — rendered by SCRB runner, not here
 		Common::Point(0x0072, 0x0079), // 4: Scroll Left-Max arrow
 		Common::Point(0x0083, 0x0075), // 5: Scroll Left-One arrow
 		Common::Point(0x0151, 0x006B), // 6: Scroll Right-One arrow
@@ -706,9 +792,12 @@ void ZoombiniInteractiveBasecampTwo::renderButtons(bool blit, int group, bool pr
 			// Map/Return button
 			shapeIdx = kShape9000_MapNormal_05;
 		} else if (i == 3) {
-			// Save/Help button — uses shape 24, rendered via drawShape
-			// IDA: slotIdx == 3 → result = 24, rendered with gfx_blitBitmapShape
-			shapeIdx = kShape9000_HelpNormal_24;
+			// Save/Help button (slot 3) uses shape index 24 in the original engine,
+			// which is ≥24 and therefore rendered via the SCRB shape table path
+			// (gfx_blitBitmapShape), not via the tBMP SHPL path.
+			// When singleButton==0 the original also skips it (singleSlot>=1 is false).
+			// In ScummVM the SCRB runner draws it automatically — skip here.
+			continue;
 		} else if (i >= 4 && i <= 7) {
 			// Scroll arrow buttons
 			hasScrollButton = true;
@@ -725,8 +814,11 @@ void ZoombiniInteractiveBasecampTwo::renderButtons(bool blit, int group, bool pr
 		if (isBtnPressed)
 			++shapeIdx; // pressed variant is always +1
 
+		// Resource 9000 uses the SHPL system: shape N lives as a separate tBMP at
+		// resource (9000 + N - 1).  drawShape's sub-image path (decodeImages) cannot
+		// decode these single-image resources; use drawImage with individual IDs instead.
 		Common::Point pos = kButtonPos[i];
-		_vm->_gfx->drawShape(screenKind, btnBitmap, shapeIdx, pos);
+		_vm->_gfx->drawImage(screenKind, kResBitmapShape9000_Buttons + shapeIdx - 1, pos);
 	}
 
 	if (blit && hasScrollButton) {
