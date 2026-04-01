@@ -102,8 +102,9 @@ protected:
 	 * Checks button animation hotspots and triggers decorative animations.
 	 * IDA: bc2_onHotspotHover (0x41392D) button hotspot loop.
 	 * @param cursorPos Current cursor position to check against hotspots.
+	 * @return True if a button animation was triggered, false otherwise.
 	 */
-	void updateButtonAnimations(const Common::Point &cursorPos);
+	bool updateButtonAnimations(const Common::Point &cursorPos);
 
 	/**
 	 * Plays random arrival voice line based on difficulty.

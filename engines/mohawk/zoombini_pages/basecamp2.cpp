@@ -82,6 +82,10 @@ void ZoombiniInteractiveBasecampTwo::loadFeatures() {
 	// IDA: rmap_loadTerrainArchive(0x64) — 160x120 mask, pixel==1 means walkable.
 	loadTerrainBitmap(kResBitmapTerrain100);
 
+	// [*] Help Button (tBMP c:0001) - Shared system resource
+	setHelpButton(_helpButtonRect);
+	loadHelpButtonFeature();
+
 	{ // [*] Virtual Feature: Storage area (no SCRB; preRender=scroll SM, postRender=draw grid)
 		ZmbFeature::EventHooks hooks;
 		hooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveBasecampTwo::storage_preRender));
@@ -501,15 +505,6 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::goButton_onLButtonDown(ZmbF
 		return ZmbEventHandleResult::kConsumed;
 	}
 
-	if (_helpButtonRect.contains(absPos)) {
-		// Case 4: Help button — play click SFX and open help dialog.
-		// IDA: dlg_openHelpDialog()
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound999_Button),
-								  Audio::Mixer::kSFXSoundType, false);
-		// TODO: Open help dialog when implemented
-		return ZmbEventHandleResult::kConsumed;
-	}
-
 	// Cases 5-8: Scroll buttons
 	// IDA: buttonId - 5 < 4, set direction = buttonId - 4
 	for (int i = 0; i < 4; i++) {
@@ -578,8 +573,15 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonDown(const Common:
 		}
 	}
 
-	if (!snoid)
+	if (!snoid) {
+		// --- Path 3: Check button animation hotspots (BC2 "easter eggs") ---
+		// IDA: bridge_funcOnHover_41392D (0x413d87) button hotspot loop
+		// Unlike BC1's standalone easter eggs, BC2 uses decorative button animations.
+		if (updateButtonAnimations(absPos))
+			return ZmbEventHandleResult::kConsumed;
+
 		return ZmbEventHandleResult::kPassthrough;
+	}
 
 	// Don't drag snoids that are playing scripts or walking
 	SnoidAnimState state = snoid->getAnimState();
@@ -790,9 +792,9 @@ void ZoombiniInteractiveBasecampTwo::deactivatePedestalHover() {
 	}
 }
 
-void ZoombiniInteractiveBasecampTwo::updateButtonAnimations(const Common::Point &cursorPos) {
+bool ZoombiniInteractiveBasecampTwo::updateButtonAnimations(const Common::Point &cursorPos) {
 	// IDA: bc2_onHotspotHover (0x41392D) button hotspot loop
-	// When dragging, check if cursor is over one of the decorative button hotspots
+	// Check if cursor is over one of the decorative button hotspots
 	// and trigger the corresponding animation if it's not already playing.
 
 	for (int16 i = 0; i < 10; i++) {
@@ -861,8 +863,10 @@ void ZoombiniInteractiveBasecampTwo::updateButtonAnimations(const Common::Point 
 		// Activate the animation and play frame sounds
 		runner->activateRender();
 		runner->activateAnimate();
-		break; // Only one button at a time
+		return true; // Animation triggered
 	}
+
+	return false; // No animation triggered
 }
 
 void ZoombiniInteractiveBasecampTwo::playArrivalVoice() {
