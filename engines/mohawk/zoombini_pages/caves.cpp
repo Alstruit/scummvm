@@ -293,6 +293,25 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 
 	// IDA: sound_activeHandle = 20065 — caves narrator voice (F1 key replay)
 	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, 20065);
+
+	// Initialize entrance hit rects from positions
+	for (int i = 0; i < 20; i++) {
+		int16 x = kCaveEntrancePositions[i].x;
+		int16 y = kCaveEntrancePositions[i].y;
+		_entranceHitRects[i] = Common::Rect(
+			x - kEntranceHitRadius, y - kEntranceHitRadius,
+			x + kEntranceHitRadius, y + kEntranceHitRadius);
+	}
+
+	_puzzleActive = true;
+	_successCount = 0;
+	_consecutiveCorrect = 0;
+	_rejectAnimActive = false;
+	_interactionLocked = false;
+	_hintFlashEnabled = false;
+	_nextFidgetFrame = getCurrentFrameCounter() + 120;
+	_fidgetPlayedCount = 0;
+	_fidgetTargetCount = 3;
 }
 
 void ZoombiniInteractiveCaves::onGoButtonActivated() {
@@ -644,6 +663,303 @@ void ZoombiniInteractiveCaves::distributeEntranceAttributes() {
 			default:
 				_entranceAttrOffset[slot] = (slot - 5);
 				break;
+			}
+		}
+	}
+}
+
+// =========================================================================
+// Gameplay methods
+// =========================================================================
+
+int16 ZoombiniInteractiveCaves::getEntranceSlotAtPoint(const Common::Point &pos) const {
+	// Check each active entrance's hit rect
+	for (int16 i = 0; i < 20; i++) {
+		if (_entranceHitRects[i].contains(pos.x, pos.y))
+			return i;
+	}
+	return -1;
+}
+
+int16 ZoombiniInteractiveCaves::findMatchingGlyphSlot(const ZmbTrait &traits) const {
+	// IDA: caves_findMatchingGlyphSlot
+	// Determines which cave entrance matches a Zoombini's attributes.
+	// Uses _baseAttrTypes[0] as the primary attribute to match against entrance columns.
+
+	uint8 traitBytes[4] = {
+		static_cast<uint8>(traits._head),
+		static_cast<uint8>(traits._eye),
+		static_cast<uint8>(traits._nose),
+		static_cast<uint8>(traits._foot)
+	};
+
+	int16 primaryVal = traitBytes[_baseAttrTypes[0]];
+
+	// Simple matching (complexity 1): match primary attribute against columns
+	if (_guardComplexity <= 1) {
+		for (int16 col = 0; col < _attrColumnCount; col++) {
+			if (_attrColumns[col] == primaryVal) {
+				return col;
+			}
+		}
+	} else {
+		// Complex matching (complexity 2): match primary + secondary attribute
+		int16 secondaryVal = traitBytes[_entranceAttrBase];
+
+		for (int16 col = 0; col < _attrColumnCount; col++) {
+			if (_attrColumns[col] == primaryVal) {
+				// Check if secondary attribute also matches in second row
+				for (int16 row = 0; row < _attrColumnCount; row++) {
+					if (_attrColumns[5 + row] == secondaryVal) {
+						// Both match — return combined slot
+						return col + _attrColumnCount * row;
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: return first active entrance (should not normally happen)
+	return 0;
+}
+
+void ZoombiniInteractiveCaves::handleCorrectPlacement(ZmbSnoid *snoid, int16 entranceSlot) {
+	// IDA: caves correct placement handler
+	// Zoombini enters the correct cave.
+
+	_successCount++;
+	_consecutiveCorrect++;
+
+	// Play walk-into-cave animation via SCRS 13000+ (normal pool)
+	uint16 scrsIdx = 13000 + (entranceSlot % 5);
+	Common::SeekableReadStream *scrsStream =
+		_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsIdx));
+	if (scrsStream) {
+		snoid->startScrsPlayback(scrsStream, true, false);
+	}
+
+	// Play entrance door animation — load door open SCRB onto the door feature
+	if (entranceSlot < 20 && _doorDrawOnRegFeatures[entranceSlot]) {
+		loadScrbOntoFeature(_doorDrawOnRegFeatures[entranceSlot], 7000 + entranceSlot);
+	}
+
+	// Play positive sound
+	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20066));
+
+	// Check if all Zoombinis have been placed
+	int16 remainingCount = 0;
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		if (it->first < 10000)
+			continue;
+		ZmbSnoid *s = it->second;
+		if (s->getAnimState() == kSnoidAnimIdle && s->_packIsOccupied)
+			remainingCount++;
+	}
+
+	if (remainingCount <= 0) {
+		// All Zoombinis placed — enable Go button
+		setGoButtonsEnabled(true);
+	}
+}
+
+void ZoombiniInteractiveCaves::handleWrongPlacement(ZmbSnoid *snoid, int16 droppedSlot, int16 correctSlot) {
+	// IDA: caves wrong placement handler
+	// Door rejects the Zoombini and optionally shows a hint.
+
+	_interactionLocked = true;
+	_rejectAnimActive = true;
+	_rejectSnoid = snoid;
+	_rejectTargetSlot = droppedSlot;
+	_consecutiveCorrect = 0;
+
+	// Play reject SCRS from reject pool (12000+)
+	uint16 scrsIdx = 12000 + _vm->_rnd->getRandomNumber(0, 13);
+	Common::SeekableReadStream *scrsStream =
+		_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsIdx));
+	if (scrsStream) {
+		snoid->startScrsPlayback(scrsStream, false, true);
+	}
+
+	// Play door rejection animation — reload door panel feature showing rejection
+	if (droppedSlot < 4 && _doorPanelFeatures[droppedSlot]) {
+		loadScrbOntoFeature(_doorPanelFeatures[droppedSlot], 9011 + droppedSlot);
+	}
+
+	// Play rejection sound
+	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20067));
+
+	// Enable hint flash at difficulty level 1
+	if (_difficultyLevel == 1 && correctSlot >= 0) {
+		_hintFlashEnabled = true;
+		_hintFlashSlot = correctSlot;
+		_hintFlashStartFrame = getCurrentFrameCounter();
+	}
+}
+
+void ZoombiniInteractiveCaves::endDrag(const Common::Point &dropPos) {
+	ZmbSnoid *snoid = finishSnoidDrag();
+	if (!snoid)
+		return;
+
+	Common::Point snoidPos = snoid->getPointLoc();
+	int16 droppedSlot = getEntranceSlotAtPoint(snoidPos);
+
+	if (droppedSlot >= 0) {
+		// Dropped on a cave entrance — check if it matches
+		int16 correctSlot = findMatchingGlyphSlot(snoid->_trait);
+
+		if (droppedSlot == correctSlot || 
+			(_guardComplexity <= 1 && _attrColumns[droppedSlot % _attrColumnCount] == _attrColumns[correctSlot % _attrColumnCount])) {
+			// Correct entrance
+			snoid->_packIsOccupied = false;
+			handleCorrectPlacement(snoid, droppedSlot);
+		} else {
+			// Wrong entrance
+			handleWrongPlacement(snoid, droppedSlot, correctSlot);
+		}
+	} else {
+		// Dropped outside any entrance — return to idle
+		if (!validateTerrainDrop(snoid)) {
+			snoid->setPointLoc(_dragOrigPos);
+		}
+		snoid->setAnimState(kSnoidAnimIdle);
+		snoid->setupIdleHotspots();
+	}
+}
+
+ZmbEventHandleResult ZoombiniInteractiveCaves::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+	// Sticky mouse: second click ends drag
+	if (isDragging() && _vm->_state->getEnableStickyMouse()) {
+		endDrag(absPos);
+		return ZmbEventHandleResult::kConsumed;
+	}
+
+	// Let base class handle button clicks (Go/Map/Help)
+	ZmbEventHandleResult result = ZoombiniInteractive::onLButtonDown(absPos, relPos);
+	if (result == ZmbEventHandleResult::kConsumed)
+		return result;
+
+	// Don't allow interaction while locked (reject animation playing)
+	if (_interactionLocked || !_puzzleActive)
+		return ZmbEventHandleResult::kPassthrough;
+
+	// Don't allow drag if already dragging
+	if (isDragging())
+		return ZmbEventHandleResult::kPassthrough;
+
+	// Find Zoombini at click point
+	ZmbSnoid *snoid = findSnoidAtPoint(absPos);
+	if (!snoid)
+		return ZmbEventHandleResult::kPassthrough;
+
+	// Don't drag snoids that are playing scripts
+	SnoidAnimState state = snoid->getAnimState();
+	if (state == kSnoidAnimScriptReject || state == kSnoidAnimScriptNormal)
+		return ZmbEventHandleResult::kPassthrough;
+
+	// Begin drag
+	startSnoidDrag(snoid, absPos);
+	return ZmbEventHandleResult::kConsumed;
+}
+
+ZmbEventHandleResult ZoombiniInteractiveCaves::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+	if (!isDragging())
+		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
+
+	// Sticky mouse: button-up does NOT end drag
+	if (_vm->_state->getEnableStickyMouse())
+		return ZmbEventHandleResult::kConsumed;
+
+	endDrag(absPos);
+	return ZmbEventHandleResult::kConsumed;
+}
+
+void ZoombiniInteractiveCaves::onEveryFrame() {
+	if (_processingFrame || !_puzzleActive)
+		return;
+	_processingFrame = true;
+
+	// [0] Pending Go departure: skip normal logic
+	if (_pendingGoDepart) {
+		_processingFrame = false;
+		return;
+	}
+
+	// [1] Process reject animation completion
+	if (_rejectAnimActive && _rejectSnoid) {
+		SnoidAnimState state = _rejectSnoid->getAnimState();
+		if (state == kSnoidAnimIdle) {
+			// Reject animation finished — return snoid to idle position
+			_rejectSnoid->setupIdleHotspots();
+			_rejectSnoid = nullptr;
+			_rejectAnimActive = false;
+			_interactionLocked = false;
+			_rejectTargetSlot = -1;
+		}
+	}
+
+	// [2] Hint flash timeout (level 1 only)
+	if (_hintFlashEnabled) {
+		uint32 elapsed = getCurrentFrameCounter() - _hintFlashStartFrame;
+		if (elapsed > 90) {
+			_hintFlashEnabled = false;
+			_hintFlashSlot = -1;
+		}
+	}
+
+	// [3] Fidget scheduling for idle Zoombinis
+	if (_fidgetPlayedCount < _fidgetTargetCount &&
+		getCurrentFrameCounter() > _nextFidgetFrame) {
+
+		_nextFidgetFrame = getCurrentFrameCounter() + _vm->_rnd->getRandomNumber(60, 180);
+		bool triggered = false;
+		int16 attempts = 0;
+
+		do {
+			attempts++;
+			uint16 poolIdx = _vm->_rnd->getRandomNumber(0, 19);
+			uint16 snoidId = 10000 + poolIdx;
+
+			ZmbSnoid *snoid = getSnoid(snoidId);
+			if (snoid && snoid->getAnimState() == kSnoidAnimIdle &&
+				snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+				Common::SeekableReadStream *scrsStream =
+					_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+						ZmbResource(ZmbArchiveKind::kPage, 13000 + _vm->_rnd->getRandomNumber(0, 4)));
+				if (scrsStream) {
+					snoid->startScrsPlayback(scrsStream, false, true);
+					_fidgetPlayedCount++;
+					triggered = true;
+				}
+			}
+		} while (!triggered && attempts < 16);
+	}
+
+	_processingFrame = false;
+}
+
+void ZoombiniInteractiveCaves::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+		// Snoid animation event — check if it's a reject completing
+		ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
+		SnoidAnimState state = snoid->getAnimState();
+
+		if (state == kSnoidAnimScriptReject) {
+			// Reject script finished — return to idle
+			snoid->setAnimState(kSnoidAnimIdle);
+			snoid->setupIdleHotspots();
+		} else if (state == kSnoidAnimScriptNormal) {
+			// Normal script (walk into cave) finished — hide snoid
+			snoid->deactivateRender();
+			snoid->deactivateAnimate();
+		}
+	} else {
+		// SCRB feature event — door/panel animation completed
+		// Check if it's a door panel rejection animation
+		for (int i = 0; i < 4; i++) {
+			if (feature == _doorPanelFeatures[i]) {
+				// Door panel animation done — reset
+				return;
 			}
 		}
 	}

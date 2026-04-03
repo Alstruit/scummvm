@@ -44,6 +44,11 @@ public:
 	void setBackgroundMusic() override;
 	void setBackgroundBitmap() override;
 	void loadFeatures() override;
+	void onEveryFrame() override;
+	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
+
+	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
+	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;
 
 protected:
 	void onGoButtonActivated() override;
@@ -88,6 +93,25 @@ private:
 	 * IDA: caves_entranceAttrDist_418CB1
 	 */
 	void distributeEntranceAttributes();
+
+	/**
+	 * Find which cave entrance matches a Zoombini's traits.
+	 * IDA: caves_findMatchingGlyphSlot (approx 0x418x)
+	 * @return entrance slot (0-based), or -1 if none match
+	 */
+	int16 findMatchingGlyphSlot(const ZmbTrait &traits) const;
+
+	/** Process a correct cave entrance placement. */
+	void handleCorrectPlacement(ZmbSnoid *snoid, int16 entranceSlot);
+
+	/** Process a wrong cave entrance placement with redirect. */
+	void handleWrongPlacement(ZmbSnoid *snoid, int16 droppedSlot, int16 correctSlot);
+
+	/** End drag and evaluate drop target. */
+	void endDrag(const Common::Point &dropPos);
+
+	/** Get entrance slot from screen position. */
+	int16 getEntranceSlotAtPoint(const Common::Point &pos) const;
 
 	static const Common::Point kSnoidPositions[20];
 
@@ -171,6 +195,38 @@ private:
 	 * IDA: unk_4A090C (uses caves_clearAndInvalidateRect/caves_renderAllEntranceGlyphs_41846A)
 	 */
 	ZmbFeature *_virtualGlyphRenderer = nullptr;
+
+	// --- Gameplay state ---
+	bool _puzzleActive = false;
+	bool _processingFrame = false;
+	bool _rejectAnimActive = false;
+	bool _interactionLocked = false;
+
+	/** Number of successful cave entries. */
+	int16 _successCount = 0;
+
+	/** Per-entrance hit rects (computed from kCaveEntrancePositions). */
+	Common::Rect _entranceHitRects[20];
+
+	/** Click rects for each entrance slot (radius ~30 around entrance pos). */
+	static const int16 kEntranceHitRadius = 30;
+
+	/** Consecutive correct placements. */
+	int16 _consecutiveCorrect = 0;
+
+	/** Reject walk snoid. IDA: caves reject walk tracking. */
+	ZmbSnoid *_rejectSnoid = nullptr;
+	int16 _rejectTargetSlot = -1;
+
+	/** Hint flash flags for level 1. */
+	bool _hintFlashEnabled = false;
+	int16 _hintFlashSlot = -1;
+	uint32 _hintFlashStartFrame = 0;
+
+	/** Fidget scheduling. */
+	uint32 _nextFidgetFrame = 0;
+	int16 _fidgetPlayedCount = 0;
+	int16 _fidgetTargetCount = 3;
 };
 
 } // End of namespace Mohawk
