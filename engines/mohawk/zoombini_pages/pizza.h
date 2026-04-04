@@ -58,6 +58,7 @@ private:
 	enum FeaturePhase {
 		kPhaseNone = 0,
 		kPhaseIntro,
+		kPhasePostIntroAmbient, // IDA: wUnk002C[40] — troll ambient anim after intro
 		kPhaseServeReaction,
 		kPhaseDeliveryEval,
 		kPhaseExitCallback,
@@ -80,12 +81,15 @@ private:
 
 	// --- Answer display ---
 	void registerAnswerDisplay();
+	void answerDisplay_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
+	void autoPickAnswerSnoid();
 
 	// --- Order classification & delivery ---
 	int16 classifyOrderType(int16 orderLine) const;
-	void serveNextTopping(int16 resultType, int16 orderLine);
-	void placeTopping(int16 orderSlot, int16 isAllWrong);
+	void serveNextTopping(int16 orderLine);
+	void placeTopping(int16 mode, int16 hintSlot);
 	void evaluateDelivery();
+	void loadDeliveryResultScrb();
 	void advanceToNextDeliverySlot();
 	void advanceIntroSequence();
 	void triggerOrderFeatureAmbientAnim();
@@ -94,6 +98,11 @@ private:
 	void setupQuestionRunners();
 	void onToppingDelivered();
 	void playSFXForOrder(int16 sfxVariant);
+
+	// --- Topping runner management ---
+	void registerToppingRunner();
+	void linkToppingRunners();
+	void toppingRunner_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
 
 	// --- Callback event handlers ---
 	void handleZmbExitEvent(ZmbFeature *feature, int16 eventCode);
@@ -160,6 +169,17 @@ private:
 	int16 _currentServingLine = -1;
 	int16 _deliverySlotType = 0;
 	int16 _questionsAnswered = 0;
+	int16 _hasMaskMatch = 0;
+	int16 _pendingOrderCount = 0;
+	int16 _currentToppingType = 0;
+	int16 _currentOrderType = 0;
+	int16 _skipDeliveryFlag = 0;
+	int16 _pendingReplayFlag = 0;
+	int16 _pendingAnimShape = 0;
+	int16 _pendingDeliverySlot = 0;
+	int16 _punishmentCount = 0;
+	bool _needsSlotAdvance = false;
+	bool _deliveryCallbackActive = false;
 
 	// -----------------------------------------------------------------------
 	// Topping bitmask history
@@ -207,6 +227,7 @@ private:
 	// -----------------------------------------------------------------------
 	bool _puzzleActive = false;
 	bool _processingFrame = false;
+	bool _drawOnRegEnabled = false; // IDA: scrb_drawOnRegFlagArr[0] — gates submit clicks
 
 	// -----------------------------------------------------------------------
 	// Idle animation
@@ -215,6 +236,7 @@ private:
 	int16 _idleAnimsPlayed = 0;
 	bool _idleAnimActive = false;
 	uint32 _lastIdleFrame = 0;
+	uint16 _idleRandomUsed = 0; // bitmask for non-repeat random pool
 
 	// -----------------------------------------------------------------------
 	// Feature runners
@@ -229,6 +251,27 @@ private:
 	ZmbFeature *_overlayFeature = nullptr;
 	ZmbFeature *_questionRunnerFeature = nullptr;
 	ZmbFeature *_toppingOverlayFeature = nullptr;
+
+	// -----------------------------------------------------------------------
+	// Topping runner tracking (IDA: word_4B0E06 array + counters)
+	// -----------------------------------------------------------------------
+	struct ToppingRunnerSlot {
+		ZmbFeature *feature = nullptr;
+		uint8 mask = 0;
+		int16 orderType = 0;
+		uint16 scrbId = 0;
+	};
+	ToppingRunnerSlot _toppingRunnerSlots[28] = {};
+	int16 _toppingRunnerSlotIdx = -1;
+	int16 _toppingRunnerCtrMain = -1;
+	int16 _toppingRunnerCtr0 = -1;
+	int16 _toppingRunnerCtr1 = -1;
+	int16 _toppingRunnerCtr2 = -1;
+	bool _toppingRunnersWrapped = false;
+	ZmbFeature *_toppingRunnerOrder0Slots[3] = {};
+	ZmbFeature *_toppingRunnerOrder1Slots[3] = {};
+	ZmbFeature *_toppingRunnerOrder2Slots[3] = {};
+	uint16 _nextDynamicFeatureId = 30000;
 
 	// -----------------------------------------------------------------------
 	// Resource IDs

@@ -753,8 +753,15 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 				// One-shot: onHotspotShapeOrFrameFunc cleared to 0 after firing.
 				if (!didChainScript) {
 					if (!feature->hasAnimEndCallbackFired()) {
+						// Save the SCRB load generation before firing the callback.
+						// If the callback loads a new SCRB on this feature (e.g.
+						// intro → ambient transition), loadScrbData increments the
+						// generation and resets _animEndCallbackFired to false.
+						// We must NOT mark the fresh SCRB's callback as fired.
+						uint32 genBefore = feature->getScrbLoadGeneration();
 						onFeatureAnimEvent(feature, -1);
-						feature->markAnimEndCallbackFired();
+						if (feature->getScrbLoadGeneration() == genBefore)
+							feature->markAnimEndCallbackFired();
 					}
 					return;
 				}
@@ -820,8 +827,10 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 		// (LABEL_70), AFTER processing frame 0 event codes of the chained SCRB.
 		// One-shot: onHotspotShapeOrFrameFunc is cleared to 0 after firing.
 		if (didChainScript && !feature->hasAnimEndCallbackFired()) {
+			uint32 genBefore = feature->getScrbLoadGeneration();
 			onFeatureAnimEvent(feature, -1);
-			feature->markAnimEndCallbackFired();
+			if (feature->getScrbLoadGeneration() == genBefore)
+				feature->markAnimEndCallbackFired();
 		}
 	}
 

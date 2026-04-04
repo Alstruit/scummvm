@@ -359,6 +359,11 @@ void ZmbFeature::loadScrbData(Common::SeekableReadStream *stream, bool scheduleR
 	// resets animation state, and re-runs initValues().
 	// Preserves: identity (_id), flags, callbacks, _pointRef (immutable position).
 
+	// Increment generation counter so the PLAY_ONCE handler in
+	// preRenderFeature() can detect that a new SCRB was loaded during
+	// the -1 callback and avoid a stale markAnimEndCallbackFired().
+	_scrbLoadGeneration++;
+
 	// Clear existing hotspot data and draw records (like the runner being reloaded)
 	clearDrawRecords();
 	for (auto it = _hsFrameMap.begin(); it != _hsFrameMap.end(); it++)

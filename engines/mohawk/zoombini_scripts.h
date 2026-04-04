@@ -708,6 +708,7 @@ public:
 	 */
 	bool hasAnimEndCallbackFired() const { return _animEndCallbackFired; }
 	void markAnimEndCallbackFired() { _animEndCallbackFired = true; }
+	uint32 getScrbLoadGeneration() const { return _scrbLoadGeneration; }
 
 	/**
 	 * IDA: wBoolDoRender[0] local in runner_preRenderStandard.  True when the
@@ -917,6 +918,14 @@ private:
 	 * "pointer already consumed" state.  Reset on activateAnimate().
 	 */
 	bool _animEndCallbackFired = false;
+
+	/**
+	 * Generation counter incremented on each loadScrbData() call.
+	 * Used by the PLAY_ONCE handler in preRenderFeature() to detect
+	 * whether a new SCRB was loaded during the -1 callback, avoiding
+	 * the stale markAnimEndCallbackFired() on the fresh animation.
+	 */
+	uint32 _scrbLoadGeneration = 0;
 
 	// [*] Callbacks
 	EventHooks _eventHooks;
