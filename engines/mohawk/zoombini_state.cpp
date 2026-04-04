@@ -652,10 +652,18 @@ int16 ZoombiniGameState::readActivePageRouteLevel() {
 		return _practiceLevel - 1;
 	}
 
-	uint16 pageInRoute = getPageIdxInRoute(); // 0 ~ 3
-	if (pageInRoute != 0)                     // Not in a container page
-		return _f._routeLevels[pageInRoute - 1];
+	// Puzzle pages (DI 7-18): derive route index from page ID.
+	// Original formula: routeIdx = (puzzleId - 7) / 3
+	//   BBH puzzles (7,8,9)   -> route 0 -> _routeLevels[0]
+	//   WB  puzzles (10,11,12) -> route 1 -> _routeLevels[1]
+	//   DDF puzzles (13,14,15) -> route 2 -> _routeLevels[2]
+	//   MD  puzzles (16,17,18) -> route 3 -> _routeLevels[3]
+	if (_f._currentPage >= ZMB_DI_BRIDGE_07 && _f._currentPage <= ZMB_DI_MAZE_18) {
+		uint16 routeIdx = (_f._currentPage - ZMB_DI_BRIDGE_07) / 3;
+		return _f._routeLevels[routeIdx];
+	}
 
+	// Container/storage pages
 	switch (_f._currentPage) {
 	case ZMB_DI_BC1_04: // BIG BAD AND HUNGRY
 		return _f._routeLevels[0];

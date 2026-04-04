@@ -96,7 +96,7 @@ void ZoombiniDialogHelp::helpDialog_onPostRender(ZmbFeature *feature) {
 	Common::U32String helpHead = _vm->_text->getPageName(_forPageType);
 	uint16 routeLevel = _vm->_state->readActivePageRouteLevel();
 	if (0 < routeLevel) {
-		helpHead += Common::U32String::format(" %d ", routeLevel);
+		helpHead += Common::U32String::format(" %d ", routeLevel + 1);
 		helpHead += _vm->_text->getLocalizedString(ZoombiniText::kDialogHelpLevel);
 	}
 
