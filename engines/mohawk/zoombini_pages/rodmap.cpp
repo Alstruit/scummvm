@@ -75,6 +75,7 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 	// [*] SCRB 1005: Only appears after hovering one of the puzzle
 	ZmbFeature::EventHooks hooks1005;
 	hooks1005.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveRodMap::drawAfterPageIconHover1005_preRender));
+	hooks1005.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractiveRodMap::renderAfterPageIconHover1005));
 	hooks1005.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::textPageName1005_postRender));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1000), kResScrbPageNameHover1005, 6,
 					ZmbFeature::FLAG_00100000_PLAY_ONCE,
@@ -129,9 +130,8 @@ ZmbEventHandleResult ZoombiniInteractiveRodMap::onMouseMove(const Common::Point 
 		break;
 	}
 
-	if (hoveredPageIdx == UINT32_MAX) { // Clear
-		_lastHoveredPageType = ZoombiniPageType::kNone;
-	} else {
+	// Do not clear even when hovering on non-clickable area, the last hovered page must persist.
+	if (hoveredPageIdx != UINT32_MAX) {
 		_lastHoveredPageType = _pageClickTypes[hoveredPageIdx];
 	}
 
@@ -174,7 +174,12 @@ void ZoombiniInteractiveRodMap::togglePracticeMode() {
 
 	buildPageRouteLevelMap();
 
+	// IDA 0x42BEF4: The original's postRender clears bHasClickRect each frame,
+	// so the SCRB 1005 tooltip only persists while the hover handler re-sets it.
+	// Resetting _lastHoveredPageType ensures our renderFunc gate (which replaces
+	// the bHasClickRect check) hides the tooltip after the mode change.
 	_lastHoveredPageType = ZoombiniPageType::kNone;
+
 	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX), Audio::Mixer::kSFXSoundType);
 }
 
@@ -325,16 +330,24 @@ void ZoombiniInteractiveRodMap::patchRouteShape1001_preRenderShape(ZmbFeature *f
 }
 
 bool ZoombiniInteractiveRodMap::drawAfterPageIconHover1005_preRender(ZmbFeature *feature) {
-	// Only drawn if an pageIcon (SCRB 1000) has been hovered.
+	// Only drawn if a pageIcon (SCRB 1000) has been hovered.
 	return _lastHoveredPageType != ZoombiniPageType::kNone;
+}
+
+ZmbRenderResult ZoombiniInteractiveRodMap::renderAfterPageIconHover1005(ZmbFeature *feature) {
+	// IDA 0x42BEF4: The original's postRender callback gates both shape blitting
+	// and text drawing behind bHasClickRect (set by hover handler, cleared each frame).
+	// In ScummVM's split architecture, this custom renderFunc replicates that gate
+	// so blitShapes only runs when a page icon has been hovered.
+	if (_lastHoveredPageType == ZoombiniPageType::kNone)
+		return ZmbRenderResult::kSkipped;
+	return blitShapes(feature);
 }
 
 void ZoombiniInteractiveRodMap::textPageName1005_postRender(ZmbFeature *feature) {
 	if (_lastHoveredPageType == ZoombiniPageType::kNone)
 		return;
 	
-	ZoombiniGraphics::ScreenKind screenKind = ZoombiniGraphics::kShapeScreen;
-
 	const Common::U32String &pageName = _vm->_text->getPageName(_lastHoveredPageType);
 
 	ZmbDrawRecord *record = feature->getDrawRecord(0, 0);
@@ -347,7 +360,7 @@ void ZoombiniInteractiveRodMap::textPageName1005_postRender(ZmbFeature *feature)
 	tc._wordWrap = true;
 	tc._hAlign = Graphics::kTextAlignCenter;
 	tc._vAlign = Graphics::kTextAlignCenter;
-	_vm->_gfx->drawText(screenKind, pageName, textRect, tc);
+	_vm->_gfx->drawText(ZoombiniGraphics::kShapeScreen, pageName, textRect, tc);
 }
 
 void ZoombiniInteractiveRodMap::optionButton1006_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {

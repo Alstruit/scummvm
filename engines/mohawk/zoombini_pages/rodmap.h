@@ -71,6 +71,13 @@ protected:
 	 */
 	bool drawAfterPageIconHover1005_preRender(ZmbFeature *feature);
 	/**
+	 * 1005: Gate shape blitting on hover state.
+	 * IDA: The original's postRender callback (0x42BEF4) combined shape blitting
+	 * and text drawing, both gated by bHasClickRect. This custom renderFunc
+	 * replicates that gate for the ScummVM split architecture.
+	 */
+	ZmbRenderResult renderAfterPageIconHover1005(ZmbFeature *feature);
+	/**
 	 * 1005: Select text of the page
 	 */
 	void textPageName1005_postRender(ZmbFeature *feature);
