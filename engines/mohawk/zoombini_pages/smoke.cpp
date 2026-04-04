@@ -107,14 +107,14 @@ void ZoombiniInteractiveSmoke::loadFeatures() {
 	_bResetLevel = false;
 	_bShowResults = false;
 	_bReloadMainRunner = false;
-	_bIdleAnimActive = false;
+	_celebrationActive = false;
 	_interactionLocked = false;
 	_currentDragZmb = nullptr;
 	_bRunnerToggle = false;
 	_bExitGateEnabled = false;
 	_exitAnimActive = false;
 	_exitAnimStep = 0;
-	_idleAnimCount = 0;
+	_celebrationsPlayed = 0;
 
 	// Clear runner arrays
 	_smokeColumnCount = 0;
@@ -366,8 +366,8 @@ void ZoombiniInteractiveSmoke::loadFeatures() {
 	}
 
 	// Set idle animation max
-	_idleAnimMax = 3;
-	_nextFidgetFrame = getCurrentFrameCounter() + 120;
+	_celebrationTarget = 3;
+	_nextCelebrationFrame = getCurrentFrameCounter() + 120;
 
 	_puzzleActive = true;
 }
@@ -767,8 +767,8 @@ void ZoombiniInteractiveSmoke::placeZoombiniOnColumn() {
 	
 	// Check if all Zoombinis have been placed
 	if (_placedZmbCount >= _zmbCount) {
-		// All placed — trigger idle animation mode
-		_bIdleAnimActive = true;
+		// All placed — trigger celebration animation mode
+		_celebrationActive = true;
 		_bExitGateEnabled = true;
 		setGoButtonsEnabled(true);
 		
@@ -832,8 +832,8 @@ void ZoombiniInteractiveSmoke::resetAndReinitLevel() {
 	_placedZmbCount = 0;
 	_loadedOnCliffCount = 0;
 	_currentZmbIdx = 0;
-	_bIdleAnimActive = false;
-	_idleAnimCount = 0;
+	_celebrationActive = false;
+	_celebrationsPlayed = 0;
 	
 	// Clear cliff array
 	for (int i = 0; i < 20; i++) {
@@ -1004,10 +1004,10 @@ void ZoombiniInteractiveSmoke::onEveryFrame() {
 		}
 	}
 	
-	// [3] Idle animation scheduling
-	if (_bIdleAnimActive && _idleAnimCount < _idleAnimMax) {
-		if (getCurrentFrameCounter() > _nextFidgetFrame) {
-			_nextFidgetFrame = getCurrentFrameCounter() + 30;
+	// [3] Celebration scheduling (hoorah fidget)
+	if (_celebrationActive && _celebrationsPlayed < _celebrationTarget) {
+		if (getCurrentFrameCounter() > _nextCelebrationFrame) {
+			_nextCelebrationFrame = getCurrentFrameCounter() + 30;
 			
 			if (_loadedOnCliffCount > 0) {
 				int16 pickIdx = _vm->_rnd->getRandomNumber(0, _loadedOnCliffCount - 1);
@@ -1019,7 +1019,7 @@ void ZoombiniInteractiveSmoke::onEveryFrame() {
 						_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsId));
 					if (scrsStream) {
 						idleSnoid->startScrsPlayback(scrsStream, false, true);
-						_idleAnimCount++;
+						_celebrationsPlayed++;
 					}
 				}
 			}

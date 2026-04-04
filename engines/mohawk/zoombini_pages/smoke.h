@@ -282,8 +282,8 @@ private:
 	/** Trigger main runner reload. IDA: smoke_bReloadMainRunner (0x4B1D18) */
 	bool _bReloadMainRunner = false;
 
-	/** Whether idle animations are playing. IDA: smoke_bIdleAnimActive */
-	bool _bIdleAnimActive = false;
+	/** Whether celebration animations are active. IDA: smoke_bIdleAnimActive */
+	bool _celebrationActive = false;
 
 	/** Interaction lock during animations. */
 	bool _interactionLocked = false;
@@ -306,14 +306,14 @@ private:
 	/** Exit animation total steps. IDA: smoke_remainingExitSteps */
 	int16 _remainingExitSteps = 0;
 
-	/** Idle animation counter. */
-	int16 _idleAnimCount = 0;
+	/** Celebration animation counter. */
+	int16 _celebrationsPlayed = 0;
 
-	/** Max idle animations. IDA: smoke_idleAnimMax */
-	int16 _idleAnimMax = 3;
+	/** Max celebration animations. IDA: smoke_idleAnimMax */
+	int16 _celebrationTarget = 3;
 
-	/** Fidget frame counter. */
-	uint32 _nextFidgetFrame = 0;
+	/** Celebration frame counter. */
+	uint32 _nextCelebrationFrame = 0;
 
 	// --- Question/Answer attributes ---
 

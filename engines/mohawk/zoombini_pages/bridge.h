@@ -311,20 +311,20 @@ protected:
 	/** Total loaded Zoombini count. IDA: word_4AAEB6 */
 	int16 _totalZmbCount = 0;
 
-	/** Fidget animation schedule count. IDA: word_4AAEB2 */
-	int16 _fidgetScheduleCount = 0;
+	/** Celebration animation schedule count. IDA: word_4AAEB2 (bridge_celebrationCounter) */
+	int16 _celebrationTarget = 0;
 
-	/** Fidget animation played count. IDA: word_4AAEB4 */
-	int16 _fidgetPlayedCount = 0;
+	/** Celebration animation played count. IDA: word_4AAEB4 (bridge_celebrationPlayed) */
+	int16 _celebrationsPlayed = 0;
 
-	/** Fidget timer (frame counter). IDA: dword_4AAEB8 */
-	uint32 _fidgetTimer = 0;
+	/** Celebration timer (frame counter). IDA: dword_4AAEB8 (bridge_celebrationLastTime) */
+	uint32 _celebrationTimer = 0;
 
-	/** Fidget interval (60 or 120 frames). IDA: dword_4AAEBC */
-	uint32 _fidgetInterval = 60;
+	/** Celebration interval (60 or 120 frames). IDA: dword_4AAEBC (bridge_celebrationInterval) */
+	uint32 _celebrationInterval = 60;
 
-	/** Fidget pool cursor. IDA: dword_4AAEC0 */
-	uint32 _fidgetPoolCursor = 0;
+	/** Celebration pool cursor. IDA: dword_4AAEC0 (bridge_celebrationPoolState) */
+	uint32 _celebrationPoolCursor = 0;
 
 	/** Re-entrance guard. IDA: word_4A07FC */
 	bool _processingFrame = false;

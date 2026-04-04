@@ -223,10 +223,10 @@ private:
 	int16 _hintFlashSlot = -1;
 	uint32 _hintFlashStartFrame = 0;
 
-	/** Fidget scheduling. */
-	uint32 _nextFidgetFrame = 0;
-	int16 _fidgetPlayedCount = 0;
-	int16 _fidgetTargetCount = 3;
+	/** Celebration scheduling (hoorah fidget). */
+	uint32 _nextCelebrationFrame = 0;
+	int16 _celebrationsPlayed = 0;
+	int16 _celebrationTarget = 3;
 };
 
 } // End of namespace Mohawk

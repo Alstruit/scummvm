@@ -367,10 +367,10 @@ void ZoombiniInteractiveTunnels::initPuzzleState() {
 	// Reset ambient animation timers
 	_idleAnimTimer = 0;
 	_idleAnimInterval = _vm->_rnd->getRandomNumber(5400, 10800);
-	_fidgetScheduleCount = 0;
-	_fidgetPlayedCount = 0;
-	_fidgetTimer = 0;
-	_fidgetInterval = _vm->_rnd->getRandomNumber(1000, 2000);
+	_celebrationTarget = 0;
+	_celebrationsPlayed = 0;
+	_celebrationTimer = 0;
+	_celebrationInterval = _vm->_rnd->getRandomNumber(1000, 2000);
 	_countdownVoiceId = 0;
 	_countdownVoicePlaying = false;
 	_countdownVoiceHandle = nullptr;
@@ -1307,6 +1307,19 @@ void ZoombiniInteractiveTunnels::processSnoidAnimEvent(ZmbSnoid *snoid, int16 ev
 			_enteredCount++;
 			_remainingCount--;
 
+			// Celebration schedule thresholds (IDA: 0x45B904..0x45B94F)
+			// Milestones: 10, 12, 14 entered, or all entered
+			if (_enteredCount == _totalZmbCount) {
+				_celebrationTarget += 2;
+				_zmbEnteredVoiceId = _vm->_rnd->getRandomNumber(20055, 20063);
+			} else if (_enteredCount == 10) {
+				_celebrationTarget++;
+			} else if (_enteredCount == 12) {
+				_celebrationTarget++;
+			} else if (_enteredCount == 14) {
+				_celebrationTarget += 2;
+			}
+
 			int16 gateIdx = _activeGateType;
 			if (gateIdx >= 0 && gateIdx < 4 && _gateOccupancy[gateIdx] < 16) {
 				_gateSlots[gateIdx][_gateOccupancy[gateIdx]] = snoid->getId();
@@ -1324,8 +1337,6 @@ void ZoombiniInteractiveTunnels::processSnoidAnimEvent(ZmbSnoid *snoid, int16 ev
 			// Check if all placed
 			if (_remainingCount <= 0) {
 				_allPlaced = true;
-				// Voice: "Congratulations!" or similar
-				_zmbEnteredVoiceId = _vm->_rnd->getRandomNumber(20055, 20063);
 			}
 		} else {
 			// Rejection: Return Zoombini to staging area
@@ -1468,12 +1479,13 @@ void ZoombiniInteractiveTunnels::onEveryFrame() {
 	}
 
 	// -----------------------------------------------------------------------
-	// Fidget animation (IDA: word_4B7AEE < word_4B7AEC)
+	// Celebration animation (hoorah fidget)
+	// IDA: word_4B7AEE < word_4B7AEC
 	// -----------------------------------------------------------------------
-	if (_fidgetPlayedCount < _fidgetScheduleCount &&
-		getCurrentFrameCounter() - _fidgetTimer > _fidgetInterval) {
+	if (_celebrationsPlayed < _celebrationTarget &&
+		getCurrentFrameCounter() - _celebrationTimer > _celebrationInterval) {
 
-		_fidgetTimer = getCurrentFrameCounter();
+		_celebrationTimer = getCurrentFrameCounter();
 		bool triggered = false;
 		int attempts = 0;
 
@@ -1490,7 +1502,7 @@ void ZoombiniInteractiveTunnels::onEveryFrame() {
 									 ZmbResource(ZmbArchiveKind::kPage, 8559 + snoid->getVariant()));
 				if (scrsStream) {
 					snoid->startScrsPlayback(scrsStream, false, true);
-					_fidgetPlayedCount++;
+					_celebrationsPlayed++;
 					triggered = true;
 				}
 			}

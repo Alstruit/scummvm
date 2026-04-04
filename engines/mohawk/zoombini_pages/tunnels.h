@@ -322,17 +322,17 @@ private:
 	/** Idle animation interval (random 5400-10800 frames). IDA: dword_4B7A34 interval */
 	uint32 _idleAnimInterval = 0;
 
-	/** Fidget schedule count. IDA: word_4B7AEC */
-	int16 _fidgetScheduleCount = 0;
+	/** Celebration schedule count. IDA: word_4B7AEC (tunnels_celebrationTarget) */
+	int16 _celebrationTarget = 0;
 
-	/** Fidget played count. IDA: word_4B7AEE */
-	int16 _fidgetPlayedCount = 0;
+	/** Celebration played count. IDA: word_4B7AEE */
+	int16 _celebrationsPlayed = 0;
 
-	/** Fidget timer. IDA: dword_4B7AF0 */
-	uint32 _fidgetTimer = 0;
+	/** Celebration timer. IDA: dword_4B7AF0 */
+	uint32 _celebrationTimer = 0;
 
-	/** Fidget interval. IDA: dword_4B7AF4 */
-	uint32 _fidgetInterval = 0;
+	/** Celebration interval. IDA: dword_4B7AF4 */
+	uint32 _celebrationInterval = 0;
 
 	/** Countdown voice SFX resource ID. IDA: word_4B7AE4 */
 	int16 _countdownVoiceId = 0;

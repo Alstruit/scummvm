@@ -148,11 +148,11 @@ void ZoombiniInteractiveBridge::loadFeatures() {
 	_pendingLaneEvent = 0;
 	_newArrivalReady = 0;
 	_trollAnimPending = 0;
-	_fidgetScheduleCount = 0;
-	_fidgetPlayedCount = 0;
-	_fidgetTimer = 0;
-	_fidgetInterval = 60;
-	_fidgetPoolCursor = 0;
+	_celebrationTarget = 0;
+	_celebrationsPlayed = 0;
+	_celebrationTimer = 0;
+	_celebrationInterval = 60;
+	_celebrationPoolCursor = 0;
 
 	// Preload images (feature groups)
 	_vm->_gfx->preloadImage(kResBitmapShape1100);
@@ -993,13 +993,13 @@ void ZoombiniInteractiveBridge::onEveryFrame() {
 	}
 
 	// -----------------------------------------------------------------------
-	// [4] Fidget scheduling.
-	// IDA: word_4AAEB4 < word_4AAEB2 and timer check
+	// [4] Celebration scheduling (hoorah fidget).
+	// IDA: bridge_celebrationPlayed < bridge_celebrationCounter and timer check
 	// -----------------------------------------------------------------------
-	if (_fidgetPlayedCount < _fidgetScheduleCount &&
-		getCurrentFrameCounter() - _fidgetTimer > _fidgetInterval) {
+	if (_celebrationsPlayed < _celebrationTarget &&
+		getCurrentFrameCounter() - _celebrationTimer > _celebrationInterval) {
 
-		_fidgetTimer = getCurrentFrameCounter();
+		_celebrationTimer = getCurrentFrameCounter();
 		bool triggered = false;
 		int16 attempts = 0;
 
@@ -1012,12 +1012,14 @@ void ZoombiniInteractiveBridge::onEveryFrame() {
 			ZmbSnoid *snoid = getSnoid(snoidId);
 			if (snoid && snoid->getAnimState() == kSnoidAnimIdle &&
 				snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
-				// Play fidget SCRS: 2019 + shapeImageIdx - 1 ≈ 2019
+				// Play celebration SCRS: foot trait + 2019
+				// IDA: snoidScript_initAndPlay(0, 0, *((char *)v16 + 239) + 2019, ...)
 				Common::SeekableReadStream *scrsStream =
-					_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, 2019));
+					_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+						ZmbResource(ZmbArchiveKind::kPage, snoid->_trait._foot + 2019));
 				if (scrsStream) {
 					snoid->startScrsPlayback(scrsStream, false, true);
-					_fidgetPlayedCount++;
+					_celebrationsPlayed++;
 					triggered = true;
 				}
 			}
@@ -1086,20 +1088,20 @@ void ZoombiniInteractiveBridge::processLaneStepEvent(ZmbFeature *snoidFeature, i
 		snoid->finishScrsPlayback();
 		snoid->setAnimState(kSnoidAnimDepart, &destPos);
 
-		// Track crossed count for Go button and fidget scheduling
+		// Track crossed count for Go button and celebration scheduling
 		int16 totalCrossed = _lane1Count + _lane2Count;
 		if (!_anyZmbCrossed)
 			_anyZmbCrossed = totalCrossed;
 
-		// Fidget schedule thresholds: 10, 12, 14, all
+		// Celebration schedule thresholds: 10, 12, 14, all
 		if (totalCrossed == 10)
-			_fidgetScheduleCount++;
+			_celebrationTarget++;
 		else if (totalCrossed == 12)
-			_fidgetScheduleCount++;
+			_celebrationTarget++;
 		else if (totalCrossed == 14)
-			_fidgetScheduleCount += 2;
+			_celebrationTarget += 2;
 		if (totalCrossed == _totalZmbCount)
-			_fidgetScheduleCount += 2;
+			_celebrationTarget += 2;
 
 		// Play voice-over when all are crossed
 		if (totalCrossed == _totalZmbCount && _bridgeTransitCount == 0) {

@@ -230,13 +230,17 @@ private:
 	bool _drawOnRegEnabled = false; // IDA: scrb_drawOnRegFlagArr[0] — gates submit clicks
 
 	// -----------------------------------------------------------------------
-	// Idle animation
+	// Celebration animation (hoorah fidget)
+	// IDA: pizza_idleAnimActive, pizza_idleAnimCount, pizza_maxIdleAnims
+	// Per-puzzle SCRS scheduled on idle snoids after correct answers or
+	// puzzle milestones. Distinct from the global idle fidget system which
+	// is driven by user inactivity (kSnoidAnimFidget / onSnoidAnimTick).
 	// -----------------------------------------------------------------------
-	int16 _maxIdleAnims = 0;
-	int16 _idleAnimsPlayed = 0;
-	bool _idleAnimActive = false;
-	uint32 _lastIdleFrame = 0;
-	uint16 _idleRandomUsed = 0; // bitmask for non-repeat random pool
+	int16 _celebrationTarget = 0;
+	int16 _celebrationsPlayed = 0;
+	bool _celebrationActive = false;
+	uint32 _lastCelebrationFrame = 0;
+	uint16 _celebrationRandomUsed = 0; // bitmask for non-repeat random pool
 
 	// -----------------------------------------------------------------------
 	// Feature runners

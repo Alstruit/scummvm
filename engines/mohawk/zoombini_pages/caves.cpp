@@ -309,9 +309,9 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 	_rejectAnimActive = false;
 	_interactionLocked = false;
 	_hintFlashEnabled = false;
-	_nextFidgetFrame = getCurrentFrameCounter() + 120;
-	_fidgetPlayedCount = 0;
-	_fidgetTargetCount = 3;
+	_nextCelebrationFrame = getCurrentFrameCounter() + 120;
+	_celebrationsPlayed = 0;
+	_celebrationTarget = 3;
 }
 
 void ZoombiniInteractiveCaves::onGoButtonActivated() {
@@ -907,11 +907,11 @@ void ZoombiniInteractiveCaves::onEveryFrame() {
 		}
 	}
 
-	// [3] Fidget scheduling for idle Zoombinis
-	if (_fidgetPlayedCount < _fidgetTargetCount &&
-		getCurrentFrameCounter() > _nextFidgetFrame) {
+	// [3] Celebration scheduling (hoorah fidget) for idle Zoombinis
+	if (_celebrationsPlayed < _celebrationTarget &&
+		getCurrentFrameCounter() > _nextCelebrationFrame) {
 
-		_nextFidgetFrame = getCurrentFrameCounter() + _vm->_rnd->getRandomNumber(60, 180);
+		_nextCelebrationFrame = getCurrentFrameCounter() + _vm->_rnd->getRandomNumber(60, 180);
 		bool triggered = false;
 		int16 attempts = 0;
 
@@ -928,7 +928,7 @@ void ZoombiniInteractiveCaves::onEveryFrame() {
 						ZmbResource(ZmbArchiveKind::kPage, 13000 + _vm->_rnd->getRandomNumber(0, 4)));
 				if (scrsStream) {
 					snoid->startScrsPlayback(scrsStream, false, true);
-					_fidgetPlayedCount++;
+					_celebrationsPlayed++;
 					triggered = true;
 				}
 			}

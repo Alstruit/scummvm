@@ -545,11 +545,11 @@ void ZoombiniInteractivePizza::onEveryFrame() {
 		setGoButtonsEnabled(true);
 	}
 
-	// Idle fidget scheduling
+	// Celebration scheduling (hoorah fidget)
 	// IDA: 0x43CE80..0x43CF8F — non-repeat random snoid SCRS playback
-	if (_idleAnimActive && _idleAnimsPlayed < _maxIdleAnims) {
+	if (_celebrationActive && _celebrationsPlayed < _celebrationTarget) {
 		uint32 now = getCurrentFrameCounter();
-		if (now > _lastIdleFrame + 30) { // IDA: 0x1E = 30 frame delta
+		if (now > _lastCelebrationFrame + 30) { // IDA: 0x1E = 30 frame delta
 			// Count remaining (non-departed) zoombinis
 			int16 remaining = 0;
 			for (auto it = _snoidMap.begin(); it != _snoidMap.end(); it++) {
@@ -559,13 +559,13 @@ void ZoombiniInteractivePizza::onEveryFrame() {
 			}
 
 			if (remaining < 4) {
-				// IDA: too few zoombinis — clear idle, spawn answer zmb
+				// IDA: too few zoombinis — clear celebration, spawn answer zmb
 				_isDeliveryInProgress = 0;
-				_idleAnimActive = false;
+				_celebrationActive = false;
 				spawnAnswerZmb();
 			} else {
-				// IDA: update last idle frame
-				_lastIdleFrame = now;
+				// IDA: update last celebration frame
+				_lastCelebrationFrame = now;
 
 				// Collect eligible snoids for non-repeat random selection
 				Common::Array<ZmbSnoid *> eligible;
@@ -585,17 +585,17 @@ void ZoombiniInteractivePizza::onEveryFrame() {
 				if (!eligible.empty()) {
 					// Non-repeat random: use bitmask to avoid repeats
 					int16 poolSize = eligible.size();
-					if (_idleRandomUsed >= (uint16)((1 << poolSize) - 1))
-						_idleRandomUsed = 0; // All used, reset
+if (_celebrationRandomUsed >= (uint16)((1 << poolSize) - 1))
+					_celebrationRandomUsed = 0; // All used, reset
 
 					int16 idx;
 					int16 attempts = 0;
 					do {
 						idx = _vm->_rnd->getRandomNumber(0, poolSize - 1);
 						attempts++;
-					} while ((_idleRandomUsed & (1 << idx)) && attempts < 32);
+					} while ((_celebrationRandomUsed & (1 << idx)) && attempts < 32);
 
-					_idleRandomUsed |= (1 << idx);
+					_celebrationRandomUsed |= (1 << idx);
 					ZmbSnoid *snoid = eligible[idx];
 
 					// IDA: play SCRS (13035 + foot_trait - 1)
@@ -604,20 +604,20 @@ void ZoombiniInteractivePizza::onEveryFrame() {
 						_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
 						                 ZmbResource(ZmbArchiveKind::kPage, scrsId));
 					if (scrsStream) {
-						snoid->startScrsPlayback(scrsStream, false, false);
-						_idleAnimsPlayed++;
+						snoid->startScrsPlayback(scrsStream, false, true);
+						_celebrationsPlayed++;
 					}
 				}
 			}
 		}
 	}
 
-	// IDA: 0x43CF68 — if played >= max, reset all idle state
-	if (_idleAnimsPlayed >= _maxIdleAnims && _maxIdleAnims > 0) {
-		_idleRandomUsed = 0;
-		_lastIdleFrame = 0;
-		_idleAnimActive = false;
-		_idleAnimsPlayed = 0;
+	// IDA: 0x43CF68 — if played >= max, reset all celebration state
+	if (_celebrationsPlayed >= _celebrationTarget && _celebrationTarget > 0) {
+		_celebrationRandomUsed = 0;
+		_lastCelebrationFrame = 0;
+		_celebrationActive = false;
+		_celebrationsPlayed = 0;
 	}
 
 	_processingFrame = false;
@@ -900,11 +900,11 @@ void ZoombiniInteractivePizza::endDrag(const Common::Point &dropPos) {
 			snoid->setPointLoc(kAnswerDisplayPosition);
 			snoid->setAnimState(kSnoidAnimArrive);
 
-			// Initialize the idle animation system for this interaction
-			_idleAnimActive = true;
-			_idleAnimsPlayed = 0;
-			_maxIdleAnims = 3;
-			_lastIdleFrame = getCurrentFrameCounter();
+			// Initialize the celebration animation system for this interaction
+			_celebrationActive = true;
+			_celebrationsPlayed = 0;
+			_celebrationTarget = 3;
+			_lastCelebrationFrame = getCurrentFrameCounter();
 
 			debugC(kZmbDebugPage, "Pizza: Zoombini placed at answer area (packIdx=%d)",
 			       _answerZmbPackIdx);
@@ -1216,7 +1216,7 @@ void ZoombiniInteractivePizza::serveNextTopping(int16 orderLine) {
 	}
 	if (allReady) {
 		_allOrdersReady = true;
-		_maxIdleAnims = 15; // IDA: pickerRunner.wUnk002C[13] - 1
+		_celebrationTarget = 15; // IDA: pickerRunner.wUnk002C[13] - 1
 	}
 }
 
@@ -1411,7 +1411,7 @@ void ZoombiniInteractivePizza::advanceToNextDeliverySlot() {
 	}
 
 	_deliveryIndex++;
-	_idleAnimActive = false;
+	_celebrationActive = false;
 
 	// Reset phase tracking
 	_orderBasePhase = kPhaseNone;
@@ -1493,9 +1493,9 @@ void ZoombiniInteractivePizza::advanceIntroSequence() {
 	// on the last troll feature (reactivates render for idle animation).
 	if (_introSequenceStep == 0 && !_introComplete) {
 		_introComplete = true;
-		_idleAnimActive = true;
-		_maxIdleAnims = 2;
-		_lastIdleFrame = getCurrentFrameCounter();
+		_celebrationActive = true;
+		_celebrationTarget = 2;
+		_lastCelebrationFrame = getCurrentFrameCounter();
 		triggerOrderFeatureAmbientAnim();
 		debugC(kZmbDebugPage, "Pizza: Intro sequence complete");
 	}
