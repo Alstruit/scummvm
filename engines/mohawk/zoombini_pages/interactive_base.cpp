@@ -297,7 +297,7 @@ void ZoombiniInteractive::startDepartWalkAnimation(const Common::Point &target, 
 	uint32 frameBase = getCurrentFrameCounter();
 	uint16 walkerIdx = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		ZmbSnoid *snoid = it->second;
+		ZmbSnoid *snoid = *it;
 		if (!snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 			continue;
 		if (snoid->getAnimState() != kSnoidAnimIdle)
@@ -316,9 +316,9 @@ void ZoombiniInteractive::startDepartWalkAnimation(const Common::Point &target, 
 bool ZoombiniInteractive::isDepartWalkComplete() const {
 	// IDA: departure polling — all snoids idle or off-screen right edge.
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (!it->second->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+		if (!(*it)->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 			continue;
-		const ZmbSnoid *snoid = it->second;
+		const ZmbSnoid *snoid = *it;
 		if (snoid->getAnimState() != kSnoidAnimIdle && snoid->getPointLoc().x < 640)
 			return false;
 	}
@@ -413,7 +413,7 @@ void ZoombiniInteractive::showNotiBox(const Common::U32String &ustr, bool isNoti
 		_notiBoxShowUntilFrame = UINT32_MAX; // Virtually infinite duration
 
 	// Only register NotiBox feature if not yet registered.
-	if (_virtualFeatureMap.find(kVirtualFeatureMinus02_NotiBox) == _virtualFeatureMap.end()) {
+	if (!_virtualFeatureMap.find(kVirtualFeatureMinus02_NotiBox)) {
 		ZmbFeature::EventHooks hooks;
 		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractive::notiBox_preRenderShape));
 		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractive::notiBox_onPostRender));
@@ -690,7 +690,7 @@ const Common::Rect ZoombiniInteractive::kDefaultDragConstraint = Common::Rect(0,
 
 ZmbSnoid *ZoombiniInteractive::findSnoidAtPoint(const Common::Point &pos) {
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		ZmbSnoid *snoid = it->second;
+		ZmbSnoid *snoid = *it;
 		if (!snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 			continue;
 		if (snoid->findDrawRecordAtPoint(pos))
@@ -770,8 +770,8 @@ void ZoombiniInteractive::layoutStaticAndWalkIn() {
 	// Collect occupied pack snoids in load order (keys 10000, 10001, ...).
 	Common::Array<ZmbSnoid *> occupied;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (it->first >= 10000 && it->second->_packIsOccupied)
-			occupied.push_back(it->second);
+		if ((*it)->getId() >= 10000 && (*it)->_packIsOccupied)
+			occupied.push_back(*it);
 	}
 
 	// IDA: v8 = 3 * LoadedZmbRunnerCount / 4 — 75% threshold.
@@ -795,9 +795,9 @@ void ZoombiniInteractive::assignStaggeredWalkDelays() {
 	// Collect snoids that are walk-in animated (kSnoidAnimDepart or kSnoidAnimPath).
 	Common::Array<ZmbSnoid *> walkers;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (it->first < 10000)
+		if ((*it)->getId() < 10000)
 			continue;
-		ZmbSnoid *snoid = it->second;
+		ZmbSnoid *snoid = *it;
 		const SnoidAnimState st = snoid->getAnimState();
 		if (st == kSnoidAnimDepart || st == kSnoidAnimPath)
 			walkers.push_back(snoid);

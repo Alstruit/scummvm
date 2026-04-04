@@ -25,6 +25,8 @@
 #include "mohawk/zoombini_resource.h"
 
 #include "common/events.h"
+#include "common/hashmap.h"
+#include "common/list.h"
 #include "common/stablemap.h"
 #include "common/stack.h"
 
@@ -33,6 +35,78 @@
 #include "mohawk/zoombini_text.h"
 
 namespace Mohawk {
+
+/**
+ * Ordered feature container: preserves insertion (registration) order for
+ * iteration while providing O(1) lookup by uint16 ID.
+ *
+ * The original engine stores all feature/snoid runners in a single singly-linked
+ * list (zmb_pRunnerListHead). Iteration order = registration order, and lookups
+ * walk the list (runner_findByIndex). We keep a HashMap for efficient lookups.
+ */
+template<class T>
+class ZmbFeatureList {
+public:
+	using ListType = Common::List<T *>;
+	using iterator = typename ListType::iterator;
+	using const_iterator = typename ListType::const_iterator;
+
+	iterator begin() { return _list.begin(); }
+	iterator end() { return _list.end(); }
+	const_iterator begin() const { return _list.begin(); }
+	const_iterator end() const { return _list.end(); }
+
+	uint size() const { return _list.size(); }
+	bool empty() const { return _list.empty(); }
+
+	/** Insert a feature at the tail (= registered last = drawn last in
+	 *  LOOP_ANIM bucket). Returns false if ID already exists. */
+	bool insert(uint16 id, T *feature) {
+		if (_index.contains(id))
+			return false;
+		_list.push_back(feature);
+		_index[id] = feature;
+		return true;
+	}
+
+	/** Lookup by ID.  Returns nullptr when not found. */
+	T *find(uint16 id) const {
+		auto it = _index.find(id);
+		if (it == _index.end())
+			return nullptr;
+		return it->_value;
+	}
+
+	/** Erase by ID.  Returns the erased pointer (caller responsible for
+	 *  delete), or nullptr if not found. */
+	T *erase(uint16 id) {
+		auto hashIt = _index.find(id);
+		if (hashIt == _index.end())
+			return nullptr;
+		T *ptr = hashIt->_value;
+		_index.erase(hashIt);
+		for (auto listIt = _list.begin(); listIt != _list.end(); ++listIt) {
+			if (*listIt == ptr) {
+				_list.erase(listIt);
+				break;
+			}
+		}
+		return ptr;
+	}
+
+	void clear() {
+		_list.clear();
+		_index.clear();
+	}
+
+	/** Direct read access to the underlying list (for legacy code that
+	 *  needs `operator[]` on seat-runner IDs, etc.). */
+	T *operator[](uint16 id) const { return find(id); }
+
+private:
+	ListType _list;
+	Common::HashMap<uint16, T *> _index;
+};
 
 constexpr const char *ZMB_MHK_ZOOMBINI = "ZOOMBINI.MHK";
 constexpr const char *ZMB_MHK_MIDIMPC = "MIDIMPC.MHK"; // Broderbund 1.x releases only
@@ -452,15 +526,15 @@ protected:
 	ZoombiniPageType _pageType;
 	bool _useFadeEffect = true;
 
-	Common::StableMap<uint16, ZmbFeature *> _scrbFeatureMap;
-	Common::StableMap<uint16, ZmbFeature *> _virtualFeatureMap;
+	ZmbFeatureList<ZmbFeature> _scrbFeatureMap;
+	ZmbFeatureList<ZmbFeature> _virtualFeatureMap;
 	/** Chain-head features from createMainFeatureHead(), not in any feature map. */
 	Common::Array<ZmbFeature *> _mainFeatureHeads;
 	/**
 	 * Sub-features temporarily running independently (e.g. FLAG_00040000_CHAIN_SCRIPT).
 	 */
-	Common::StableMap<uint16, ZmbFeature *> _subFeatureMap;
-	Common::StableMap<uint16, ZmbSnoid *> _snoidMap;
+	ZmbFeatureList<ZmbFeature> _subFeatureMap;
+	ZmbFeatureList<ZmbSnoid> _snoidMap;
 	Common::HashMap<uint16, ZmbRegs *> _regsMap;
 	Common::HashMap<uint16, ZmbNode *> _nodeMap;
 
@@ -505,8 +579,8 @@ protected:
 	uint32 _lastFrameCounter = 0;
 	bool _doForceRedraw = false;
 
-	static ZmbFeature *registerFeature(ZoombiniPage *page, Common::StableMap<uint16, ZmbFeature *> &featureMap, ZmbResource imgResource, uint16 scrbId, uint32 frameInterval, const Common::Point &point, uint32 flags, bool isPhysicalScrb, const Common::Array<ZmbHotspot> *virtualHotspots, const ZmbFeature::EventHooks &eventHooks = ZmbFeature::EventHooks());
-	static void deregisterFeature(Common::StableMap<uint16, ZmbFeature *> &featureMap, uint16 featureId);
+	static ZmbFeature *registerFeature(ZoombiniPage *page, ZmbFeatureList<ZmbFeature> &featureList, ZmbResource imgResource, uint16 scrbId, uint32 frameInterval, const Common::Point &point, uint32 flags, bool isPhysicalScrb, const Common::Array<ZmbHotspot> *virtualHotspots, const ZmbFeature::EventHooks &eventHooks = ZmbFeature::EventHooks());
+	static void deregisterFeature(ZmbFeatureList<ZmbFeature> &featureList, uint16 featureId);
 
 	void loadNODE(ZmbArchiveKind archiveKind, uint16 imgResource);
 	void loadREGS(ZmbArchiveKind archiveKind, uint16 imgResource);

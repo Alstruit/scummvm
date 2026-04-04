@@ -749,9 +749,9 @@ void ZoombiniInteractiveCaves::handleCorrectPlacement(ZmbSnoid *snoid, int16 ent
 	// Check if all Zoombinis have been placed
 	int16 remainingCount = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (it->first < 10000)
+		if ((*it)->getId() < 10000)
 			continue;
-		ZmbSnoid *s = it->second;
+		ZmbSnoid *s = *it;
 		if (s->getAnimState() == kSnoidAnimIdle && s->_packIsOccupied)
 			remainingCount++;
 	}

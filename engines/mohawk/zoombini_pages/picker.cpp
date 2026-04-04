@@ -608,7 +608,7 @@ ZmbEventHandleResult ZoombiniInteractivePicker::onLButtonDown(const Common::Poin
 
 	// Guard: don't drag while any snoid is walking in (depart or path state)
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		SnoidAnimState st = it->second->getAnimState();
+		SnoidAnimState st = (*it)->getAnimState();
 		if (st == kSnoidAnimDepart || st == kSnoidAnimPath)
 			return ZmbEventHandleResult::kPassthrough;
 	}
@@ -761,7 +761,7 @@ void ZoombiniInteractivePicker::repackSeatPositions() {
 
 	uint16 seatIdx = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		ZmbSnoid *s = it->second;
+		ZmbSnoid *s = *it;
 		if (!s->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 			continue;
 		if (seatIdx >= 16)

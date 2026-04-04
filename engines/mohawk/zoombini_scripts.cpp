@@ -1219,6 +1219,22 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 			}
 		}
 
+		// IDA: snoidPath_stepAndComputeVelocity_4548DF bUseSubTargetFinalDest check:
+		// The first call to stepAndComputeVelocity (state 7) reads the waypoint at
+		// path[bestV2+1] and checks whether finalDest is closer to curPos than that
+		// waypoint.  If so it sets pos2 = finalDest, skipping the entire path.
+		// Without this, walk-in snoids overshoot their seats by visiting every path
+		// waypoint before the distance shortcut fires at waypoint arrival.
+		if (_pathWaypointIdx < _pathWaypoints.size()) {
+			const Common::Point curPos = getPointLoc();
+			int32 dxFd = _animTargetPos.x - curPos.x;
+			int32 dyFd = _animTargetPos.y - curPos.y;
+			int32 dxWp = _pathWaypoints[_pathWaypointIdx].x - curPos.x;
+			int32 dyWp = _pathWaypoints[_pathWaypointIdx].y - curPos.y;
+			if (dxFd * dxFd + dyFd * dyFd <= dxWp * dxWp + dyWp * dyWp)
+				_pathWaypointIdx = (uint32)_pathWaypoints.size(); // cull all waypoints
+		}
+
 		// IDA: state 7 (departing) falls through directly to LABEL_20 (movement code)
 		// in the same tick — route init + first movement step happen simultaneously.
 		// Matching this: transition to kSnoidAnimPath then immediately apply the first step.
@@ -1229,7 +1245,7 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 		// Compute initial direction bucket AND speed toward the first waypoint (or final target).
 		{
 			const Common::Point curPos = getPointLoc();
-			const Common::Point nextWp = (!_pathWaypoints.empty()) ? _pathWaypoints[0] : _animTargetPos;
+			const Common::Point nextWp = (_pathWaypointIdx < _pathWaypoints.size()) ? _pathWaypoints[_pathWaypointIdx] : _animTargetPos;
 			int16 initDx = nextWp.x - curPos.x;
 			int16 initDy = curPos.y - nextWp.y; // curY - targetY (IDA convention)
 			_walkDirBucket = computeWalkDirBucket(initDx, initDy);
@@ -1241,7 +1257,7 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 		// Fall through: apply first movement step in this same tick (IDA LABEL_20 fallthrough).
 		{
 			Common::Point pos = getPointLoc();
-			const Common::Point subTarget = (!_pathWaypoints.empty()) ? _pathWaypoints[0] : _animTargetPos;
+			const Common::Point subTarget = (_pathWaypointIdx < _pathWaypoints.size()) ? _pathWaypoints[_pathWaypointIdx] : _animTargetPos;
 			int16 dx = subTarget.x - pos.x;
 			int16 dy = pos.y - subTarget.y;
 			if (dx != 0 || dy != 0) {

@@ -288,7 +288,7 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 	// IDA: word_4AB196 = zmb_countFeatureRunners()
 	_totalZmbCount = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (it->first >= 10000)
+		if ((*it)->getId() >= 10000)
 			_totalZmbCount++;
 	}
 
@@ -413,10 +413,7 @@ void ZoombiniInteractiveFerry::buildAdjacencyMatrix() {
 // ---------------------------------------------------------------------------
 int16 ZoombiniInteractiveFerry::getDropTargetSeat(const Common::Point &pos) const {
 	for (int16 i = 0; i < _seatCount; i++) {
-		ZmbFeature *seatRunner = nullptr;
-		auto it = _scrbFeatureMap.find(_seatRunnerIds[i]);
-		if (it != _scrbFeatureMap.end())
-			seatRunner = it->second;
+		ZmbFeature *seatRunner = _scrbFeatureMap.find(_seatRunnerIds[i]);
 		if (!seatRunner)
 			continue;
 
@@ -449,10 +446,7 @@ bool ZoombiniInteractiveFerry::testAdjacentMatch(int16 seatIdx, ZmbSnoid *droppe
 		// In ScummVM, we need to find a pack snoid whose position corresponds to this seat.
 		// Seat runners are tracked by _seatRunnerIds[]. We need to find
 		// a snoid that's been placed at this adjacent seat position.
-		ZmbFeature *neighborSeatRunner = nullptr;
-		auto it = _scrbFeatureMap.find(_seatRunnerIds[neighborIdx - 1]);
-		if (it != _scrbFeatureMap.end())
-			neighborSeatRunner = it->second;
+		ZmbFeature *neighborSeatRunner = _scrbFeatureMap.find(_seatRunnerIds[neighborIdx - 1]);
 		if (!neighborSeatRunner)
 			continue;
 
@@ -460,9 +454,9 @@ bool ZoombiniInteractiveFerry::testAdjacentMatch(int16 seatIdx, ZmbSnoid *droppe
 		ZmbSnoid *neighborSnoid = nullptr;
 		Common::Rect seatRect = neighborSeatRunner->getClickRect();
 		for (auto snoidIt = _snoidMap.begin(); snoidIt != _snoidMap.end(); ++snoidIt) {
-			if (snoidIt->first < 10000)
+			if ((*snoidIt)->getId() < 10000)
 				continue;
-			ZmbSnoid *candidate = snoidIt->second;
+			ZmbSnoid *candidate = *snoidIt;
 			// A snoid is "seated" if it has been placed and is not idle/dragging at dock
 			if (candidate->_packIsOccupied && seatRect.contains(candidate->getPointLoc().x, candidate->getPointLoc().y)) {
 				neighborSnoid = candidate;
@@ -506,9 +500,9 @@ ZmbSnoid *ZoombiniInteractiveFerry::findIdlePackSnoid(uint16 preferredId) {
 			return snoid;
 	}
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (it->first < 10000)
+		if ((*it)->getId() < 10000)
 			continue;
-		ZmbSnoid *snoid = it->second;
+		ZmbSnoid *snoid = *it;
 		if (snoid->getAnimState() == kSnoidAnimIdle)
 			return snoid;
 	}
@@ -917,9 +911,9 @@ void ZoombiniInteractiveFerry::endDrag(const Common::Point &mousePos) {
 	// Update seated count — count all pack snoids that are currently seated
 	_seatedCount = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (it->first < 10000)
+		if ((*it)->getId() < 10000)
 			continue;
-		ZmbSnoid *s = it->second;
+		ZmbSnoid *s = *it;
 		// A snoid is "seated" if it's on a seat position
 		Common::Point sPos = s->getPointLoc();
 		if (getDropTargetSeat(sPos) > 0)

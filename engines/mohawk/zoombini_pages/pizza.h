@@ -54,58 +54,73 @@ protected:
 	void onGoButtonActivated() override;
 
 private:
+	// --- Phase tracking for feature animations ---
+	enum FeaturePhase {
+		kPhaseNone = 0,
+		kPhaseIntro,
+		kPhaseServeReaction,
+		kPhaseDeliveryEval,
+		kPhaseExitCallback,
+		kPhaseToppingOverlay,
+		kPhaseToppingDelivery,
+		kPhaseQuestionSetup,
+		kPhaseSpawnAnswer,
+		kPhaseAcceptTransition,
+	};
+
 	// --- Initialization ---
 	void loadZoombinisFromPack();
 	void setDifficultyParams();
 	void generateToppingSet();
 	void distributeToppings();
 
-	// --- Ingredient toggle ---
+	// --- Ingredient toggle & submit ---
 	void handleIngredientToggle(int16 ingredientIdx);
+	void handleSubmit();
+
+	// --- Answer display ---
+	void registerAnswerDisplay();
 
 	// --- Order classification & delivery ---
-	/**
-	 * Classify current meal against an order line.
-	 * IDA: pizza_classifyOrderType (0x43E5C9)
-	 * @param orderLine 0=correct, 1=wrongA, 2=wrongB
-	 * @return 0=one correct, 1=all wrong, 2=exact match, 4=multiple non-wrong
-	 */
 	int16 classifyOrderType(int16 orderLine) const;
-
-	/** Serve toppings to the current order line. IDA: pizza_serveNextTopping (0x43E75F) */
-	void serveNextTopping();
-
-	/** Evaluate the final delivery result. IDA: pizza_evaluateDelivery (0x4403A4) */
+	void serveNextTopping(int16 resultType, int16 orderLine);
+	void placeTopping(int16 orderSlot, int16 isAllWrong);
 	void evaluateDelivery();
-
-	/** Advance to next zoombini for delivery. IDA: pizza_advanceToNextDeliverySlot (0x4409DA) */
 	void advanceToNextDeliverySlot();
-
-	/** Advance the intro sequence step. IDA: pizza_advanceIntroSequence (0x440C04) */
 	void advanceIntroSequence();
+	void triggerOrderFeatureAmbientAnim();
+	void spawnAnswerZmb();
+	void animateAnswerZmb();
+	void setupQuestionRunners();
+	void onToppingDelivered();
+	void playSFXForOrder(int16 sfxVariant);
+
+	// --- Callback event handlers ---
+	void handleZmbExitEvent(ZmbFeature *feature, int16 eventCode);
+	void handleZmbDeliveryEvent(ZmbFeature *feature, int16 eventCode);
+	void handleOrderLineComplete(int16 orderLine);
 
 	// --- Topping bitmask history ---
-	/** Pack current ingredient flags into a bitmask. IDA: pizza_packToppingBitmask (0x43F794) */
 	uint8 packToppingBitmask() const;
-
-	/** Check if current bitmask already tried. IDA: pizza_checkToppingMaskMatch (0x43F848) */
 	bool checkToppingMaskMatch() const;
 
 	// --- Drag-and-drop ---
 	void endDrag(const Common::Point &dropPos);
 
+	// --- Helpers ---
+	void reloadScrbAnimation(ZmbFeature *feature, uint16 scrbId);
+	int16 getTraitIndexForOrder(int16 orderSlot) const;
+
 	// -----------------------------------------------------------------------
-	// Static data (IDA)
+	// Static data
 	// -----------------------------------------------------------------------
 	static const Common::Point kSnoidPositions[16];
 	static const Common::Point kAnswerDisplayPosition;
 	static const uint16 kToppingScrbBase[4];
-
-	/** Click rect for the answer/submit area. IDA: 0x43CFA1 case 4 */
 	static const Common::Rect kAnswerClickRect;
 
 	// -----------------------------------------------------------------------
-	// Difficulty parameters (IDA: set in pizza_init)
+	// Difficulty parameters
 	// -----------------------------------------------------------------------
 	int16 _difficultyLevel = 0;
 	int16 _totalToppingSlots = 5;
@@ -114,74 +129,87 @@ private:
 	int16 _minToppingsPerOrder = 1;
 	int16 _extraToppingTiers = 0;
 	int16 _remainingDeliveries = 6;
+	int16 _initialDeliveryCount = 6;
 
 	// -----------------------------------------------------------------------
-	// Topping state arrays (IDA: 8 words each)
+	// Topping state arrays
 	// -----------------------------------------------------------------------
 	uint8 _toppingSet[16] = {};
 	uint8 _correctToppings[16] = {};
 	uint8 _wrongToppingsA[16] = {};
 	uint8 _wrongToppingsB[16] = {};
-
-	/** Current player-selected toppings ("meal"). IDA: word_4B0DAC[0..7] */
 	int16 _currentMeal[8] = {};
-
-	/** Per-ingredient toggle flags. IDA: pizza_ingredientFlag0-7 */
+	int16 _mealSnapshot[8] = {};
 	int16 _ingredientFlags[8] = {};
 
 	// -----------------------------------------------------------------------
-	// Order line state (1=active, 2=pending, 3=done). IDA: pizza_order0State-2State
+	// Order line state (0=inactive, 1=active, 2=matched, 3=accepted)
 	// -----------------------------------------------------------------------
 	int16 _orderState[3] = {};
 
 	// -----------------------------------------------------------------------
 	// Delivery tracking
 	// -----------------------------------------------------------------------
-	/** Current delivery index (which zmb is being served). IDA: pizza_deliveryIndex */
-	int16 _deliveryIndex = 0;
-	/** Was the last delivery correct? IDA: pizza_wasDeliveryCorrect */
+	int16 _deliveryIndex = -1;
 	int16 _wasDeliveryCorrect = 0;
-	/** Consecutive correct deliveries. IDA: pizza_deliveryStreak */
 	int16 _deliveryStreak = 0;
-	/** All deliveries done flag. IDA: pizza_allDeliveriesDone */
 	bool _allDeliveriesDone = false;
-	/** All orders ready flag (all lines reached state >= 2). IDA: pizza_allOrdersReady */
 	bool _allOrdersReady = false;
-	/** Delivery animation in progress. IDA: pizza_isDeliveryInProgress */
-	bool _isDeliveryInProgress = false;
-	/** Retry counter for same order. IDA: pizza_retryCounter */
+	int16 _isDeliveryInProgress = 0;
 	int16 _retryCounter = 0;
+	int16 _currentServingLine = -1;
+	int16 _deliverySlotType = 0;
+	int16 _questionsAnswered = 0;
 
 	// -----------------------------------------------------------------------
-	// Topping bitmask history (duplicate detection). IDA: pizza_toppingMaskHistory
+	// Topping bitmask history
 	// -----------------------------------------------------------------------
-	uint8 _toppingMaskHistory[256] = {};
-	int16 _toppingMaskHistoryIdx = 0;
+	uint8 _toppingMaskHistory[28] = {};
+	int16 _toppingMaskHistoryIdx = -1;
 
 	// -----------------------------------------------------------------------
-	// Intro sequence. IDA: pizza_introSequenceStep
+	// Intro sequence
 	// -----------------------------------------------------------------------
-	int16 _introSequenceStep = 0;
+	int16 _introSequenceStep = 1;
 	bool _introComplete = false;
 
 	// -----------------------------------------------------------------------
-	// Answer display state
+	// Animation cycling counters (per order line)
 	// -----------------------------------------------------------------------
-	/** Snoid currently at the answer area. IDA: pizza_answerZmb */
+	int16 _anim0_allWrongCtr = 0;
+	int16 _anim0_oneCorrectCtr = 0;
+	int16 _anim0_multiNonWrongCtr = 0;
+	int16 _anim1_allWrongCtr = 0;
+	int16 _anim1_oneCorrectCtr = 0;
+	int16 _anim1_multiNonWrongCtr = 0;
+	int16 _anim2_allWrongCtr = 0;
+	int16 _anim2_oneCorrectCtr = 0;
+	int16 _anim2_multiNonWrongCtr = 0;
+
+	// -----------------------------------------------------------------------
+	// Phase tracking per feature
+	// -----------------------------------------------------------------------
+	FeaturePhase _orderBasePhase = kPhaseNone;
+	FeaturePhase _order1Phase = kPhaseNone;
+	FeaturePhase _order2Phase = kPhaseNone;
+	FeaturePhase _overlayPhase = kPhaseNone;
+	FeaturePhase _questionRunnerPhase = kPhaseNone;
+	FeaturePhase _treePhase = kPhaseNone;
+
+	// -----------------------------------------------------------------------
+	// Answer snoid state
+	// -----------------------------------------------------------------------
 	ZmbSnoid *_answerSnoid = nullptr;
-	/** Index in pack of current answer zmb. IDA: word_4B0D04 */
 	int16 _answerZmbPackIdx = -1;
 
 	// -----------------------------------------------------------------------
-	// Puzzle active / reentrancy
+	// Puzzle state
 	// -----------------------------------------------------------------------
 	bool _puzzleActive = false;
 	bool _processingFrame = false;
-	int16 _pendingOrderCount = 0;
-	int16 _currentToppingType = 0;
 
 	// -----------------------------------------------------------------------
-	// Idle animation. IDA: pizza_idleAnim*
+	// Idle animation
 	// -----------------------------------------------------------------------
 	int16 _maxIdleAnims = 0;
 	int16 _idleAnimsPlayed = 0;
@@ -199,6 +227,8 @@ private:
 	ZmbFeature *_orderBaseFeature = nullptr;
 	ZmbFeature *_order2Feature = nullptr;
 	ZmbFeature *_overlayFeature = nullptr;
+	ZmbFeature *_questionRunnerFeature = nullptr;
+	ZmbFeature *_toppingOverlayFeature = nullptr;
 
 	// -----------------------------------------------------------------------
 	// Resource IDs

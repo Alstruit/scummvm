@@ -49,7 +49,7 @@ void ZoombiniPage::onAnimFrame() {
 	// Tick every snoid's animation state machine before rendering.
 	// IDA: onRender_ZoombiniAnimation_452B9C is invoked once per animation frame per snoid.
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		it->second->onSnoidAnimTick(this);
+		(*it)->onSnoidAnimTick(this);
 	}
 
 	renderFeatures();
@@ -201,15 +201,14 @@ ZmbFeature *ZoombiniPage::loadVirtualFeature(uint16 virtFeatureId, uint32 frameI
 	return registerFeature(this, _virtualFeatureMap, ZmbResource(ZmbArchiveKind::kPage, 0), virtFeatureId, frameInterval, Common::Point(0, 0), flags, false, nullptr, eventHooks);
 }
 
-ZmbFeature *ZoombiniPage::registerFeature(ZoombiniPage *page, Common::StableMap<uint16, ZmbFeature *> &featureMap, ZmbResource imgResource, uint16 scrbId, uint32 frameInterval, const Common::Point &pointRef, uint32 flags, bool isPhysicalScrb, const Common::Array<ZmbHotspot> *virtualHotspots, const ZmbFeature::EventHooks &eventHooks) {
-	auto it = featureMap.find(scrbId);
-	if (it != featureMap.end()) {
+ZmbFeature *ZoombiniPage::registerFeature(ZoombiniPage *page, ZmbFeatureList<ZmbFeature> &featureList, ZmbResource imgResource, uint16 scrbId, uint32 frameInterval, const Common::Point &pointRef, uint32 flags, bool isPhysicalScrb, const Common::Array<ZmbHotspot> *virtualHotspots, const ZmbFeature::EventHooks &eventHooks) {
+	if (featureList.find(scrbId)) {
 		error("Duplicated feature id %u", scrbId);
 		return nullptr;
 	}
 
 	ZmbFeature *feature = new ZmbFeature(page->_vm, scrbId, frameInterval, pointRef, flags, imgResource);
-	featureMap[scrbId] = feature;
+	featureList.insert(scrbId, feature);
 
 	if (isPhysicalScrb) {
 		Common::SeekableReadStream *scrbStream = page->_vm->getResource(ID_SCRB, ZmbResource(imgResource._archiveKind, scrbId));
@@ -296,22 +295,19 @@ void ZoombiniPage::attachSubFeature(ZmbFeature *subFeature) {
 	uint16 id = subFeature->getId();
 
 	// Guard against duplicate registration (e.g. user clicks before animation finishes)
-	if (_subFeatureMap.find(id) != _subFeatureMap.end())
+	if (_subFeatureMap.find(id))
 		return;
 
 	// Insert without taking ownership - the parent feature still owns this pointer
-	_subFeatureMap[id] = subFeature;
+	_subFeatureMap.insert(id, subFeature);
 }
 
-void ZoombiniPage::deregisterFeature(Common::StableMap<uint16, ZmbFeature *> &featureMap, uint16 featureId) {
-	auto it = featureMap.find(featureId);
-	if (it == featureMap.end()) {
+void ZoombiniPage::deregisterFeature(ZmbFeatureList<ZmbFeature> &featureList, uint16 featureId) {
+	ZmbFeature *feature = featureList.erase(featureId);
+	if (!feature) {
 		error("Cannot unload a not loaded feature id %u", featureId);
 		return;
 	}
-
-	ZmbFeature *feature = it->second;
-	featureMap.erase(it);
 	delete feature;
 }
 
@@ -540,14 +536,15 @@ void ZoombiniPage::buildSortedRenderList(Common::Array<ZmbFeature *> &outList) {
 
 	// Step 1: Categorize features into render buckets.
 	// IDA check order: LOOP_ANIM → pre-existing OVERLAY → entity type → normalList.
-	for (auto it = _scrbFeatureMap.begin(); it != _scrbFeatureMap.end(); it++)
-		categorizeFeature(it->second, loopAnimList, normalList, entityList, overlayList);
-	for (auto it = _subFeatureMap.begin(); it != _subFeatureMap.end(); it++)
-		categorizeFeature(it->second, loopAnimList, normalList, entityList, overlayList);
-	for (auto it = _virtualFeatureMap.begin(); it != _virtualFeatureMap.end(); it++)
-		categorizeFeature(it->second, loopAnimList, normalList, entityList, overlayList);
-	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); it++)
-		categorizeFeature(it->second, loopAnimList, normalList, entityList, overlayList);
+	// Original binary iterates a single linked list in registration order.
+	for (ZmbFeature *f : _scrbFeatureMap)
+		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
+	for (ZmbFeature *f : _subFeatureMap)
+		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
+	for (ZmbFeature *f : _virtualFeatureMap)
+		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
+	for (ZmbSnoid *s : _snoidMap)
+		categorizeFeature(s, loopAnimList, normalList, entityList, overlayList);
 
 	// Step 2: Assemble combined list = loopAnim + overlay (unsorted).
 	// IDA 0x4609A1–0x4609BC: overlay entries appended after loopAnim entries.
@@ -571,10 +568,10 @@ void ZoombiniPage::buildSortedRenderList(Common::Array<ZmbFeature *> &outList) {
 void ZoombiniPage::buildSortedEventList(Common::Array<ZmbFeature *> &outList) {
 	Common::Array<ZmbFeature *> loopAnimList, normalList, entityList, overlayList;
 
-	for (auto it = _scrbFeatureMap.begin(); it != _scrbFeatureMap.end(); it++)
-		categorizeFeature(it->second, loopAnimList, normalList, entityList, overlayList);
-	for (auto it = _virtualFeatureMap.begin(); it != _virtualFeatureMap.end(); it++)
-		categorizeFeature(it->second, loopAnimList, normalList, entityList, overlayList);
+	for (ZmbFeature *f : _scrbFeatureMap)
+		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
+	for (ZmbFeature *f : _virtualFeatureMap)
+		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
 
 	outList.clear();
 	for (ZmbFeature *feature : loopAnimList)
@@ -603,14 +600,14 @@ void ZoombiniPage::renderFeatures() {
 	//   blits background, then iterates calling pPostRenderFunc (0x45F35F).
 
 	// Pass 1: Pre-render all features — animation logic
-	for (auto it = _scrbFeatureMap.begin(); it != _scrbFeatureMap.end(); it++)
-		it->second->onPreRender(this);
-	for (auto it = _subFeatureMap.begin(); it != _subFeatureMap.end(); it++)
-		it->second->onPreRender(this);
-	for (auto it = _virtualFeatureMap.begin(); it != _virtualFeatureMap.end(); it++)
-		it->second->onPreRender(this);
-	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); it++)
-		it->second->onPreRender(this);
+	for (ZmbFeature *f : _scrbFeatureMap)
+		f->onPreRender(this);
+	for (ZmbFeature *f : _subFeatureMap)
+		f->onPreRender(this);
+	for (ZmbFeature *f : _virtualFeatureMap)
+		f->onPreRender(this);
+	for (ZmbSnoid *s : _snoidMap)
+		s->onPreRender(this);
 
 	// IDA gfx_renderFrame 0x45F352: copy background port → blitter port.
 	// Binary blits persistent background into composite buffer before shapes.
@@ -628,35 +625,33 @@ void ZoombiniPage::renderFeatures() {
 }
 
 void ZoombiniPage::checkCloseFeatures() {
-	Common::StableMap<uint16, ZmbFeature *> *deleteMaps[2] = {
+	ZmbFeatureList<ZmbFeature> *deleteLists[2] = {
 		&_scrbFeatureMap,
 		&_virtualFeatureMap,
 	};
 
-	for (uint32 i = 0; i < ARRAYSIZE(deleteMaps); i++) {
-		Common::StableMap<uint16, ZmbFeature *> *mapPtr = deleteMaps[i];
+	for (uint32 i = 0; i < ARRAYSIZE(deleteLists); i++) {
+		ZmbFeatureList<ZmbFeature> *listPtr = deleteLists[i];
 
 		Common::Array<uint16> deleteIds;
-		for (auto it = mapPtr->begin(); it != mapPtr->end(); it++) {
-			if (it->second->isCloseScheduled())
-				deleteIds.push_back(it->second->getId());
+		for (ZmbFeature *f : *listPtr) {
+			if (f->isCloseScheduled())
+				deleteIds.push_back(f->getId());
 		}
 		for (uint16 deleteId : deleteIds)
-			deregisterFeature(*mapPtr, deleteId);
+			deregisterFeature(*listPtr, deleteId);
 	}
 
 	// Detach sub-features: erase from _subFeatureMap but do NOT delete - the parent feature owns the pointer
 	Common::Array<uint16> detachIds;
-	for (auto it = _subFeatureMap.begin(); it != _subFeatureMap.end(); it++) {
-		if (it->second->isDetachScheduled())
-			detachIds.push_back(it->second->getId());
+	for (ZmbFeature *f : _subFeatureMap) {
+		if (f->isDetachScheduled())
+			detachIds.push_back(f->getId());
 	}
 	for (uint16 detachId : detachIds) {
-		auto it = _subFeatureMap.find(detachId);
-		if (it == _subFeatureMap.end())
+		ZmbFeature *subFeature = _subFeatureMap.erase(detachId);
+		if (!subFeature)
 			continue;
-		ZmbFeature *subFeature = it->second;
-		_subFeatureMap.erase(it);
 		subFeature->clearDetach();
 		subFeature->setSubFeatureRunning(false);
 	}
@@ -744,6 +739,15 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 			if (feature->hasFlag(ZmbFeature::FLAG_00100000_PLAY_ONCE)) {
 				// IDA 0x461CDD: pFeatureRunner->core188.wBoolDoRender = 0
 				feature->deactivateRender();
+				// IDA 0x461846: postRenderStandard draws shapes even when
+				// wBoolDoRender=0, unless FLAG_01000000_RENDER_AFTER_EVENT
+				// is set.  The original's hsArr retains the last LABEL_70
+				// shapes, so features without that flag stay frozen on their
+				// last frame.  In ScummVM, blitShapes looks up hotspot data
+				// by _lastFrameIdx, which is currently past _frameIdxMax
+				// (end-of-cycle signal).  Reset it to _frameIdxMax so that
+				// blitShapes can find valid hotspot data for the frozen frame.
+				feature->setLastFrameIdx(feature->getMaxFrameIdx());
 				// IDA 0x461CE9–0x461D06: callback fires and RETURNS EARLY
 				// only if CHAIN_SCRIPT did NOT run (v5=1).
 				// One-shot: onHotspotShapeOrFrameFunc cleared to 0 after firing.
@@ -1042,9 +1046,8 @@ void ZoombiniPage::clear() {
 }
 
 void ZoombiniPage::clearScrbFeatures() {
-	for (auto it = _scrbFeatureMap.begin(); it != _scrbFeatureMap.end(); it++) {
-		ZmbFeature *feature = it->second;
-		delete feature;
+	for (ZmbFeature *f : _scrbFeatureMap) {
+		delete f;
 	}
 	_scrbFeatureMap.clear();
 }
@@ -1058,25 +1061,23 @@ void ZoombiniPage::clearMainFeatureHeads() {
 
 void ZoombiniPage::clearSubFeatures() {
 	// Sub-features are owned by their parent features - only clear the map, do NOT delete.
-	for (auto it = _subFeatureMap.begin(); it != _subFeatureMap.end(); it++) {
-		it->second->setSubFeatureRunning(false);
-		it->second->clearDetach();
+	for (ZmbFeature *f : _subFeatureMap) {
+		f->setSubFeatureRunning(false);
+		f->clearDetach();
 	}
 	_subFeatureMap.clear();
 }
 
 void ZoombiniPage::clearVirtualFeatures() {
-	for (auto it = _virtualFeatureMap.begin(); it != _virtualFeatureMap.end(); it++) {
-		ZmbFeature *feature = it->second;
-		delete feature;
+	for (ZmbFeature *f : _virtualFeatureMap) {
+		delete f;
 	}
 	_virtualFeatureMap.clear();
 }
 
 void ZoombiniPage::clearSnoids() {
-	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); it++) {
-		ZmbSnoid *snoid = it->second;
-		delete snoid;
+	for (ZmbSnoid *s : _snoidMap) {
+		delete s;
 	}
 	_snoidMap.clear();
 }
@@ -1086,14 +1087,13 @@ ZmbSnoid *ZoombiniPage::loadSnoid(ZmbResource imgResource, uint16 scrsId, uint32
 }
 
 ZmbSnoid *ZoombiniPage::loadSnoid(ZmbResource imgResource, uint16 scrsId, const Common::Point &point, uint32 flags, const ZmbFeature::EventHooks &eventHooks) {
-	auto it = _snoidMap.find(scrsId);
-	if (it != _snoidMap.end()) {
+	if (_snoidMap.find(scrsId)) {
 		error("Duplicated snoid id %u", scrsId);
 		return nullptr;
 	}
 
 	ZmbSnoid *snoid = new ZmbSnoid(_vm, scrsId, flags);
-	_snoidMap[scrsId] = snoid;
+	_snoidMap.insert(scrsId, snoid);
 
 	snoid->setPointLoc(point);
 	snoid->setResource(imgResource);
@@ -1109,14 +1109,13 @@ ZmbSnoid *ZoombiniPage::loadSnoid(ZmbResource imgResource, uint16 scrsId, const 
 }
 
 ZmbSnoid *ZoombiniPage::loadSnoidFromPack(uint16 snoidId, const Common::Point &point, uint32 flags, const ZmbFeature::EventHooks &eventHooks) {
-	auto it = _snoidMap.find(snoidId);
-	if (it != _snoidMap.end()) {
+	if (_snoidMap.find(snoidId)) {
 		error("Duplicated snoid id %u", snoidId);
 		return nullptr;
 	}
 
 	ZmbSnoid *snoid = new ZmbSnoid(_vm, snoidId, flags);
-	_snoidMap[snoidId] = snoid;
+	_snoidMap.insert(snoidId, snoid);
 
 	snoid->setPointLoc(point);
 	// Seed the z-sort rect so the very first frame sorts correctly by position.
@@ -1135,14 +1134,13 @@ ZmbSnoid *ZoombiniPage::loadSnoidFromPack(uint16 snoidId, const Common::Point &p
 }
 
 ZmbSnoid *ZoombiniPage::loadSnoidFromScrb(ZmbResource imgResource, uint16 snoidId, uint16 scrbId, const Common::Point &point, uint32 flags, const ZmbFeature::EventHooks &eventHooks) {
-	auto it = _snoidMap.find(snoidId);
-	if (it != _snoidMap.end()) {
+	if (_snoidMap.find(snoidId)) {
 		error("Duplicated snoid id %u", snoidId);
 		return nullptr;
 	}
 
 	ZmbSnoid *snoid = new ZmbSnoid(_vm, snoidId, flags);
-	_snoidMap[snoidId] = snoid;
+	_snoidMap.insert(snoidId, snoid);
 
 	snoid->setPointLoc(point);
 	snoid->setSortRect(Common::Rect(point.x, point.y, point.x + 1, point.y + 1));
@@ -1160,20 +1158,14 @@ ZmbSnoid *ZoombiniPage::loadSnoidFromScrb(ZmbResource imgResource, uint16 snoidI
 }
 
 void ZoombiniPage::unloadSnoid(uint16 scrsId) {
-	auto it = _snoidMap.find(scrsId);
-	if (it == _snoidMap.end())
+	ZmbSnoid *snoid = _snoidMap.erase(scrsId);
+	if (!snoid)
 		return;
-
-	ZmbSnoid *snoid = it->second;
-	_snoidMap.erase(it);
 	delete snoid;
 }
 
 ZmbSnoid *ZoombiniPage::getSnoid(uint16 scrsId) const {
-	auto it = _snoidMap.find(scrsId);
-	if (it == _snoidMap.end())
-		return nullptr;
-	return it->second;
+	return _snoidMap.find(scrsId);
 }
 
 bool ZoombiniPage::isPointOccupiedByOtherSnoid(const ZmbSnoid *self, const Common::Point &pt, int32 distSquared) const {
@@ -1181,7 +1173,7 @@ bool ZoombiniPage::isPointOccupiedByOtherSnoid(const ZmbSnoid *self, const Commo
 	// states 0 (idle), 3 (flip), or 6 (fidget); all three are stationary.
 	// Threshold is a direct squared distance (original: 500); comparison is strict <.
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		const ZmbSnoid *other = it->second;
+		const ZmbSnoid *other = *it;
 		if (other == self)
 			continue;
 		// Only check stationary snoids (idle / flip / fidget)

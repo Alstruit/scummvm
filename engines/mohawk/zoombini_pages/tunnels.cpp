@@ -417,7 +417,7 @@ void ZoombiniInteractiveTunnels::setupLevel0_singleAttr() {
 	// Collect all Zoombini traits
 	Common::Array<ZmbTrait> traits;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		ZmbSnoid *snoid = it->second;
+		ZmbSnoid *snoid = *it;
 		if (snoid && snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 			traits.push_back(snoid->_trait);
 		}
@@ -531,7 +531,7 @@ void ZoombiniInteractiveTunnels::setupLevel1_dualSingleAttr() {
 	// Collect all Zoombini traits
 	Common::Array<ZmbTrait> traits;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		ZmbSnoid *snoid = it->second;
+		ZmbSnoid *snoid = *it;
 		if (snoid && snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 			traits.push_back(snoid->_trait);
 		}
@@ -647,7 +647,7 @@ void ZoombiniInteractiveTunnels::setupLevel2_dualDoubleAttr() {
 	// Collect all Zoombini traits
 	Common::Array<ZmbTrait> traits;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		ZmbSnoid *snoid = it->second;
+		ZmbSnoid *snoid = *it;
 		if (snoid && snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 			traits.push_back(snoid->_trait);
 		}
@@ -853,7 +853,7 @@ void ZoombiniInteractiveTunnels::setupLevel3_crossCategoryAttr() {
 	// Collect all Zoombini traits
 	Common::Array<ZmbTrait> traits;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		ZmbSnoid *snoid = it->second;
+		ZmbSnoid *snoid = *it;
 		if (snoid && snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 			traits.push_back(snoid->_trait);
 		}
@@ -1262,9 +1262,9 @@ ZmbSnoid *ZoombiniInteractiveTunnels::findIdlePackSnoid(uint16 snoidId) {
 
 	// Search all snoids for an idle pack snoid
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (it->first < 10000)
+		if ((*it)->getId() < 10000)
 			continue;
-		ZmbSnoid *s = static_cast<ZmbSnoid *>(it->second);
+		ZmbSnoid *s = *it;
 		if (s && s->getAnimState() == kSnoidAnimIdle)
 			return s;
 	}

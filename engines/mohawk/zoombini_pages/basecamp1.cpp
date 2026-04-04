@@ -859,7 +859,7 @@ void ZoombiniInteractiveBasecampOne::saveSnoidsToPack() {
 
 	int16 snoidCount = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (it->second->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+		if ((*it)->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 			snoidCount++;
 	}
 
@@ -871,7 +871,7 @@ void ZoombiniInteractiveBasecampOne::saveSnoidsToPack() {
 	for (int pass = 0; pass < 2 && packIdx < 16; pass++) {
 		bool wantOccupied = (pass == 0);
 		for (auto it = _snoidMap.begin(); it != _snoidMap.end() && packIdx < 16; ++it) {
-			ZmbSnoid *snoid = it->second;
+			ZmbSnoid *snoid = *it;
 			if (!snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 				continue;
 			if (snoid->_packIsOccupied != wantOccupied)
@@ -953,7 +953,7 @@ int16 ZoombiniInteractiveBasecampOne::findNearestEmptyPedestal(const Common::Poi
 		// Check if this pedestal is already occupied by another snoid
 		bool isOccupied = false;
 		for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-			const ZmbSnoid *other = it->second;
+			const ZmbSnoid *other = *it;
 			if (other == _draggedSnoid)
 				continue;
 			if (!other->_packIsOccupied)
@@ -983,9 +983,8 @@ int16 ZoombiniInteractiveBasecampOne::findNearestEmptyPedestal(const Common::Poi
 void ZoombiniInteractiveBasecampOne::endDrag(const Common::Point &dropPos) {
 	// Deactivate pedestal hover highlight if any
 	if (_hoveredPedestalIdx >= 0) {
-		auto it = _scrbFeatureMap.find(kResScrb1200_Pedestal + _hoveredPedestalIdx);
-		if (it != _scrbFeatureMap.end() && it->second != nullptr) {
-			ZmbFeature *pedestal = it->second;
+		ZmbFeature *pedestal = _scrbFeatureMap.find(kResScrb1200_Pedestal + _hoveredPedestalIdx);
+		if (pedestal) {
 			pedestal->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
 		}
 		_hoveredPedestalIdx = -1;
@@ -1061,7 +1060,7 @@ void ZoombiniInteractiveBasecampOne::endDrag(const Common::Point &dropPos) {
 	// IDA: bc1_bFinalArrival / bc1_bCanProceed
 	int16 totalLoadedCount = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (it->second->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+		if ((*it)->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 			totalLoadedCount++;
 	}
 
@@ -1191,9 +1190,9 @@ void ZoombiniInteractiveBasecampOne::updatePedestalHover(const Common::Point &sn
 		// Check if pedestal is occupied by another snoid
 		bool isOccupied = false;
 		for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-			if (it->second == _draggedSnoid)
+			if (*it == _draggedSnoid)
 				continue; // Skip the currently dragged snoid
-			Common::Point opos = it->second->getPointLoc();
+			Common::Point opos = (*it)->getPointLoc();
 			int32 dx = opos.x - _pedestalPoints[i].x;
 			int32 dy = opos.y - _pedestalPoints[i].y;
 			if (dx * dx + dy * dy < 100) { // within 10px of pedestal center
@@ -1222,9 +1221,8 @@ void ZoombiniInteractiveBasecampOne::updatePedestalHover(const Common::Point &sn
 
 	// Deactivate previous highlight if any
 	if (_hoveredPedestalIdx >= 0) {
-		auto it = _scrbFeatureMap.find(kResScrb1200_Pedestal + _hoveredPedestalIdx);
-		if (it != _scrbFeatureMap.end() && it->second != nullptr) {
-			ZmbFeature *pedestal = it->second;
+		ZmbFeature *pedestal = _scrbFeatureMap.find(kResScrb1200_Pedestal + _hoveredPedestalIdx);
+		if (pedestal) {
 			// IDA: highlightRunner->bitmask |= 0x10000u; highlightRunner->dNextRenderFrame = 0;
 			pedestal->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
 		}
@@ -1232,9 +1230,8 @@ void ZoombiniInteractiveBasecampOne::updatePedestalHover(const Common::Point &sn
 
 	// Activate new highlight if any
 	if (nearestIdx >= 0) {
-		auto it = _scrbFeatureMap.find(kResScrb1200_Pedestal + nearestIdx);
-		if (it != _scrbFeatureMap.end() && it->second != nullptr) {
-			ZmbFeature *pedestal = it->second;
+		ZmbFeature *pedestal = _scrbFeatureMap.find(kResScrb1200_Pedestal + nearestIdx);
+		if (pedestal) {
 			// IDA: wBoolDoRender = 1; wGroupFrameIdx0098 = 0; dwHotspotIdx009A = 1;
 			pedestal->activateRender();
 			pedestal->activateAnimate();

@@ -1048,7 +1048,7 @@ void ZoombiniInteractiveHotel::onEveryFrame() {
 // ---------------------------------------------------------------------------
 ZmbSnoid *ZoombiniInteractiveHotel::findSnoidAtPoint(const Common::Point &pos) {
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		uint16 id = it->first;
+		uint16 id = (*it)->getId();
 		// Only pack snoids (10000–12999); skip pool snoids (13000+)
 		if (id < 10000 || id >= 13000)
 			continue;
@@ -1059,7 +1059,7 @@ ZmbSnoid *ZoombiniInteractiveHotel::findSnoidAtPoint(const Common::Point &pos) {
 		}
 		if (alreadyPlaced)
 			continue;
-		ZmbSnoid *snoid = it->second;
+		ZmbSnoid *snoid = *it;
 		if (snoid->findDrawRecordAtPoint(pos))
 			return snoid;
 	}

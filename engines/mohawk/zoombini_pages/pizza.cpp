@@ -89,6 +89,7 @@ void ZoombiniInteractivePizza::setDifficultyParams() {
 	_minToppingsPerOrder   = kMinPerOrd[_difficultyLevel];
 	_extraToppingTiers     = kExtraTier[_difficultyLevel];
 	_remainingDeliveries   = kDelivery[_difficultyLevel];
+	_initialDeliveryCount  = kDelivery[_difficultyLevel];
 
 	// Order line activation (IDA: §6)
 	_orderState[0] = 1;                              // Arno always active
@@ -210,6 +211,15 @@ void ZoombiniInteractivePizza::loadFeatures() {
 	}
 
 	// IDA: order display runners (conditional on difficulty)
+	// Z-order (back→front): Shyler → Willa → Arno.
+	// LOOP_ANIM features are unsorted; registration order = draw order.
+	if (_difficultyLevel >= 2) {
+		_order2Feature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 10000), 10038, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+			ZmbFeature::FLAG_00100000_PLAY_ONCE);
+	}
+
 	if (_difficultyLevel >= 1) {
 		_order1Feature = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 9000), 9034, 6,
@@ -223,18 +233,25 @@ void ZoombiniInteractivePizza::loadFeatures() {
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 		ZmbFeature::FLAG_00100000_PLAY_ONCE);
 
-	if (_difficultyLevel >= 2) {
-		_order2Feature = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 10000), 10038, 6,
-			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
-			ZmbFeature::FLAG_00100000_PLAY_ONCE);
-	}
-
 	// IDA: pizza_overlayBaseRunner — SCRB 8033, flags=0x4108000
 	_overlayFeature = loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, 8000), 8033, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 		ZmbFeature::FLAG_04000000_OVERLAY);
+
+	// Question runner feature — used for SCRB 7066 (delivery exit callback chain)
+	_questionRunnerFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 7000), 7066, 6,
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_00020000_SKIP_RENDER);
+
+	// Save a pointer to overlay sub-feature for delivery overlays
+	{
+		ZmbFeature *found = _subFeatureMap.find(12000);
+		if (found) {
+			_toppingOverlayFeature = found;
+		}
+	}
 
 	// Load Zoombinis from active pack at 16 pedestal positions
 	loadZoombinisFromPack();
@@ -479,34 +496,26 @@ void ZoombiniInteractivePizza::distributeToppings() {
 
 // ---------------------------------------------------------------------------
 // onEveryFrame: IDA: pizza_onFrameUpdate (0x43C31B)
+// The original uses a cascading polling state machine. In ScummVM, most
+// state transitions are driven by onFeatureAnimEvent. This per-frame
+// function handles idle animations, go-departure, and completion checks.
 // ---------------------------------------------------------------------------
 void ZoombiniInteractivePizza::onEveryFrame() {
 	if (_processingFrame || !_puzzleActive)
 		return;
 	_processingFrame = true;
 
-	// [0] Pending Go departure — skip normal frame logic
+	// Pending Go departure — skip normal frame logic
 	if (_pendingGoDepart) {
 		_processingFrame = false;
 		return;
 	}
 
-	// [1] Advance intro sequence if still in progress
-	if (!_introComplete && _introSequenceStep > 0) {
-		// Intro is driven by onFeatureAnimEvent callbacks (-1 end-of-cycle)
-		// Nothing to do here per-frame; the sequence advances via anim events
-	}
-
-	// [2] Process pending delivery
-	if (_isDeliveryInProgress && _pendingOrderCount > 0) {
-		serveNextTopping();
-	}
-
-	// [3] Check if all orders are ready (all lines reached state >= 2)
-	if (!_allOrdersReady) {
+	// Check if all orders are ready (all active lines matched or accepted)
+	if (!_allOrdersReady && _introComplete) {
 		bool allReady = true;
 		for (int16 i = 0; i <= _extraToppingTiers; i++) {
-			if (_orderState[i] == 1) {
+			if (_orderState[i] < 2) {
 				allReady = false;
 				break;
 			}
@@ -515,14 +524,13 @@ void ZoombiniInteractivePizza::onEveryFrame() {
 			_allOrdersReady = true;
 	}
 
-	// [4] Check if all deliveries are done
+	// Check if all deliveries are done
 	if (_allOrdersReady && !_allDeliveriesDone && _remainingDeliveries <= 0) {
 		_allDeliveriesDone = true;
 		setGoButtonsEnabled(true);
 	}
 
-	// [5] Idle fidget scheduling
-	// IDA: if idleAnimActive and played < max, periodically play fidget SCRS
+	// Idle fidget scheduling
 	if (_idleAnimActive && _idleAnimsPlayed < _maxIdleAnims) {
 		uint32 now = getCurrentFrameCounter();
 		if (now > _lastIdleFrame + 180) { // ~3 seconds between fidgets
@@ -530,7 +538,7 @@ void ZoombiniInteractivePizza::onEveryFrame() {
 
 			// Pick a random snoid from the map and play a fidget
 			for (auto it = _snoidMap.begin(); it != _snoidMap.end(); it++) {
-				ZmbSnoid *s = static_cast<ZmbSnoid *>(it->second);
+				ZmbSnoid *s = *it;
 				if (s->getAnimState() == kSnoidAnimIdle && s->_packIsOccupied) {
 					s->setAnimState(kSnoidAnimFidget);
 					_idleAnimsPlayed++;
@@ -544,90 +552,121 @@ void ZoombiniInteractivePizza::onEveryFrame() {
 }
 
 // ---------------------------------------------------------------------------
-// onFeatureAnimEvent: IDA: dispatches by feature identity
+// onFeatureAnimEvent: Comprehensive dispatch based on feature identity + phase
 // ---------------------------------------------------------------------------
 void ZoombiniInteractivePizza::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
-	// Tree animation events
-	if (feature == _treeAnimFeature) {
-		if (eventCode == -1) {
-			// Tree intro anim finished — advance intro
-			if (!_introComplete) {
-				advanceIntroSequence();
-			}
+	// --- Question runner events (SCRB 7066 — exit callback chain) ---
+	if (feature == _questionRunnerFeature) {
+		if (_questionRunnerPhase == kPhaseExitCallback) {
+			handleZmbExitEvent(feature, eventCode);
 		}
 		return;
 	}
 
-	// Order base feature events (Arno)
+	// --- Order base feature events (Arno) ---
 	if (feature == _orderBaseFeature) {
 		if (eventCode == -1) {
-			if (!_introComplete) {
+			switch (_orderBasePhase) {
+			case kPhaseIntro:
+				_orderBasePhase = kPhaseNone;
 				advanceIntroSequence();
-			} else if (_isDeliveryInProgress) {
-				evaluateDelivery();
+				break;
+			case kPhaseServeReaction:
+				_orderBasePhase = kPhaseNone;
+				handleOrderLineComplete(0);
+				break;
+			case kPhaseDeliveryEval:
+				_orderBasePhase = kPhaseNone;
+				// After delivery eval animation, play snoid SCRS
+				handleZmbDeliveryEvent(feature, -1);
+				break;
+			default:
+				break;
 			}
 		}
 		return;
 	}
 
-	// Order 1 feature events (Willa)
+	// --- Order 1 feature events (Willa) ---
 	if (feature == _order1Feature) {
 		if (eventCode == -1) {
-			if (!_introComplete) {
+			switch (_order1Phase) {
+			case kPhaseIntro:
+				_order1Phase = kPhaseNone;
 				advanceIntroSequence();
-			} else if (_isDeliveryInProgress) {
-				evaluateDelivery();
+				break;
+			case kPhaseServeReaction:
+				_order1Phase = kPhaseNone;
+				handleOrderLineComplete(1);
+				break;
+			default:
+				break;
 			}
 		}
 		return;
 	}
 
-	// Order 2 feature events (Shyler)
+	// --- Order 2 feature events (Shyler) ---
 	if (feature == _order2Feature) {
 		if (eventCode == -1) {
-			if (!_introComplete) {
+			switch (_order2Phase) {
+			case kPhaseIntro:
+				_order2Phase = kPhaseNone;
 				advanceIntroSequence();
-			} else if (_isDeliveryInProgress) {
-				evaluateDelivery();
+				break;
+			case kPhaseServeReaction:
+				_order2Phase = kPhaseNone;
+				handleOrderLineComplete(2);
+				break;
+			default:
+				break;
 			}
 		}
 		return;
 	}
 
-	// Topping feature events
+	// --- Topping overlay events ---
+	if (feature == _toppingOverlayFeature) {
+		if (eventCode == -1) {
+			if (_overlayPhase == kPhaseToppingDelivery) {
+				_overlayPhase = kPhaseNone;
+				onToppingDelivered();
+			} else if (_overlayPhase == kPhaseToppingOverlay) {
+				_overlayPhase = kPhaseNone;
+				// Initial overlay done — this is handled via exit callback
+			}
+		}
+		return;
+	}
+
+	// --- Tree animation events ---
+	if (feature == _treeAnimFeature) {
+		// Tree anim completion not used in pizza puzzle
+		return;
+	}
+
+	// --- Topping feature events ---
 	for (uint16 i = 0; i < _toppingCount; i++) {
 		if (feature == _toppingFeatures[i]) {
-			if (eventCode == -1) {
-				// Topping animation done
-			}
 			return;
 		}
 	}
 
-	// Snoid events
+	// --- Snoid events ---
 	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 		ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
 		if (eventCode == -1) {
-			// SCRS playback finished
 			SnoidAnimState state = snoid->getAnimState();
 			if (state == kSnoidAnimScriptNormal || state == kSnoidAnimScriptReject) {
 				snoid->setAnimState(kSnoidAnimIdle);
 				snoid->setupIdleHotspots();
-
-				// If this was a delivery snoid, advance to next
-				if (_isDeliveryInProgress) {
-					advanceToNextDeliverySlot();
-				}
 			}
 		}
 		return;
 	}
 
-	// Draw-on-reg (answer display)
+	// --- Draw-on-reg (answer display) ---
 	if (feature == _drawOnRegFeature) {
-		if (eventCode == -1) {
-			// Answer display animation done
-		}
 		return;
 	}
 }
@@ -649,7 +688,7 @@ ZmbEventHandleResult ZoombiniInteractivePizza::onLButtonDown(const Common::Point
 		return result;
 
 	// Guard conditions
-	if (!_puzzleActive || !_introComplete || _isDeliveryInProgress)
+	if (!_puzzleActive || !_introComplete || _isDeliveryInProgress > 0)
 		return ZmbEventHandleResult::kPassthrough;
 	if (isDragging())
 		return ZmbEventHandleResult::kPassthrough;
@@ -669,32 +708,9 @@ ZmbEventHandleResult ZoombiniInteractivePizza::onLButtonDown(const Common::Point
 	// --- Check answer/submit area click ---
 	// IDA: pizza_onClick case 4 / case 13
 	if (kAnswerClickRect.contains(absPos)) {
-		// Submit current pizza — only if not already in delivery
-		if (_answerSnoid && !_isDeliveryInProgress) {
-			// Check for duplicate submission
-			if (checkToppingMaskMatch()) {
-				// Already tried this exact combination — play a hint SFX
-				debugC(kZmbDebugPage, "Pizza: Duplicate topping combination submitted");
-				return ZmbEventHandleResult::kConsumed;
-			}
-
-			// Record this combination in history
-			_toppingMaskHistory[_toppingMaskHistoryIdx] = packToppingBitmask();
-			_toppingMaskHistoryIdx++;
-
-			// Start delivery sequence
-			_isDeliveryInProgress = true;
-			_pendingOrderCount = 1 + _extraToppingTiers;
-
-			// Load the answer display SCRB (7057 or 7058)
-			loadScrbOntoFeature(_drawOnRegFeature, 7057);
-
-			// Copy current meal and classify
-			for (int16 j = 0; j < 8; j++) {
-				_currentMeal[j] = _ingredientFlags[j];
-			}
-
-			serveNextTopping();
+		if (_answerSnoid && _isDeliveryInProgress == 0 &&
+		    !_allOrdersReady && !_allDeliveriesDone) {
+			handleSubmit();
 			return ZmbEventHandleResult::kConsumed;
 		}
 	}
@@ -747,8 +763,8 @@ void ZoombiniInteractivePizza::endDrag(const Common::Point &dropPos) {
 
 			// Find the pack index for this snoid
 			for (auto it = _snoidMap.begin(); it != _snoidMap.end(); it++) {
-				if (it->second == snoid) {
-					_answerZmbPackIdx = it->first - 10000;
+				if (*it == snoid) {
+					_answerZmbPackIdx = (*it)->getId() - 10000;
 					break;
 				}
 			}
@@ -812,6 +828,10 @@ void ZoombiniInteractivePizza::handleIngredientToggle(int16 ingredientIdx) {
 		loadScrbOntoFeature(_toppingFeatures[ingredientIdx], targetScrb);
 	}
 
+	// IDA: pizza_handleIngredientToggle — after toggling (v1=1),
+	// calls pizza_registerAnswerDisplay() to refresh the big preview button.
+	registerAnswerDisplay();
+
 	debugC(kZmbDebugPage, "Pizza: Ingredient %d toggled %s (SCRB %d)",
 	       ingredientIdx, _ingredientFlags[ingredientIdx] ? "ON" : "OFF", targetScrb);
 }
@@ -819,8 +839,10 @@ void ZoombiniInteractivePizza::handleIngredientToggle(int16 ingredientIdx) {
 // ---------------------------------------------------------------------------
 // classifyOrderType: IDA 0x43E5C9
 // Classify current meal against an order line.
-// @param orderLine 0=correct(Arno), 1=wrongA(Willa), 2=wrongB(Shyler)
-// @return 0=one correct, 1=all wrong, 2=exact match, 4=multiple non-wrong
+// v1 = count of selected toppings NOT in order (extras/non-matching)
+// v2 = count of selected toppings IN order (matching)
+// v3 = count of toppings in the order
+// Returns: 0=one-extra, 1=partial-subset, 2=exact-match, 4=multi-extra
 // ---------------------------------------------------------------------------
 int16 ZoombiniInteractivePizza::classifyOrderType(int16 orderLine) const {
 	const uint8 *orderArray;
@@ -835,145 +857,203 @@ int16 ZoombiniInteractivePizza::classifyOrderType(int16 orderLine) const {
 		orderArray = _wrongToppingsB;
 		break;
 	default:
-		return 1; // all wrong
+		return 1;
 	}
 
-	int16 matchCount = 0;
-	int16 orderCount = 0;
-	int16 mealCount = 0;
+	int16 nonMatching = 0; // v1: selected but NOT in order
+	int16 matching = 0;    // v2: selected AND in order
+	int16 orderCount = 0;  // v3: total toppings in order
 
 	for (int16 i = 0; i < _totalToppingSlots; i++) {
 		if (orderArray[i])
 			orderCount++;
-		if (_currentMeal[i])
-			mealCount++;
-		if (orderArray[i] && _currentMeal[i])
-			matchCount++;
+		if (_currentMeal[i]) {
+			if (orderArray[i])
+				matching++;
+			else
+				nonMatching++;
+		}
 	}
 
-	// No matches at all — all wrong
-	if (matchCount == 0)
-		return 1;
-
-	// Exact match — all order toppings are selected and nothing extra
-	if (matchCount == orderCount && matchCount == mealCount)
-		return 2;
-
-	// Exactly one correct
-	if (matchCount == 1)
+	// IDA: if exactly one non-matching extra → return 0
+	if (nonMatching == 1)
 		return 0;
 
-	// Multiple non-wrong
-	return 4;
+	// IDA: if multiple non-matching extras → return 4
+	if (nonMatching > 1)
+		return 4;
+
+	// Here nonMatching == 0: all selected toppings are in the order
+	// IDA: if all order toppings are selected (exact match) → return 2
+	if (orderCount == matching)
+		return 2;
+
+	// IDA: some order toppings not selected → return 1 (partial subset)
+	return 1;
 }
 
 // ---------------------------------------------------------------------------
 // serveNextTopping: IDA 0x43E75F
-// Process the current order line delivery and animate result
+// Play the serve reaction animation for a specific order line.
+// @param resultType Classification result (0=one-extra, 1=partial, 2=exact, 3=dead, 4=multi-extra)
+// @param orderLine Which order line (0=Arno, 1=Willa, 2=Shyler)
 // ---------------------------------------------------------------------------
-void ZoombiniInteractivePizza::serveNextTopping() {
-	if (_pendingOrderCount <= 0) {
-		_isDeliveryInProgress = false;
+void ZoombiniInteractivePizza::serveNextTopping(int16 resultType, int16 orderLine) {
+	ZmbFeature *orderFeature = nullptr;
+	uint16 scrbId = 0;
+
+	switch (orderLine) {
+	case 0: // Arno (order base)
+		orderFeature = _orderBaseFeature;
+		switch (resultType) {
+		case 0: // One extra
+			scrbId = 8006 + _anim0_oneCorrectCtr;
+			_anim0_oneCorrectCtr = (_anim0_oneCorrectCtr + 1) % 2;
+			break;
+		case 1: // Partial subset
+			scrbId = 8000 + _anim0_allWrongCtr;
+			if (_anim0_allWrongCtr < 5)
+				_anim0_allWrongCtr++;
+			break;
+		case 2: // Exact match
+			scrbId = 8017 + _vm->_rnd->getRandomNumber(0, 2);
+			break;
+		case 3: // Dead code path
+			scrbId = 8015 + _vm->_rnd->getRandomNumber(0, 1);
+			break;
+		case 4: // Multiple extras
+			scrbId = 8008 + _anim0_multiNonWrongCtr;
+			_anim0_multiNonWrongCtr = (_anim0_multiNonWrongCtr + 1) % 6;
+			break;
+		default:
+			scrbId = 8000;
+			break;
+		}
+		_orderBasePhase = kPhaseServeReaction;
+		break;
+
+	case 1: // Willa (order 1)
+		orderFeature = _order1Feature;
+		switch (resultType) {
+		case 0:
+			scrbId = 9000 + _anim1_oneCorrectCtr;
+			_anim1_oneCorrectCtr = (_anim1_oneCorrectCtr + 1) % 5;
+			break;
+		case 1:
+			scrbId = 9021 + _anim1_allWrongCtr;
+			if (_anim1_allWrongCtr < 4)
+				_anim1_allWrongCtr++;
+			break;
+		case 2:
+			scrbId = 9010 + _vm->_rnd->getRandomNumber(0, 6);
+			break;
+		case 3:
+			scrbId = 9017 + _vm->_rnd->getRandomNumber(0, 1);
+			break;
+		case 4:
+			scrbId = 9005 + _anim1_multiNonWrongCtr;
+			_anim1_multiNonWrongCtr = (_anim1_multiNonWrongCtr + 1) % 5;
+			break;
+		default:
+			scrbId = 9000;
+			break;
+		}
+		_order1Phase = kPhaseServeReaction;
+		break;
+
+	case 2: // Shyler (order 2)
+		orderFeature = _order2Feature;
+		switch (resultType) {
+		case 0:
+			scrbId = 10014 + _anim2_oneCorrectCtr;
+			_anim2_oneCorrectCtr = (_anim2_oneCorrectCtr + 1) % 6;
+			break;
+		case 1:
+			scrbId = 10009 + _anim2_allWrongCtr;
+			if (_anim2_allWrongCtr < 4)
+				_anim2_allWrongCtr++;
+			break;
+		case 2:
+			scrbId = 10023 + _vm->_rnd->getRandomNumber(0, 3);
+			break;
+		case 3:
+			scrbId = 10027 + _vm->_rnd->getRandomNumber(0, 2);
+			break;
+		case 4:
+			scrbId = 10020 + _anim2_multiNonWrongCtr;
+			_anim2_multiNonWrongCtr = (_anim2_multiNonWrongCtr + 1) % 3;
+			break;
+		default:
+			scrbId = 10009;
+			break;
+		}
+		_order2Phase = kPhaseServeReaction;
+		break;
+
+	default:
 		return;
 	}
 
-	// Determine which order line to serve
-	int16 orderLine = _extraToppingTiers - _pendingOrderCount + 1;
-	if (orderLine < 0)
-		orderLine = 0;
-
-	int16 result = classifyOrderType(orderLine);
-
-	// Load the appropriate result SCRB on the order feature
-	// IDA: Result SCRBs are at offset from order base:
-	//   Order 0: 8000-based (8022 + result)
-	//   Order 1: 9000-based (9028 + result)
-	//   Order 2: 10000-based (10032 + result)
-	ZmbFeature *orderFeature = nullptr;
-	uint16 resultScrbBase = 0;
-
-	switch (orderLine) {
-	case 0:
-		orderFeature = _orderBaseFeature;
-		resultScrbBase = 8022;
-		break;
-	case 1:
-		orderFeature = _order1Feature;
-		resultScrbBase = 9028;
-		break;
-	case 2:
-		orderFeature = _order2Feature;
-		resultScrbBase = 10032;
-		break;
-	default:
-		break;
-	}
-
 	if (orderFeature) {
-		uint16 resultScrb = resultScrbBase + result;
-		loadScrbOntoFeature(orderFeature, resultScrb);
+		loadScrbOntoFeature(orderFeature, scrbId);
+		_currentServingLine = orderLine;
 		debugC(kZmbDebugPage, "Pizza: Serving order %d, result=%d (SCRB %d)",
-		       orderLine, result, resultScrb);
+		       orderLine, resultType, scrbId);
 	}
 
 	// Update order state based on result
-	if (result == 2) {
-		// Exact match — mark as done
-		_orderState[orderLine] = 3;
-		_wasDeliveryCorrect = 1;
-		_deliveryStreak++;
-	} else {
-		// Not exact — keep active
-		_wasDeliveryCorrect = 0;
-		_deliveryStreak = 0;
-	}
-
-	_pendingOrderCount--;
-
-	// If all order lines have been served, evaluate the full delivery
-	if (_pendingOrderCount <= 0) {
-		evaluateDelivery();
+	if (resultType == 2) {
+		_orderState[orderLine] = 2; // Matched (pending accept)
 	}
 }
 
 // ---------------------------------------------------------------------------
 // evaluateDelivery: IDA 0x4403A4
-// Called after all order lines for one zoombini have been served
+// Called after all active order lines have been served for one delivery.
+// Loads the delivery evaluation SCRB on the base order feature.
 // ---------------------------------------------------------------------------
 void ZoombiniInteractivePizza::evaluateDelivery() {
-	_remainingDeliveries--;
-
-	if (_wasDeliveryCorrect) {
-		// Correct delivery — animate answer zoombini positively
-		if (_answerSnoid) {
-			// Play a normal (happy) SCRS on the answer snoid
-			uint16 scrsBase = 13000 + (_answerZmbPackIdx % 40);
-			Common::SeekableReadStream *scrsStream =
-				_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
-				                 ZmbResource(ZmbArchiveKind::kPage, scrsBase));
-			if (scrsStream) {
-				_answerSnoid->startScrsPlayback(scrsStream, false, false);
-			}
+	// Determine if any order line was an exact match
+	_wasDeliveryCorrect = 0;
+	for (int16 i = 0; i <= _extraToppingTiers; i++) {
+		if (_orderState[i] == 2) {
+			// Mark as accepted
+			_orderState[i] = 3;
+			_wasDeliveryCorrect = 1;
 		}
-		debugC(kZmbDebugPage, "Pizza: Delivery CORRECT (remaining=%d, streak=%d)",
-		       _remainingDeliveries, _deliveryStreak);
-	} else {
-		// Wrong delivery — play reject animation
-		_retryCounter++;
-		if (_answerSnoid) {
-			uint16 scrsBase = 14000 + (_retryCounter % 6);
-			Common::SeekableReadStream *scrsStream =
-				_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
-				                 ZmbResource(ZmbArchiveKind::kPage, scrsBase));
-			if (scrsStream) {
-				_answerSnoid->startScrsPlayback(scrsStream, false, true);
-			}
-		}
-		debugC(kZmbDebugPage, "Pizza: Delivery WRONG (remaining=%d, retry=%d)",
-		       _remainingDeliveries, _retryCounter);
 	}
 
-	// Reset ingredient flags for next attempt
+	if (_wasDeliveryCorrect) {
+		_deliveryStreak++;
+	} else {
+		_deliveryStreak = 0;
+	}
+
+	// Load delivery evaluation SCRB on the base order runner
+	// IDA: SCRB = 8022 + wasDeliveryCorrect (order 0)
+	uint16 evalScrbId = 8022 + _wasDeliveryCorrect;
+	loadScrbOntoFeature(_orderBaseFeature, evalScrbId);
+	_orderBasePhase = kPhaseDeliveryEval;
+
+	_remainingDeliveries--;
+
+	debugC(kZmbDebugPage, "Pizza: Delivery %s (remaining=%d, streak=%d, SCRB=%d)",
+	       _wasDeliveryCorrect ? "CORRECT" : "WRONG",
+	       _remainingDeliveries, _deliveryStreak, evalScrbId);
+}
+
+// ---------------------------------------------------------------------------
+// advanceToNextDeliverySlot: IDA 0x4409DA
+// Move to the next zoombini for delivery
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::advanceToNextDeliverySlot() {
+	_isDeliveryInProgress = 0;
+	_retryCounter = 0;
+	_toppingMaskHistoryIdx = -1;
+	memset(_toppingMaskHistory, 0, sizeof(_toppingMaskHistory));
+	_currentServingLine = -1;
+
+	// Reset ingredient flags
 	for (int16 i = 0; i < 8; i++) {
 		_ingredientFlags[i] = 0;
 		_currentMeal[i] = 0;
@@ -986,30 +1066,32 @@ void ZoombiniInteractivePizza::evaluateDelivery() {
 			loadScrbOntoFeature(_toppingFeatures[i], scrbBase + i * 2);
 		}
 	}
-}
 
-// ---------------------------------------------------------------------------
-// advanceToNextDeliverySlot: IDA 0x4409DA
-// Move to the next zoombini for delivery
-// ---------------------------------------------------------------------------
-void ZoombiniInteractivePizza::advanceToNextDeliverySlot() {
-	_isDeliveryInProgress = false;
-	_retryCounter = 0;
-	_toppingMaskHistoryIdx = 0;
-	memset(_toppingMaskHistory, 0, sizeof(_toppingMaskHistory));
-
-	// Return the current answer snoid to its original position
+	// Handle the answer snoid
 	if (_answerSnoid) {
-		_answerSnoid->setPointLoc(kSnoidPositions[_answerZmbPackIdx]);
-		_answerSnoid->setAnimState(kSnoidAnimIdle);
-		_answerSnoid->setupIdleHotspots();
-		_answerSnoid->_packIsOccupied = _wasDeliveryCorrect ? false : true;
+		if (_wasDeliveryCorrect) {
+			// Correct: snoid departs happily
+			_answerSnoid->setAnimState(kSnoidAnimDepart);
+			_answerSnoid->_packIsOccupied = false;
+		} else {
+			// Wrong: return snoid to pedestal
+			_answerSnoid->setPointLoc(kSnoidPositions[_answerZmbPackIdx]);
+			_answerSnoid->setAnimState(kSnoidAnimIdle);
+			_answerSnoid->setupIdleHotspots();
+		}
 		_answerSnoid = nullptr;
 		_answerZmbPackIdx = -1;
 	}
 
 	_deliveryIndex++;
 	_idleAnimActive = false;
+
+	// Reset phase tracking
+	_orderBasePhase = kPhaseNone;
+	_order1Phase = kPhaseNone;
+	_order2Phase = kPhaseNone;
+	_overlayPhase = kPhaseNone;
+	_questionRunnerPhase = kPhaseNone;
 
 	// Check if all deliveries are done
 	if (_remainingDeliveries <= 0) {
@@ -1021,48 +1103,92 @@ void ZoombiniInteractivePizza::advanceToNextDeliverySlot() {
 
 // ---------------------------------------------------------------------------
 // advanceIntroSequence: IDA 0x440C04
-// Steps through the intro animation sequence
+// Steps through the intro animation sequence, matching original step numbering.
+// Each step that loads a SCRB only increments the counter (1→2, 2→3, 3→4).
+// The termination step (→0) fires on the NEXT callback, AFTER the SCRB finishes.
+//
+// Original flow:
+//   Step 1: Load SCRB 8032 (Arno), step=2  (always)
+//   Step 2: diff==0 → step=0 | diff>=1 → Load SCRB 9034 (Willa), step=3
+//   Step 3: diff==1 → step=0 | diff>=2 → Load SCRB 10038 (Shyler), step=4
+//   Step 4: step=0
+//
+// IDA 0x43CB75: After returning, frame update checks if step==0 and calls
+//   town_triggerAmbientCharAnim (loads ambient SCRBs on the last troll).
 // ---------------------------------------------------------------------------
 void ZoombiniInteractivePizza::advanceIntroSequence() {
 	switch (_introSequenceStep) {
 	case 1:
-		// Step 1: Load SCRB 8032 on the base runner
+		// Step 1: Load intro SCRB 8032 on the base order runner (Arno)
 		loadScrbOntoFeature(_orderBaseFeature, 8032);
+		_orderBasePhase = kPhaseIntro;
 		_introSequenceStep = 2;
 		break;
 	case 2:
-		// Step 2: Load SCRB 9034 on order 1 runner (level >= 1)
-		if (_difficultyLevel >= 1 && _order1Feature) {
-			loadScrbOntoFeature(_order1Feature, 9034);
+		if (_difficultyLevel >= 1) {
+			// Step 2 (diff>=1): Load intro SCRB 9034 on order 1 runner (Willa)
+			if (_order1Feature) {
+				loadScrbOntoFeature(_order1Feature, 9034);
+				_order1Phase = kPhaseIntro;
+			}
 			_introSequenceStep = 3;
 		} else {
-			_introSequenceStep = 4;
-			advanceIntroSequence(); // Skip to step 4
+			// Step 2 (diff==0): Arno's SCRB finished, intro done
+			_introSequenceStep = 0;
 		}
 		break;
 	case 3:
-		// Step 3: Load SCRB 10038 on order 2 runner (level >= 2)
-		if (_difficultyLevel >= 2 && _order2Feature) {
-			loadScrbOntoFeature(_order2Feature, 10038);
+		if (_difficultyLevel >= 2) {
+			// Step 3 (diff>=2): Load intro SCRB 10038 on order 2 runner (Shyler)
+			if (_order2Feature) {
+				loadScrbOntoFeature(_order2Feature, 10038);
+				_order2Phase = kPhaseIntro;
+			}
 			_introSequenceStep = 4;
 		} else {
-			_introSequenceStep = 4;
-			advanceIntroSequence(); // Skip to final
+			// Step 3 (diff==1): Willa's SCRB finished, intro done
+			_introSequenceStep = 0;
 		}
 		break;
 	case 4:
-		// Step 4: Intro complete
+		// Step 4 (diff>=2): Shyler's SCRB finished, intro done
 		_introSequenceStep = 0;
+		break;
+	default:
+		break;
+	}
+
+	// IDA 0x43CB82: When step reaches 0, intro is complete.
+	// IDA 0x43CB88: town_triggerAmbientCharAnim — loads an ambient SCRB
+	// on the last troll feature (reactivates render for idle animation).
+	if (_introSequenceStep == 0 && !_introComplete) {
 		_introComplete = true;
 		_idleAnimActive = true;
 		_maxIdleAnims = 2;
 		_lastIdleFrame = getCurrentFrameCounter();
-
-		// Do not play intro SFX here - Arno's voice SFX takes this role
+		triggerOrderFeatureAmbientAnim();
 		debugC(kZmbDebugPage, "Pizza: Intro sequence complete");
-		break;
-	default:
-		break;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// triggerOrderFeatureAmbientAnim: IDA 0x440B14 (town_triggerAmbientCharAnim)
+// Loads an ambient idle SCRB on the last active troll feature after the intro
+// sequence completes.  This reactivates render (scrb_loadOnRunner sets
+// wBoolDoRender=1) so the troll plays a short idle animation.
+//   diff 0: SCRB 8014 on orderBase (Arno)
+//   diff 1: random SCRB 9019-9020 on order1 (Willa)
+//   diff>=2: random SCRB 10001-10008 on order2 (Shyler)
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::triggerOrderFeatureAmbientAnim() {
+	if (_difficultyLevel == 0) {
+		loadScrbOntoFeature(_orderBaseFeature, 8014);
+	} else if (_difficultyLevel == 1) {
+		int16 variant = _vm->_rnd->getRandomNumber(1); // 0 or 1
+		loadScrbOntoFeature(_order1Feature, 9019 + variant);
+	} else {
+		int16 variant = _vm->_rnd->getRandomNumber(7); // 0-7
+		loadScrbOntoFeature(_order2Feature, 10001 + variant);
 	}
 }
 
@@ -1085,11 +1211,330 @@ uint8 ZoombiniInteractivePizza::packToppingBitmask() const {
 // ---------------------------------------------------------------------------
 bool ZoombiniInteractivePizza::checkToppingMaskMatch() const {
 	uint8 currentMask = packToppingBitmask();
-	for (int16 i = 0; i < _toppingMaskHistoryIdx; i++) {
+	for (int16 i = 0; i <= _toppingMaskHistoryIdx; i++) {
 		if (_toppingMaskHistory[i] == currentMask)
 			return true;
 	}
 	return false;
+}
+
+// ---------------------------------------------------------------------------
+// handleSubmit: IDA: pizza_handleIngredientToggle case 4
+// Called when player clicks submit in the answer area.
+// Starts the delivery cycle: answer display → exit callback → overlay →
+// classify & serve → evaluate → delivery callback → advance
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::handleSubmit() {
+	// Check for duplicate submission
+	if (checkToppingMaskMatch()) {
+		debugC(kZmbDebugPage, "Pizza: Duplicate topping combination submitted");
+		return;
+	}
+
+	// Record this combination in history
+	_toppingMaskHistoryIdx++;
+	if (_toppingMaskHistoryIdx < 28) {
+		_toppingMaskHistory[_toppingMaskHistoryIdx] = packToppingBitmask();
+	}
+
+	// Snapshot the current meal
+	for (int16 i = 0; i < 8; i++) {
+		_mealSnapshot[i] = _ingredientFlags[i];
+		_currentMeal[i] = _ingredientFlags[i];
+	}
+
+	// Start delivery sequence
+	_isDeliveryInProgress++;
+
+	// Load the answer display SCRB (7057 at level 0, 7058 at level 1+)
+	uint16 answerScrbId = (_difficultyLevel == 0) ? 7057 : 7058;
+	loadScrbOntoFeature(_drawOnRegFeature, answerScrbId);
+
+	// Load SCRB 7066 on the question runner to start the exit callback chain
+	if (_questionRunnerFeature) {
+		loadScrbOntoFeature(_questionRunnerFeature, 7066);
+		_questionRunnerPhase = kPhaseExitCallback;
+	} else {
+		// Fallback: if no question runner, directly classify and serve
+		// This shouldn't happen with proper init, but provides safety
+		for (int16 i = 0; i <= _extraToppingTiers; i++) {
+			if (_orderState[i] == 1) {
+				int16 result = classifyOrderType(i);
+				serveNextTopping(result, i);
+				break;
+			}
+		}
+	}
+
+	debugC(kZmbDebugPage, "Pizza: Submit — starting delivery cycle");
+}
+
+// ---------------------------------------------------------------------------
+// handleZmbExitEvent: IDA 0x43F3E6
+// Handles animation events from SCRB 7066 on the question runner.
+// Event 32: Initial overlay setup
+// Event 60: Snoid trait reveal
+// Event -1: Delivery overlay and classify
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::handleZmbExitEvent(ZmbFeature *feature, int16 eventCode) {
+	switch (eventCode) {
+	case 32: {
+		// Load initial topping overlay SCRB 12000
+		if (_toppingOverlayFeature) {
+			loadScrbOntoFeature(_toppingOverlayFeature, 12000);
+			_overlayPhase = kPhaseToppingOverlay;
+		}
+		debugC(kZmbDebugPage, "Pizza: Exit callback event 32 — overlay setup");
+		break;
+	}
+
+	case 60: {
+		// Play snoid SCRS for trait reveal
+		if (_answerSnoid) {
+			int16 traitIdx = getTraitIndexForOrder(0);
+			uint16 scrsId = 13000 + traitIdx;
+			Common::SeekableReadStream *scrsStream =
+				_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+				                 ZmbResource(ZmbArchiveKind::kPage, scrsId));
+			if (scrsStream) {
+				_answerSnoid->startScrsPlayback(scrsStream, false, false);
+			}
+		}
+		debugC(kZmbDebugPage, "Pizza: Exit callback event 60 — snoid SCRS");
+		break;
+	}
+
+	case -1: {
+		// Load delivery overlay based on current delivery slot
+		// For order 0: SCRB 12001 + traitIdx
+		// For order 1: SCRB 12006 + traitIdx
+		// For order 2: SCRB 12011 + traitIdx
+		_questionRunnerPhase = kPhaseNone;
+
+		int16 traitIdx = getTraitIndexForOrder(_deliverySlotType);
+		uint16 overlayScrbId = 0;
+		switch (_deliverySlotType) {
+		case 0:
+			overlayScrbId = 12001 + traitIdx;
+			break;
+		case 1:
+			overlayScrbId = 12006 + traitIdx;
+			break;
+		case 2:
+			overlayScrbId = 12011 + traitIdx;
+			break;
+		default:
+			overlayScrbId = 12001;
+			break;
+		}
+
+		if (_toppingOverlayFeature) {
+			loadScrbOntoFeature(_toppingOverlayFeature, overlayScrbId);
+			_overlayPhase = kPhaseToppingDelivery;
+		}
+
+		debugC(kZmbDebugPage, "Pizza: Exit callback event -1 — delivery overlay SCRB %d",
+		       overlayScrbId);
+		break;
+	}
+
+	default:
+		break;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// handleZmbDeliveryEvent: IDA 0x44005D
+// Handles events after delivery evaluation completes.
+// Plays appropriate SCRS on the answer snoid and advances the slot.
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::handleZmbDeliveryEvent(ZmbFeature *feature, int16 eventCode) {
+	if (eventCode == -1) {
+		// Delivery evaluation animation finished
+		if (_answerSnoid) {
+			// Play delivery SCRS on the snoid
+			// IDA: SCRS 14000 + wasDeliveryCorrect (order 0)
+			//      SCRS 14002 + wasDeliveryCorrect (order 1)
+			//      SCRS 14004 + wasDeliveryCorrect (order 2)
+			uint16 scrsBase = 14000 + (_deliverySlotType * 2) + _wasDeliveryCorrect;
+			Common::SeekableReadStream *scrsStream =
+				_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+				                 ZmbResource(ZmbArchiveKind::kPage, scrsBase));
+			if (scrsStream) {
+				bool isReject = (_wasDeliveryCorrect == 0);
+				_answerSnoid->startScrsPlayback(scrsStream, false, isReject);
+			}
+
+			// Play delivery SFX
+			_vm->_sound->playZmbSound(
+				ZmbResource(ZmbArchiveKind::kPage, 8040),
+				Audio::Mixer::kSFXSoundType);
+		}
+
+		// Advance to next delivery slot after snoid finishes
+		// The snoid SCRS completion will trigger advanceToNextDeliverySlot
+		// via the snoid event handler
+		advanceToNextDeliverySlot();
+	}
+}
+
+// ---------------------------------------------------------------------------
+// handleOrderLineComplete: Called when an order line's reaction animation finishes.
+// Determines whether to serve the next order line or evaluate the delivery.
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::handleOrderLineComplete(int16 orderLine) {
+	debugC(kZmbDebugPage, "Pizza: Order line %d reaction complete (state=%d)",
+	       orderLine, _orderState[orderLine]);
+
+	// Find the next active order line to serve
+	int16 nextLine = -1;
+	for (int16 i = orderLine + 1; i <= _extraToppingTiers; i++) {
+		if (_orderState[i] == 1) {
+			nextLine = i;
+			break;
+		}
+	}
+
+	if (nextLine >= 0) {
+		// Serve the next active order line
+		int16 result = classifyOrderType(nextLine);
+		serveNextTopping(result, nextLine);
+	} else {
+		// All active lines have been served — evaluate
+		evaluateDelivery();
+	}
+}
+
+// ---------------------------------------------------------------------------
+// onToppingDelivered: IDA 0x43FEA0
+// Called when the topping delivery overlay animation completes.
+// Classifies the current meal against each active order line and starts
+// serving the first one.
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::onToppingDelivered() {
+	debugC(kZmbDebugPage, "Pizza: Topping delivery overlay complete — classifying");
+
+	// Find the first active order line and serve it
+	for (int16 i = 0; i <= _extraToppingTiers; i++) {
+		if (_orderState[i] == 1) {
+			int16 result = classifyOrderType(i);
+			serveNextTopping(result, i);
+			return;
+		}
+	}
+
+	// No active order lines — all are matched/accepted, evaluate
+	evaluateDelivery();
+}
+
+// ---------------------------------------------------------------------------
+// registerAnswerDisplay: IDA 0x43D615
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::registerAnswerDisplay() {
+	uint16 scrbId = 7001 + _difficultyLevel;
+	loadScrbOntoFeature(_drawOnRegFeature, scrbId);
+	debugC(kZmbDebugPage, "Pizza: Answer display registered (SCRB %d)", scrbId);
+}
+
+// ---------------------------------------------------------------------------
+// spawnAnswerZmb: IDA 0x440D32
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::spawnAnswerZmb() {
+	uint16 scrbId = (_difficultyLevel == 0) ? 7067 : 7068;
+	loadScrbOntoFeature(_drawOnRegFeature, scrbId);
+	debugC(kZmbDebugPage, "Pizza: Spawn answer zmb (SCRB %d)", scrbId);
+}
+
+// ---------------------------------------------------------------------------
+// animateAnswerZmb: IDA 0x4402EC
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::animateAnswerZmb() {
+	// Set up the answer display for the current answer snoid
+	registerAnswerDisplay();
+}
+
+// ---------------------------------------------------------------------------
+// setupQuestionRunners: IDA 0x43F5CF
+// Set up question SCRBs based on which order lines are active.
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::setupQuestionRunners() {
+	bool has0 = (_orderState[0] >= 2);
+	bool has1 = (_difficultyLevel >= 1) && (_orderState[1] >= 2);
+	bool has2 = (_difficultyLevel >= 2) && (_orderState[2] >= 2);
+
+	// Select question SCRBs based on which order lines are ready
+	if (has0 && has1 && has2) {
+		// All three active
+		loadScrbOntoFeature(_orderBaseFeature, 8030 + _vm->_rnd->getRandomNumber(0, 1));
+		loadScrbOntoFeature(_order1Feature, 9032 + _vm->_rnd->getRandomNumber(0, 1));
+		loadScrbOntoFeature(_order2Feature, 10036 + _vm->_rnd->getRandomNumber(0, 1));
+	} else if (has0 && has1) {
+		loadScrbOntoFeature(_orderBaseFeature, 8026 + _vm->_rnd->getRandomNumber(0, 1));
+		loadScrbOntoFeature(_order1Feature, 9030 + _vm->_rnd->getRandomNumber(0, 1));
+	} else if (has0 && has2) {
+		loadScrbOntoFeature(_orderBaseFeature, 8028 + _vm->_rnd->getRandomNumber(0, 1));
+		loadScrbOntoFeature(_order2Feature, 10035);
+	} else if (has0) {
+		loadScrbOntoFeature(_orderBaseFeature, 8024 + _vm->_rnd->getRandomNumber(0, 1));
+	}
+
+	debugC(kZmbDebugPage, "Pizza: Question runners setup");
+}
+
+// ---------------------------------------------------------------------------
+// placeTopping: IDA 0x440DD1
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::placeTopping(int16 orderSlot, int16 isAllWrong) {
+	// Load random topping SCRB based on order slot
+	uint16 scrbId = 0;
+	switch (orderSlot) {
+	case 0:
+		scrbId = 8034 + _vm->_rnd->getRandomNumber(0, 1);
+		break;
+	case 1:
+		scrbId = 9019 + _vm->_rnd->getRandomNumber(0, 1);
+		break;
+	case 2:
+		scrbId = 10006 + _vm->_rnd->getRandomNumber(0, 2);
+		break;
+	default:
+		return;
+	}
+
+	loadScrbOntoFeature(_orderBaseFeature, scrbId);
+	debugC(kZmbDebugPage, "Pizza: Place topping (order=%d, SCRB=%d)", orderSlot, scrbId);
+}
+
+// ---------------------------------------------------------------------------
+// playSFXForOrder: IDA 0x441104
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::playSFXForOrder(int16 sfxVariant) {
+	uint16 sndId = 15000 + sfxVariant;
+	_vm->_sound->playZmbSound(
+		ZmbResource(ZmbArchiveKind::kPage, sndId),
+		Audio::Mixer::kSFXSoundType);
+}
+
+// ---------------------------------------------------------------------------
+// reloadScrbAnimation: Helper to swap SCRB on a feature
+// ---------------------------------------------------------------------------
+void ZoombiniInteractivePizza::reloadScrbAnimation(ZmbFeature *feature, uint16 scrbId) {
+	if (feature) {
+		loadScrbOntoFeature(feature, scrbId);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// getTraitIndexForOrder: Get trait-based index for SCRS/overlay selection
+// Returns a value 0-4 based on the answer snoid's traits.
+// ---------------------------------------------------------------------------
+int16 ZoombiniInteractivePizza::getTraitIndexForOrder(int16 orderSlot) const {
+	if (!_answerSnoid)
+		return 0;
+
+	// IDA: Uses zoombini trait fields to determine topping type
+	// The trait index is modulo 5 of a trait field
+	return (_answerSnoid->_trait._head) % 5;
 }
 
 } // End of namespace Mohawk

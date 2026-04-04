@@ -316,13 +316,33 @@ Common::Rect ZoombiniGraphics::drawImageSectionToScreen(Graphics::Surface *scree
 	Common::Rect clipSrcRect = srcRect;
 	Common::Rect clipDstRect = dstRect;
 	clipSrcRect.clip(srcSurface->w, srcSurface->h);
+
+	// Bail out early if the sprite is entirely off-screen.
+	if (clipDstRect.right <= 0 || clipDstRect.bottom <= 0 ||
+	    clipDstRect.left >= screen->w || clipDstRect.top >= screen->h)
+		return Common::Rect(0, 0, 0, 0);
+
+	// Left/top clipping: when dstRect extends beyond the left or top screen edge,
+	// advance srcRect by the same amount so we skip the off-screen source pixels.
+	// Without this, sprites at negative coordinates (e.g. walk-in snoids at x=-50)
+	// have their FULL source drawn starting at x=0, appearing fully on-screen
+	// instead of being properly clipped.
+	if (clipDstRect.left < 0) {
+		clipSrcRect.left += -clipDstRect.left;
+		clipDstRect.left = 0;
+	}
+	if (clipDstRect.top < 0) {
+		clipSrcRect.top += -clipDstRect.top;
+		clipDstRect.top = 0;
+	}
+
 	clipDstRect.clip(screen->w, screen->h);
 
-	if (screen->w <= clipDstRect.left)
-		return Common::Rect(0, clipDstRect.top, 0, clipDstRect.bottom);
-	if (screen->h <= clipDstRect.top)
-		return Common::Rect(clipDstRect.left, 0, clipDstRect.right, 0);
+	if (clipSrcRect.isEmpty() || clipDstRect.isEmpty())
+		return Common::Rect(0, 0, 0, 0);
 
+	// Right/bottom clipping: when dstRect.left + srcRect.width() exceeds screen
+	// dimensions, trim the source rect from the right/bottom edge.
 	if (screen->w < clipDstRect.left + clipSrcRect.width())
 		clipSrcRect.right -= (clipDstRect.left + clipSrcRect.width() - screen->w);
 	if (screen->h < clipDstRect.top + clipSrcRect.height())

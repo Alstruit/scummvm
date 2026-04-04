@@ -909,10 +909,9 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 // For features with DEFER_ANIM | DEFER_RENDER, this starts their animation.
 // ---------------------------------------------------------------------------
 void ZoombiniTransitionXfer::activateEnvScrb(uint16 scrbId) {
-	auto it = _scrbFeatureMap.find(scrbId);
-	if (it == _scrbFeatureMap.end())
+	ZmbFeature *feature = _scrbFeatureMap.find(scrbId);
+	if (!feature)
 		return;
-	ZmbFeature *feature = it->second;
 	feature->initValues();
 	feature->activateAnimate();
 	feature->activateRender();

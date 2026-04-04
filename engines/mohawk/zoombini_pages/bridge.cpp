@@ -290,7 +290,7 @@ void ZoombiniInteractiveBridge::loadFeatures() {
 	// Record total pack Zoombini count (IDs 10000+, excludes template snoids)
 	_totalZmbCount = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (it->first >= 10000)
+		if ((*it)->getId() >= 10000)
 			_totalZmbCount++;
 	}
 
@@ -788,10 +788,10 @@ void ZoombiniInteractiveBridge::bridgeVisuals_postRender(ZmbFeature *feature) {
 // Delegates to ZoombiniPage::loadScrbOntoFeature (IDA: scrb_loadOnRunner 0x460384).
 // ---------------------------------------------------------------------------
 void ZoombiniInteractiveBridge::reloadScrbAnimation(uint16 featureId, uint16 newScrbId) {
-	auto it = _scrbFeatureMap.find(featureId);
-	if (it == _scrbFeatureMap.end())
+	ZmbFeature *feature = _scrbFeatureMap.find(featureId);
+	if (!feature)
 		return;
-	loadScrbOntoFeature(it->second, newScrbId);
+	loadScrbOntoFeature(feature, newScrbId);
 }
 
 // ---------------------------------------------------------------------------
@@ -807,9 +807,9 @@ ZmbSnoid *ZoombiniInteractiveBridge::findIdlePackSnoid(uint16 preferredId) {
 	}
 	// Search all snoids for an idle pack snoid
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (it->first < 10000)
+		if ((*it)->getId() < 10000)
 			continue; // Skip template snoids
-		ZmbSnoid *snoid = it->second;
+		ZmbSnoid *snoid = *it;
 		if (snoid->getAnimState() == kSnoidAnimIdle)
 			return snoid;
 	}
@@ -838,9 +838,9 @@ int16 ZoombiniInteractiveBridge::getDropTargetLane(const Common::Point &pos) con
 // ---------------------------------------------------------------------------
 ZmbSnoid *ZoombiniInteractiveBridge::findSnoidAtPoint(const Common::Point &pos) {
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if (it->first < 10000)
+		if ((*it)->getId() < 10000)
 			continue; // Skip template snoids
-		ZmbSnoid *snoid = it->second;
+		ZmbSnoid *snoid = *it;
 		if (snoid->findDrawRecordAtPoint(pos))
 			return snoid;
 	}
@@ -874,10 +874,10 @@ void ZoombiniInteractiveBridge::onEveryFrame() {
 		_trollAnimPending = 0;
 
 		// Hide the lane-2 troll feature (it's offscreen during entrance)
-		auto itLane2 = _scrbFeatureMap.find(_scrbTrollLane2Idx);
-		if (itLane2 != _scrbFeatureMap.end()) {
-			itLane2->second->deactivateRender();
-			itLane2->second->deactivateAnimate();
+		ZmbFeature *lane2 = _scrbFeatureMap.find(_scrbTrollLane2Idx);
+		if (lane2) {
+			lane2->deactivateRender();
+			lane2->deactivateAnimate();
 		}
 
 		// Load SCRB 1235 on the gate troll
@@ -957,8 +957,8 @@ void ZoombiniInteractiveBridge::onEveryFrame() {
 	// IDA: word_4AAE7A branch
 	// -----------------------------------------------------------------------
 	if (_pendingLaneEvent) {
-		auto itLane = _scrbFeatureMap.find(_pendingLaneEvent);
-		if (itLane != _scrbFeatureMap.end() && _currentMatchResult) {
+		ZmbFeature *lane = _scrbFeatureMap.find(_pendingLaneEvent);
+		if (lane && _currentMatchResult) {
 			// Load the appropriate troll animation SCRB on the lane feature
 			uint16 trollLaneScrb;
 			if (_pendingLaneEvent == _scrbTrollLane2Idx)
@@ -966,7 +966,7 @@ void ZoombiniInteractiveBridge::onEveryFrame() {
 			else
 				trollLaneScrb = 1214;
 			_pendingLaneEvent = 0;
-			reloadScrbAnimation(itLane->first, trollLaneScrb);
+			reloadScrbAnimation(lane->getId(), trollLaneScrb);
 
 			// Trigger troll gate match animation.
 			// IDA: troll gate SCRB = successCount + 1223 (lane1) or 1208 (lane2)
