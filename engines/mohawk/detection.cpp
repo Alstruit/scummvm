@@ -97,6 +97,9 @@ static const char *const directoryGlobs[] = {
 	"setup",
 	"setup32",
 	"95instal",
+	"install",
+	"setup",
+	"hd",
 	"Rugrats Adventure Game",
 	nullptr
 };

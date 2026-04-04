@@ -171,6 +171,32 @@ Common::Error MohawkEngine_Zoombini::run() {
 
 	_language = getLanguage();
 
+	Common::Path configuredPath = ConfMan.getPath("path");
+	Common::Path searchRootPath = configuredPath;
+
+	// Existing targets may already store the DATA directory as the game path.
+	// TLC keeps CORNER.TTF outside DATA, in INSTALL/HD, so normalize to the
+	// parent directory first when the configured path is DATA.
+	if (configuredPath.baseName().equalsIgnoreCase("data")) {
+		searchRootPath = configuredPath.getParent();
+	}
+
+	const Common::FSNode searchRoot(searchRootPath);
+
+	// MHK data
+	SearchMan.addSubDirectoryMatching(searchRoot, "data");
+
+	// TLC loose font location: INSTALL/HD/CORNER.TTF
+	SearchMan.addSubDirectoryMatching(searchRoot, "install");
+
+	Common::FSNode installDir = searchRoot.getChild("INSTALL");
+	if (installDir.exists() && installDir.isDirectory())
+		SearchMan.addSubDirectoryMatching(installDir, "hd");
+
+	Common::FSNode installDirLower = searchRoot.getChild("install");
+	if (installDirLower.exists() && installDirLower.isDirectory())
+		SearchMan.addSubDirectoryMatching(installDirLower, "hd");
+
 	_gfx = new ZoombiniGraphics(this);
 	_video = new VideoManager(this);
 	_sound = new ZoombiniSound(this);
