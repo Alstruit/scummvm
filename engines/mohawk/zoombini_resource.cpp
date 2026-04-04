@@ -22,6 +22,8 @@
 #include "mohawk/zoombini_resource.h"
 #include "zoombini_resource.h"
 
+#include <errno.h>
+
 namespace Mohawk {
 
 bool ZmbResource::parseInt(const char *str, int32 &result) {

@@ -67,6 +67,8 @@
 #include "mohawk/zoombini_text.h"
 #endif
 
+#include <errno.h>
+
 namespace Mohawk {
 
 #ifdef ENABLE_MYST
