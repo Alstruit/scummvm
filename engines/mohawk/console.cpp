@@ -971,6 +971,7 @@ ZoombiniConsole::ZoombiniConsole(MohawkEngine_Zoombini *vm) : GUI::Debugger(), _
 	registerCmd("plotRect",				WRAP_METHOD(ZoombiniConsole, Cmd_PlotRect));
 	registerCmd("dumpAllResources",		WRAP_METHOD(ZoombiniConsole, Cmd_DumpAllResources));
 	registerCmd("goXfer",				WRAP_METHOD(ZoombiniConsole, Cmd_GoXfer));
+	registerCmd("goPractice",			WRAP_METHOD(ZoombiniConsole, Cmd_GoPractice));
 }
 
 ZoombiniConsole::~ZoombiniConsole() {
@@ -2103,6 +2104,85 @@ bool ZoombiniConsole::Cmd_GoXfer(int argc, const char **argv) {
 
 	debugPrintf("Generated 16 random snoids in active pack\n");
 	debugPrintf("Jumping to xfer with source SI page %d\n", (int)targetSi);
+	return false; // Close the debugger console
+}
+
+bool ZoombiniConsole::Cmd_GoPractice(int argc, const char **argv) {
+	static const struct {
+		const char *name;
+		ZoombiniPageType pageType;
+		const char *desc;
+	} puzzlePages[] = {
+		{ "bridge",  ZoombiniPageType::kBridge,  "Allergic Cliffs" },
+		{ "tunnels", ZoombiniPageType::kTunnels, "Stone Cold Caves" },
+		{ "pizza",   ZoombiniPageType::kPizza,   "Pizza Pass" },
+		{ "ferry",   ZoombiniPageType::kFerry,   "Captain Cajun's Ferryboat" },
+		{ "lilly",   ZoombiniPageType::kLilly,   "Titanic Tattooed Toads" },
+		{ "slides",  ZoombiniPageType::kSlides,  "Stone Rise" },
+		{ "fleens",  ZoombiniPageType::kFleens,  "Fleens!" },
+		{ "hotel",   ZoombiniPageType::kHotel,   "Hotel Dimensia" },
+		{ "net",     ZoombiniPageType::kNet,     "Mudball Wall" },
+		{ "caves",   ZoombiniPageType::kCaves,   "Cave of the Bubblesmokers" },
+		{ "smoke",   ZoombiniPageType::kSmoke,   "Snack Attack" },
+		{ "maze",    ZoombiniPageType::kMaze,    "Mirror Machine" },
+	};
+
+	if (argc != 3) {
+		debugPrintf("Jump directly to a puzzle page in practice mode at a specified difficulty level.\n");
+		debugPrintf("Usage: goPractice <puzzle> <level>\n");
+		debugPrintf("  <level> is 1-4 (1=easiest, 4=hardest)\n");
+		debugPrintf("Available puzzles:\n");
+		for (uint i = 0; i < ARRAYSIZE(puzzlePages); i++) {
+			debugPrintf("  %-10s  %s\n", puzzlePages[i].name, puzzlePages[i].desc);
+		}
+		return true;
+	}
+
+	// Parse puzzle name or page type number
+	ZoombiniPageType targetPage = ZoombiniPageType::kNone;
+	int32 numVal;
+	if (ZmbResource::parseInt(argv[1], numVal)) {
+		for (uint i = 0; i < ARRAYSIZE(puzzlePages); i++) {
+			if ((int16)numVal == (int16)puzzlePages[i].pageType) {
+				targetPage = puzzlePages[i].pageType;
+				break;
+			}
+		}
+	} else {
+		for (uint i = 0; i < ARRAYSIZE(puzzlePages); i++) {
+			if (scumm_stricmp(argv[1], puzzlePages[i].name) == 0) {
+				targetPage = puzzlePages[i].pageType;
+				break;
+			}
+		}
+	}
+
+	if (targetPage == ZoombiniPageType::kNone) {
+		debugPrintf("Unknown puzzle '%s'. Use goPractice without arguments to see available puzzles.\n", argv[1]);
+		return true;
+	}
+
+	// Parse level
+	int32 level;
+	if (!ZmbResource::parseInt(argv[2], level) || level < 1 || level > 4) {
+		debugPrintf("Invalid level '%s'. Must be 1-4.\n", argv[2]);
+		return true;
+	}
+
+	// Set practice mode at the specified difficulty level
+	_vm->_state->_practiceLevel = (uint16)level;
+
+	// Generate 16 random snoids as the active pack
+	_vm->_state->generateRandomPack();
+
+	// Navigate directly to the puzzle page (skip xfer transition)
+	_vm->setNextPage(targetPage);
+	if (_vm->getActivePage())
+		_vm->getActivePage()->close();
+
+	debugPrintf("Practice mode: level %d\n", (int)level);
+	debugPrintf("Generated 16 random snoids in active pack\n");
+	debugPrintf("Jumping directly to puzzle page %d\n", (int)targetPage);
 	return false; // Close the debugger console
 }
 
