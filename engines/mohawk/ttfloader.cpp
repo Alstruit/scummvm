@@ -28,7 +28,9 @@
 #include "common/compression/installshield_cab.h"
 #include "common/compression/installshieldv3_archive.h"
 #include "common/fs.h"
+#if defined(WIN32)
 #include "common/platform.h"
+#endif
 #include "graphics/fontman.h"
 #include "graphics/fonts/ttf.h"
 #include "gui/message.h"
@@ -86,16 +88,16 @@ FileTTFLoader::FileTTFLoader(const Common::String &fileName, const Common::Strin
 }
 
 bool FileTTFLoader::hasStream() {
-	return Common::File::exists(_filePath);
+	Common::SeekableReadStream *stream = SearchMan.createReadStreamForMember(_filePath);
+	if (!stream)
+		return false;
+
+	delete stream;
+	return true;
 }
 
 Common::SeekableReadStream *FileTTFLoader::getStream() {
-	Common::File *f = new Common::File();
-	if (!f->open(_filePath)) {
-		delete f;
-		return nullptr;
-	}
-	return f;
+	return SearchMan.createReadStreamForMember(_filePath);
 }
 
 const Graphics::Font *FileTTFLoader::loadFontCore(int point) {

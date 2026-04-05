@@ -938,20 +938,18 @@ ZoombiniText::ZoombiniText(MohawkEngine_Zoombini *vm, Common::Language lang) : _
 		// English Zoombini string resources are encoded as CP1252
 		_codePage = Common::kWindows1252;
 
-		// English Zoombini used CornerStone font, bundled in installshield archives or install location.
-		// - 1.1: found in /ZBARC16.Z, /ZBARC32.Z, or /SETUP/data1.cab
-		// - 2.0: found in /INSTALL/HD/CORNER.TTF
-		if (_vm->isGameVariant(GF_ZMB_TLC))
-			srcInst = "Please provide an ISO root containing '/INSTALL/HD/CORNER.TTF' from the installer disk.";
-		else
-			srcInst = "Please provide an ISO root containing one of '/ZBARC32.Z', '/ZBARC16.Z', or '/SETUP/data1.cab' from the installer disk.";
-		if (_vm->isGameVariant(GF_ZMB_TLC)) {
-			_optimalTTFLoaders.push_back(new FileTTFLoader("INSTALL/HD/CORNER.TTF", "CornerStone", srcInst, false));
-		} else {
-			_optimalTTFLoaders.push_back(new ISZTTFLoader("ZBARC32.Z", "CORNER.TTF", "CornerStone", srcInst, false));
-			_optimalTTFLoaders.push_back(new ISZTTFLoader("ZBARC16.Z", "CORNER.TTF", "CornerStone", srcInst, false));
-			_optimalTTFLoaders.push_back(new ISCabTTFLoader("SETUP/data1.cab", "CORNER.TTF", "CornerStone", srcInst, false));
-		}
+
+		// English Zoombini used ConerStone font, bundled in installshield cabs or install location.
+		// - 1.1: found in ZBARC16.Z or ZBARC32.Z, or SETUP/data1.cab
+		// - 2.0: found in INSTALL/HD/CORNER.TTF
+		//if (_vm->isGameVariant(GF_ZMB_TLC))
+			//srcInst = "Please provide '/INSTALL/HD/CORNER.TTF' from the installer disk.";	//Possibly fixed. Pending.
+		//else
+		//	srcInst = "Please provide one of '/ZBARC32.Z', '/ZBARC16.Z', or '/SETUP/data1.cab' from the installer disk.";
+		_optimalTTFLoaders.push_back(new FileTTFLoader("CORNER.TTF", "CornerStone", srcInst, false));
+		_optimalTTFLoaders.push_back(new ISCabTTFLoader("data1.cab", "CORNER.TTF", "CornerStone", srcInst, false));
+		_optimalTTFLoaders.push_back(new ISZTTFLoader("ZBARC32.Z", "CORNER.TTF", "CornerStone", srcInst, false));
+		_optimalTTFLoaders.push_back(new ISZTTFLoader("ZBARC16.Z", "CORNER.TTF", "CornerStone", srcInst, false));
 		_textFontPoint = 13;
 		_titleFontPoint = 18;
 		_fallbackTTFLoaders.push_back(new ArchiveTTFLoader("LiberationMono-Bold.ttf", "Liberation Mono"));
@@ -965,11 +963,13 @@ ZoombiniText::ZoombiniText(MohawkEngine_Zoombini *vm, Common::Language lang) : _
 		_codePage = Common::kWindows949;
 
 		// Korean Zoombini used GulimChe font. The original ISO does not include gulim.ttc.
-		srcInst = "Please provide gulim.ttc at the ISO root or in '/DATA'.";
-		_optimalTTFLoaders.push_back(new FileTTFLoader("gulim.ttc", "GulimChe", srcInst, true, 1));
-		_optimalTTFLoaders.push_back(new FileTTFLoader("DATA/gulim.ttc", "GulimChe", srcInst, true, 1));
+        // FIXME: Only from Windows. Needs to be compliant with portability.
+		_optimalTTFLoaders.push_back(new FileTTFLoader("gulim.ttc", "GulimChe", true, 1));
 		_textFontPoint = 12;
 		_titleFontPoint = 18;
+#if defined(WIN32)
+		_fallbackTTFLoaders.push_back(new WinSysTTFLoader("gulim.ttc", "GulimChe", "ScummVM loaded the font from the Windows Font archive, but this is not recommended.", true, 1));
+#endif
 		_fallbackTTFLoaders.push_back(new FileTTFLoader("D2CodingBold.ttf", "D2Coding", true));
 		_fallbackTTFLoaders.push_back(new ArchiveTTFLoader("NotoSansKR-Bold.otf", "Noto Sans KR Bold"));
 
@@ -1247,9 +1247,12 @@ const Graphics::Font *ZoombiniText::getFont(ZoombiniFontUsage fontUsage) {
 }
 
 const Graphics::Font *ZoombiniText::loadFont(const Common::Array<TTFLoader *> &optimalTTFLoaders, const Common::Array<TTFLoader *> &fallbackTTFLoaders, int point, bool showWarnMsgBox, Common::String &cacheName) {
-	TTFLoader *firstOptimalLoader = _optimalTTFLoaders.front();
+	assert(!optimalTTFLoaders.empty());
+
+	TTFLoader *firstOptimalLoader = optimalTTFLoaders.front();
 	assert(firstOptimalLoader != nullptr);
-	for (TTFLoader *loader : _optimalTTFLoaders) {
+
+	for (TTFLoader *loader : optimalTTFLoaders) {
 		const Graphics::Font *font = loader->loadFont(point);
 		if (!font)
 			continue;
