@@ -279,13 +279,196 @@ void ZoombiniInteractive::onSecondGoButtonActivated() {
 }
 
 void ZoombiniInteractive::executeDeparture() {
-	// Default departure: navigate to kXfer with the configured source page.
-	// Pages with custom departure logic (e.g. BC1/BC2 save pack state) override this.
+	// IDA: puzzleDispatch_sharedCleanup → save_updateZmbPacksOnPuzzleComplete(0, 1)
+	// Write snoid runners back to active pack and route non-occupied to resting packs.
+	// BC1/BC2 override this with their own save+snapshot logic.
+	saveSnoidsToPack();
+	routeNonOccupiedToRestingPack();
+
 	if (_departXferSrcSiPage != ZMB_SI_MINUS1) {
 		_vm->_xferSrcSiPage = _departXferSrcSiPage;
 		_vm->setNextPage(ZoombiniPageType::kXfer);
 	}
 	close();
+}
+
+void ZoombiniInteractive::saveSnoidsToPack() {
+	// IDA: save_updateZmbPacksOnPuzzleComplete(0, 1) — first half.
+	// Two-pass: occupied snoids first, then non-occupied.
+	// This writes ALL snoid runners back to _zmbPackActive.
+	ZmbStateFile &f = _vm->_state->_f;
+
+	// IDA 0x45537B: setZmbMovementDirection_45621A(1) — arrival turn-around.
+	_vm->setArrivalTurnDirection(1);
+
+	// IDA 0x4553DE-EC: reset skip-animation flags.
+	f._zmbPackActive._bSkipOccupiedAnim = 0;
+	f._zmbPackActive._bSkipUnoccupiedAnim = 0;
+
+	// IDA 0x455407-439: re-activate hidden snoids (wBoolDoRender=1)
+	// and reset their animation to idle before saving.
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		ZmbSnoid *snoid = *it;
+		if (!snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+			continue;
+		if (!snoid->isRenderActivated()) {
+			snoid->activateRender();
+		}
+	}
+
+	// Two-pass write: occupied first, then non-occupied.
+	// IDA 0x4554B8-5CB: for i=0..1, iterate snoid runners.
+	// Only real pack snoids (with _packIsOccupied set by loadZoombinisFromPack
+	// or picker generation) are written. Animation-pool SCRS features (reject/
+	// normal pools) also carry FLAG_00000001_TYPE_SNOID but must NOT be counted;
+	// the original engine keeps them in separate arrays.
+	int16 destIdx = 0;
+	for (int pass = 0; pass < 2 && destIdx < 16; pass++) {
+		bool wantOccupied = (pass == 0);
+		for (auto it = _snoidMap.begin(); it != _snoidMap.end() && destIdx < 16; ++it) {
+			ZmbSnoid *snoid = *it;
+			if (!snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+				continue;
+			if (snoid->_packIsOccupied != wantOccupied)
+				continue;
+
+			ZmbStateActiveEntry &entry = f._zmbPackActive._entries[destIdx];
+			entry._traits = snoid->_trait;
+			entry._posX = static_cast<uint16>(snoid->getPointLoc().x);
+			entry._posY = static_cast<uint16>(snoid->getPointLoc().y);
+			entry._bIsOccupied = wantOccupied ? 1 : 0;
+			Common::String nameBytes = _vm->_text->fromU32String(snoid->_name);
+			memset(entry._name, 0, sizeof(entry._name));
+			uint32 nameLen = MIN<uint32>(nameBytes.size(), sizeof(entry._name));
+			memcpy(entry._name, nameBytes.c_str(), nameLen);
+
+			destIdx++;
+		}
+	}
+
+	// IDA 0x455483: g_pGameState->zmbPackActive.wPackZmbCount = destIdx
+	// Set count to the number of entries actually written, not the total
+	// TYPE_SNOID feature count (which includes animation-pool SCRS features).
+	f._zmbPackActive._wPackZmbCount = destIdx;
+}
+
+void ZoombiniInteractive::routeNonOccupiedToRestingPack() {
+	// IDA: second half of save_updateZmbPacksOnPuzzleComplete.
+	// For container puzzles (Pizza/Slides/Net/Maze), route non-occupied
+	// (failed) snoids to the resting pack (BC0/BC1/BC2) based on route.
+	ZmbStateFile &f = _vm->_state->_f;
+	ZMB_DI_PAGE currentPage = f._currentPage;
+
+	// IDA: routeIdx = (wActivePuzzleId - 7) / 3 + 1
+	// Only puzzle pages 7-18 have routes.
+	if (currentPage < ZMB_DI_BRIDGE_07 || currentPage > ZMB_DI_MAZE_18)
+		return;
+
+	uint16 routeIdx = static_cast<uint16>((currentPage - ZMB_DI_BRIDGE_07) / 3 + 1);
+
+	// IDA: isContainer check — Pizza(9), Slides(12), Net(15), Maze(18)
+	bool isContainer = (currentPage == ZMB_DI_PIZZA_09 || currentPage == ZMB_DI_SLIDES_12 ||
+	                    currentPage == ZMB_DI_NET_15 || currentPage == ZMB_DI_MAZE_18);
+	if (!isContainer)
+		return;
+
+	// Count non-occupied snoids in active pack.
+	int16 nonOccupiedCount = 0;
+	for (int16 i = 0; i < f._zmbPackActive._wPackZmbCount; i++) {
+		if (!f._zmbPackActive._entries[i]._bIsOccupied)
+			nonOccupiedCount++;
+	}
+	if (nonOccupiedCount <= 0)
+		return;
+
+	// Determine destination pack based on route.
+	// IDA: Route 1 → BC0 (Isle), Route 2-3 → BC1, Route 4 → BC2.
+	ZmbStateActivePack *destPack = nullptr;
+	switch (routeIdx) {
+	case 1:
+		destPack = &f._zmbPackIsle;
+		break;
+	case 2:
+	case 3:
+		destPack = &f._zmbPackBC1;
+		f._zmbStoredBC1Count += nonOccupiedCount;
+		break;
+	case 4:
+		destPack = &f._zmbPackBC2;
+		f._zmbStoredBC2Count += nonOccupiedCount;
+		break;
+	default:
+		return;
+	}
+
+	// IDA 0x4556FC-755: if destPack has skipOccupiedAnim, compact out occupied
+	// entries from the dest pack (they were previous departures).
+	if (destPack->_bSkipOccupiedAnim) {
+		for (int16 k = 0; k < destPack->_wPackZmbCount; k++) {
+			if (destPack->_entries[k]._bIsOccupied) {
+				--destPack->_wPackZmbCount;
+				for (int16 m = k; m < destPack->_wPackZmbCount; m++) {
+					destPack->_entries[m] = destPack->_entries[m + 1];
+				}
+				--k;
+			}
+		}
+	}
+	destPack->_bSkipUnoccupiedAnim = 0;
+	destPack->_bSkipOccupiedAnim = 0;
+
+	// Find the first non-occupied entry in active pack (they come after occupied entries).
+	int16 srcIdx = 0;
+	while (srcIdx < f._zmbPackActive._wPackZmbCount && f._zmbPackActive._entries[srcIdx]._bIsOccupied)
+		srcIdx++;
+
+	// Find insertion point in dest pack.
+	int16 destIdx = -1;
+	for (int16 ii = 0; destIdx < 0 && ii <= destPack->_wPackZmbCount; ii++) {
+		if (!destPack->_entries[ii]._traits.isComplete() || ii == destPack->_wPackZmbCount)
+			destIdx = ii;
+	}
+	if (destIdx < 0) {
+		destPack->_wPackZmbCount = 0;
+		destIdx = 0;
+	}
+
+	// Copy non-occupied entries from active → dest pack.
+	for (int16 j = 0; j < nonOccupiedCount; j++) {
+		if (destPack->_wPackZmbCount >= 16 || destIdx >= 16)
+			break;
+
+		ZmbStateActiveEntry &dst = destPack->_entries[destIdx];
+		ZmbStateActiveEntry &src = f._zmbPackActive._entries[srcIdx];
+		dst._traits = src._traits;
+		memcpy(dst._name, src._name, sizeof(dst._name));
+		dst._bIsOccupied = 1;
+		destIdx++;
+		srcIdx++;
+		destPack->_wPackZmbCount++;
+	}
+
+	// Copy dest pack to the state snapshot.
+	// IDA 0x455886-8E3: qmemcpy to the named pack.
+	// In our implementation destPack already points to the named pack,
+	// so we only need to update the Val field.
+	switch (routeIdx) {
+	case 1:
+		f._wZmbPackIsleVal = f._wZmbPackActiveVal;
+		break;
+	case 2:
+	case 3:
+		f._wZmbPackBC1Val = f._wZmbPackActiveVal;
+		break;
+	case 4:
+		f._wZmbPackBC2Val = f._wZmbPackActiveVal;
+		break;
+	default:
+		break;
+	}
+
+	// Remove non-occupied entries from active pack.
+	f._zmbPackActive._wPackZmbCount -= nonOccupiedCount;
 }
 
 void ZoombiniInteractive::startDepartWalkAnimation(const Common::Point &target, uint32 stagger) {
@@ -343,6 +526,36 @@ bool ZoombiniInteractive::isDepartSfxDone() const {
 }
 
 void ZoombiniInteractive::onMapButtonActivated() {
+	// IDA: Every page's cleanup calls puzzleDispatch_sharedCleanup() →
+	// save_updateZmbPacksOnPuzzleComplete(0, 1) to write snoid runners
+	// back to the active pack. Replicate that here.
+	saveSnoidsToPack();
+
+	// Copy active pack to the resting pack for the current route so snoids
+	// are preserved when the player returns via rodmap.
+	// Route 1 (Bridge/Tunnels/Pizza) → BC0 (Isle/Picker)
+	// Route 2 (Ferry/Lilly/Slides) → BC1
+	// Route 3 (Fleens/Hotel/Net) → BC1
+	// Route 4 (Caves/Smoke/Maze) → BC2
+	ZmbStateFile &f = _vm->_state->_f;
+	ZMB_DI_PAGE currentPage = f._currentPage;
+	if (currentPage >= ZMB_DI_BRIDGE_07 && currentPage <= ZMB_DI_PIZZA_09) {
+		// Route 1 → BC0
+		f._zmbPackActive.copyTo(f._zmbPackIsle);
+		f._wZmbPackIsleVal = f._wZmbPackActiveVal;
+		f._zmbPackActive._wPackZmbCount = 0;
+	} else if (currentPage >= ZMB_DI_FERRY_10 && currentPage <= ZMB_DI_NET_15) {
+		// Route 2/3 → BC1
+		f._zmbPackActive.copyTo(f._zmbPackBC1);
+		f._wZmbPackBC1Val = f._wZmbPackActiveVal;
+		f._zmbPackActive._wPackZmbCount = 0;
+	} else if (currentPage >= ZMB_DI_CAVES_16 && currentPage <= ZMB_DI_MAZE_18) {
+		// Route 4 → BC2
+		f._zmbPackActive.copyTo(f._zmbPackBC2);
+		f._wZmbPackBC2Val = f._wZmbPackActiveVal;
+		f._zmbPackActive._wPackZmbCount = 0;
+	}
+
 	_vm->setNextPage(ZoombiniPageType::kRodMap);
 	close();
 }

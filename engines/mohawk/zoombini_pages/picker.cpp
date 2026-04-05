@@ -455,6 +455,10 @@ void ZoombiniInteractivePicker::pickerButtons_onButtonAction(ZmbFeature *feature
 		if (snoid) {
 			snoid->_trait = _previewSnoid._trait;
 			snoid->_name = _previewSnoid._name;
+			// IDA: pickerPreviewZmbCore259_4B0B54.unk00F7 = 1 (set in picker_init 0x439A3C).
+			// The entire preview struct is passed to setZoombiniNextAnimation_4527D7 → zmb_registerSnoidFeatureRunner,
+			// which copies it including unk00F7=1. So picker-generated runners are always occupied.
+			snoid->_packIsOccupied = true;
 			snoid->setupIdleHotspots();
 			snoid->setFacingLeft(spawnPos.x > seatPos.x);
 			snoid->setAnimTargetPos(seatPos);
@@ -852,6 +856,26 @@ void ZoombiniInteractivePicker::onGoButtonActivated() {
 	updatePendingGoTransition();
 }
 
+void ZoombiniInteractivePicker::onMapButtonActivated() {
+	// IDA: picker_cleanup with (wChangeColorPaletteState_4A4462 || puzzle_nextPuzzleId == 1):
+	// Copy active pack → Isle pack (preserve snoids on the picker for when user returns).
+	// Then clear active pack.
+	ZmbStateFile &f = _vm->_state->_f;
+
+	// Write current snoid runners back to _zmbPackActive.
+	saveSnoidsToPack();
+
+	// IDA 0x439BB2-BEE: copy active → BC0 (isle), clear active.
+	f._zmbPackActive._bSkipOccupiedAnim = 0;
+	f._zmbPackActive._bSkipUnoccupiedAnim = 0;
+	f._zmbPackActive.copyTo(f._zmbPackIsle);
+	f._wZmbPackIsleVal = f._wZmbPackActiveVal;
+	f._zmbPackActive._wPackZmbCount = 0;
+
+	_vm->setNextPage(ZoombiniPageType::kRodMap);
+	close();
+}
+
 void ZoombiniInteractivePicker::randomizeTraitSelection() {
 	// IDA: puzzlePicker_diceRandomZoombini_43ABE2(wBool)
 	// wBool = pickerRunner_4B0C5C.wBoolUpdateDrawPreviewName (whether current
@@ -963,6 +987,9 @@ void ZoombiniInteractivePicker::randomizeTraitSelection() {
 			if (snoid) {
 				snoid->_trait = _previewSnoid._trait;
 				snoid->_name = _previewSnoid._name;
+				// IDA: pickerPreviewZmbCore259_4B0B54.unk00F7 = 1 (picker_init 0x439A3C).
+				// Inherited via struct copy; picker-generated runners are always occupied.
+				snoid->_packIsOccupied = true;
 				snoid->setupIdleHotspots();
 				snoid->setFacingLeft(spawnPos.x > seatPos.x);
 				snoid->setAnimTargetPos(seatPos);

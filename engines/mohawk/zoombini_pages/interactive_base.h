@@ -202,11 +202,29 @@ protected:
 	/**
 	 * Execute the page departure transition.
 	 * Called by base class onAnimFrame() when departure SFX finishes.
-	 * Default: sets _vm->_xferSrcSiPage from _departXferSrcSiPage,
-	 * navigates to kXfer, and closes the page.
-	 * Override for custom departure logic (e.g. save pack state).
+	 * Default: saves snoid runners back to active pack, routes non-occupied
+	 * snoids to the resting pack, sets _vm->_xferSrcSiPage, navigates to
+	 * kXfer, and closes the page.
+	 * Override for custom departure logic (e.g. BC1/BC2 save pack state).
 	 */
 	virtual void executeDeparture();
+
+	/**
+	 * Save all loaded snoid runners back to _zmbPackActive.
+	 * IDA: save_updateZmbPacksOnPuzzleComplete(0, 1) — two-pass write:
+	 *   Pass 1: occupied snoids (on pedestals, passed the puzzle).
+	 *   Pass 2: non-occupied snoids (failed, to be routed to resting pack).
+	 * Also resets movement direction and re-activates hidden snoids.
+	 */
+	void saveSnoidsToPack();
+
+	/**
+	 * Route non-occupied (failed) snoids from _zmbPackActive to their
+	 * resting pack (BC0/BC1/BC2) based on the current route.
+	 * IDA: the second half of save_updateZmbPacksOnPuzzleComplete.
+	 * Container puzzles (Pizza/Slides/Net/Maze) route to BC0/BC1/BC2.
+	 */
+	void routeNonOccupiedToRestingPack();
 
 	// [*] Departure walk-off animation infrastructure
 	// IDA: zmbMoveAnimation_45479D — shared by Bridge, BC1, BC2, Tunnels, Pizza, Net.
