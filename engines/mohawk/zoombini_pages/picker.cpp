@@ -92,6 +92,10 @@ void ZoombiniInteractivePicker::loadFeatures() {
 	_vm->_gfx->preloadImage(kResBitmapShapes4300_ZoombiniPreview); // to shape slot 1
 	_vm->_gfx->preloadImage(kResBitmapShapes4100_BackObjects);     // main shape
 
+	// IDA: picker_init calls setZmbMovementDirection_45621A(0) → word_4B6D4A=0 (idle).
+	// Snoids arriving on the picker settle directly to idle with no turn-around.
+	_vm->setArrivalTurnDirection(0);
+
 	// Load NODE 1000: the path snoids walk when entering the corral.
 	// waypoints[0] = (148, 215) is the IDA-confirmed entry point (wSrcX=148, wSrcY=215).
 	loadNODE(ZmbArchiveKind::kPage, 1000);
@@ -458,6 +462,8 @@ void ZoombiniInteractivePicker::pickerButtons_onButtonAction(ZmbFeature *feature
 			// Track seat-to-snoid mapping for embark animation
 			_seatToSnoid[zmbOnScreen] = snoid;
 		}
+		// IDA: ++ui_bDragLockActive after setZoombiniNextAnimation
+		++_vm->_walkersInProgress;
 
 		// Increment total generated count
 		// IDA: ++pGameState_4A476C->wGeneratedZmbCount
@@ -800,6 +806,10 @@ void ZoombiniInteractivePicker::onGoButtonActivated() {
 	// Only zeroes BC0.wPackZmbCount. Active pack stays intact for xfer and bridge.
 	f._zmbPackIsle._wPackZmbCount = 0;
 
+	// IDA: picker_resetGlobalState calls setZmbMovementDirection_45621A(1) → word_4B6D4A=2.
+	// Snoids arriving at the next page will do a turn-around-left animation.
+	_vm->setArrivalTurnDirection(1);
+
 	_vm->_xferSrcSiPage = ZMB_SI_PICKER_01;
 	setGoButtonsEnabled(false);
 
@@ -959,11 +969,12 @@ void ZoombiniInteractivePicker::randomizeTraitSelection() {
 				snoid->setAnimState(kSnoidAnimDepart, nullptr);
 				if (nextStartFrame > getCurrentFrameCounter()) {
 					snoid->setDelayUntilFrame(nextStartFrame);
-					snoid->deactivateRender();
 				}
 				// Track seat-to-snoid mapping for embark animation
 				_seatToSnoid[zmbOnScreen] = snoid;
 			}
+			// IDA: ++ui_bDragLockActive per snoid in shift+dice loop
+			++_vm->_walkersInProgress;
 
 			++f._zmbGeneratedCount;
 

@@ -61,6 +61,7 @@ private:
 		kPhasePostIntroAmbient, // IDA: wUnk002C[40] — troll ambient anim after intro
 		kPhaseServeReaction,
 		kPhaseDeliveryEval,
+		kPhaseDeliveryResult, // IDA: slot 38 — delivery result SCRBs (8020/9026/10030)
 		kPhaseExitCallback,
 		kPhaseToppingOverlay,
 		kPhaseToppingDelivery,
@@ -215,6 +216,7 @@ private:
 	FeaturePhase _overlayPhase = kPhaseNone;
 	FeaturePhase _questionRunnerPhase = kPhaseNone;
 	FeaturePhase _treePhase = kPhaseNone;
+	FeaturePhase _drawOnRegPhase = kPhaseNone;
 
 	// -----------------------------------------------------------------------
 	// Answer snoid state

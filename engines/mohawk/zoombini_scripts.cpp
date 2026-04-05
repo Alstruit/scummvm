@@ -782,11 +782,11 @@ void ZmbSnoid::setAnimState(SnoidAnimState state, const Common::Point *pos) {
 	if (state > kSnoidAnimArrivalMotion && state != kSnoidAnimPath)
 		state = kSnoidAnimIdle;
 
-	// Reset walk animation cycle when entering any walking state
-	if (state == kSnoidAnimDepart || state == kSnoidAnimWalkRight || state == kSnoidAnimWalkLeft) {
+	// Reset walk animation cycle when entering a walking state
+	if (state == kSnoidAnimDepart) {
 		_walkPhase = 0;
 		// If departing and target is to the right, ensure facing right for first walk frame
-		if (state == kSnoidAnimDepart && pos) {
+		if (pos) {
 			if (pos->x > getPointLoc().x)
 				_isFacingLeft = false;
 			else if (pos->x < getPointLoc().x)
@@ -809,6 +809,25 @@ void ZmbSnoid::setAnimState(SnoidAnimState state, const Common::Point *pos) {
 
 	_animState = state;
 	_flipCounter = 0;
+
+	// IDA: animateZoombini_455E76 flip (state 3) initialisation — compute
+	// shadow shapes from trait-specific categories (425–445 range) and store
+	// in _flipShadowShapes[]. Each tick onSnoidAnimTick swaps the main
+	// hotspot shapes with these shadows for 6 ticks.
+	if (state == kSnoidAnimFlip) {
+		_shapeImageIdx = 1;
+		// Layer order: 0=foot, 1=body, 2=nose, 3=eye, 4=head.
+		// IDA: iLayer 0 → cFoot+435, 2 → cNose+440, 3 → cEye+430, 4 → cHead+425
+		// Layer 1 (body) always copies from main.
+		ZmbHotspotGroup *hsGroup = getHotspotGroup(0);
+		if (hsGroup && hsGroup->getHotspotCount() >= 5) {
+			_flipShadowShapes[0] = static_cast<int16>(_trait._foot + 435);
+			_flipShadowShapes[1] = hsGroup->getHotspot(1)._shapeIdx; // body: copy from main
+			_flipShadowShapes[2] = static_cast<int16>(_trait._nose + 440);
+			_flipShadowShapes[3] = static_cast<int16>(_trait._eye + 430);
+			_flipShadowShapes[4] = static_cast<int16>(_trait._head + 425);
+		}
+	}
 
 	if (pos)
 		setPointLoc(*pos);
@@ -891,6 +910,14 @@ static void calcPathSpeed(int16 dx, int16 dy, int16 &speedX, int16 &speedY) {
 		int16 sgnY = (speedY > 0) ? 1 : -1;
 		speedY = sgnY * ABS(speedY);
 	}
+}
+
+void ZmbSnoid::initWalkToTarget(const Common::Point &target) {
+	// IDA: animateZoombini(0, 7, core) — sets DEPARTING state which will
+	// initialise waypoint routing (or straight-line walk if no NODE data)
+	// and compute dynamic speed in the kSnoidAnimDepart tick handler.
+	_animTargetPos = target;
+	setAnimState(kSnoidAnimDepart);
 }
 
 static int computeWalkDirBucket(int16 dx, int16 dy);
@@ -977,75 +1004,85 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 		}
 		break;
 
-	case kSnoidAnimWalkRight:
-	case kSnoidAnimWalkLeft: {
-		// IDA cases 1/2: update leg-phase flag and position.
-		// Mirrors the *(a2+289)/(a2+290) logic in IDA.
+	case kSnoidAnimTurnRight:
+	case kSnoidAnimTurnLeft: {
+		// IDA cases 1/2 (0x453043–0x4530D8): post-arrival turn-around animation.
+		// Cycles _shapeImageIdx and _isFacingLeft before settling to idle.
+		// State 1 enters facing right, flips to left, then idles.
+		// State 2 enters facing left, flips to right, then idles.
+		// Falls through to idle tick (fidget check) in the same tick.
+		_idleTickCounter = 0;
 		needsRedraw = true;
-		Common::Point pos = getPointLoc();
-		int16 dx = _animTargetPos.x - pos.x;
-		int16 dy = pos.y - _animTargetPos.y; // curY - targetY, positive = target is up
 
-		// Update facing direction based on horizontal movement
-		if (dx != 0)
-			_isFacingLeft = (dx < 0);
-
-		// Advance position by speed, clamping to remaining distance
-		if (dx != 0) {
-			int16 step = MIN<int16>(ABS(dx), ABS(_animSpeedX));
-			pos.x += (dx > 0) ? step : -step;
+		if (_animState == kSnoidAnimTurnRight) {
+			// State 1: settling condition = facing left
+			if (_isFacingLeft) {
+				_shapeImageIdx = 1;
+				_animState = kSnoidAnimIdle;
+			} else {
+				if (_shapeImageIdx == 2) {
+					_shapeImageIdx = 1;
+				} else {
+					_shapeImageIdx = 0;
+					_isFacingLeft = true;
+				}
+			}
+		} else {
+			// State 2: settling condition = facing right
+			if (_isFacingLeft) {
+				if (_shapeImageIdx == 2) {
+					_shapeImageIdx = 1;
+				} else {
+					_shapeImageIdx = 0;
+					_isFacingLeft = false;
+				}
+			} else {
+				_shapeImageIdx = 1;
+				_animState = kSnoidAnimIdle;
+			}
 		}
-		// IDA y: if dy>0 (need to go up), curY -= speedY; if dy<0, curY += speedY
-		if (dy != 0) {
-			int16 step = MIN<int16>(ABS(dy), ABS(_animSpeedY));
-			pos.y += (dy > 0) ? -step : step;
-		}
-		setPointLoc(pos);
 
-		// Update walk direction bucket when movement direction changes.
-		// IDA snoidPath_stepAndComputeVelocity_4548DF: wGroupFrameIdx0098 is NOT reset on direction change;
-		// readScrbHotspotWithFrameIdx seeks the new SCRS to the same frame position.
-		int newDirBucket = computeWalkDirBucket(dx, dy);
-		if (newDirBucket != _walkDirBucket) {
-			_walkDirBucket = newDirBucket;
-			updateWalkHotspots(page, _walkDirBucket, _walkPhase);
-		}
-
-		// Advance walk animation phase once per interval fire.
-		// IDA: wGroupFrameIdx0098 advances each time snoidScript_renderFrame_4562B2 is
-		// called, which happens every callback fire (dFrameInterval=6 × ~20ms ≈ 120ms).
-		++_walkPhase;
-		updateWalkHotspots(page, _walkDirBucket, _walkPhase);
-
-		// Check if arrived at destination
-		// IDA: wBool_0x122=0 (facing RIGHT) is set on arrival, matching kSnoidAnimArrive behaviour.
-		if (pos == _animTargetPos) {
-			_isFacingLeft = false;
-			setAnimState(kSnoidAnimIdle);
+		// IDA: falls through to LABEL_80 (idle tick) — run fidget check in same tick.
+		if (_animState == kSnoidAnimIdle) {
+			if (_needsIdleRedraw) {
+				_needsIdleRedraw = false;
+			}
 		}
 		break;
 	}
 
-	case kSnoidAnimFlip:
-		// IDA case 3: swap the 5 shape-layer slots with the +60-byte shadow slots each tick.
-		// After 6 swaps → call animateZoombini(0,0,...) → idle.
-		needsRedraw = true;
+	case kSnoidAnimFlip: {
+		// IDA case 3 (0x4531F8): swap the 5 shape-layer slots with the shadow
+		// slots each tick. After 6 swaps → idle. Does NOT fall through to redraw.
 		if (_flipCounter >= 6) {
-			_flipCounter = 0;
 			setAnimState(kSnoidAnimIdle);
+			_idleTickCounter = 0;
 		} else {
+			// Swap main hotspot shapes with shadow shapes
+			ZmbHotspotGroup *hsGroup = getHotspotGroup(0);
+			if (hsGroup && hsGroup->getHotspotCount() >= 5) {
+				for (int i = 0; i < 5; i++) {
+					int16 tmp = hsGroup->getHotspot(i)._shapeIdx;
+					hsGroup->getHotspot(i)._shapeIdx = _flipShadowShapes[i];
+					_flipShadowShapes[i] = tmp;
+				}
+			}
 			_flipCounter++;
 		}
+		needsRedraw = true;
 		break;
+	}
 
 	case kSnoidAnimArrive: {
-		// IDA case 4: teleport snoid to target, set frame interval to 6, then go idle.
+		// IDA case 4 (0x45317E): teleport snoid to target, then enter arrivalTurnState.
 		// The original does NOT animate a walk; it just copies pos2→pos1 immediately.
 		needsRedraw = true;
 		Common::Point pos = getPointLoc();
 		if (pos == _animTargetPos) {
 			_idleTickCounter = 0;
-			setAnimState(kSnoidAnimIdle);
+			// IDA: animateZoombini(0, word_4B6D4A, pZmb) — enter the global
+			// post-arrival turn-around state (0=idle, 1=turnRight, 2=turnLeft).
+			setAnimState(static_cast<SnoidAnimState>(_vm->_arrivalTurnState));
 		} else {
 			// IDA: *(a2+289)=1 (step-phase reset), *(a2+290)=0 (wBool_0x122=0 → facing RIGHT)
 			// then copy target coordinates to current position (teleport)
@@ -1343,11 +1380,15 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 						_isFacingLeft = (newDx < 0);
 				}
 			} else {
-				// Reached the final destination — go idle, face right.
+				// Reached the final destination — enter arrivalTurnState, face right.
 				// IDA: wBool_0x122=0 on arrival (same as kSnoidAnimArrive teleport path).
+				// IDA: animateZoombini(0, word_4B6D4A, pZmb) — enter global turn-around state.
 				_isFacingLeft = false;
 				_idleTickCounter = 0;
-				setAnimState(kSnoidAnimIdle);
+				setAnimState(static_cast<SnoidAnimState>(_vm->_arrivalTurnState));
+				// IDA: if (ui_bDragLockActive > 0) --ui_bDragLockActive;
+				if (_vm->_walkersInProgress > 0)
+					--_vm->_walkersInProgress;
 			}
 		} else {
 			// Speed (_animSpeedX/_animSpeedY) and direction (_walkDirBucket) are fixed for
@@ -1408,10 +1449,11 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 		break;
 
 	case kSnoidAnimArrivalMotion:
-		// IDA case 10: calls animateZoombini_455E76(0, 7, ...) → kSnoidAnimDepart,
+		// IDA case 10 (0x453255): calls animateZoombini_455E76(0, 7, ...) → kSnoidAnimDepart,
 		// increments the global "walkers in progress" counter, then returns.
 		// No redraw is set; the depart state picks up on the next tick.
 		setAnimState(kSnoidAnimDepart);
+		++_vm->_walkersInProgress;
 		break;
 
 	default:

@@ -294,6 +294,8 @@ void ZoombiniInteractive::startDepartWalkAnimation(const Common::Point &target, 
 	// IDA: only sets dNextRenderFrame for timing — does NOT touch wBoolDoRender.
 	// Snoids remain visible at their current positions until their stagger
 	// delay expires and the walk animation begins.
+	// IDA: resets ui_bDragLockActive = 0 at the start.
+	_vm->_walkersInProgress = 0;
 	uint32 frameBase = getCurrentFrameCounter();
 	uint16 walkerIdx = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {

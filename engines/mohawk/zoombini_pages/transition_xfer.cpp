@@ -660,6 +660,9 @@ void ZoombiniTransitionXfer::loadFeatures() {
 	// Snoid feature flags: SNOID | OVERLAY (one-shot walk, not a looping feature).
 	const uint32 snoidFlags = ZmbFeature::FLAG_00000001_TYPE_SNOID | ZmbFeature::FLAG_04000000_OVERLAY;
 
+	// IDA: zmbMoveAnimation_45479D resets ui_bDragLockActive = 0 at the start.
+	_vm->_walkersInProgress = 0;
+
 	uint16 walkerIdx = 0;
 	for (int16 i = 0; i < 16; i++) {
 		ZmbStateActiveEntry &entry = pack._entries[i];
@@ -703,13 +706,13 @@ void ZoombiniTransitionXfer::loadFeatures() {
 
 		if (isMidRoute) {
 			// XFER_1-4: IDA zmbMoveAnimation_45479D(90, 445, 670) — stagger walk off right edge.
+			// IDA: does NOT set wBoolDoRender=0 — only sets dNextRenderFrame for timing.
+			// Snoids remain visible at current positions until stagger delay fires.
 			const Common::Point targetPos(670, startPos.y);
 			snoid->setAnimTargetPos(targetPos);
 			snoid->setAnimState(kSnoidAnimArrivalMotion, nullptr);
 
 			if (walkerIdx > 0) {
-				// Defer rendering until the snoid's scheduled frame (stagger effect).
-				snoid->deactivateRender();
 				snoid->setDelayUntilFrame(getCurrentFrameCounter() + walkerIdx * 90);
 			}
 			walkerIdx++;

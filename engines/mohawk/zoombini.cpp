@@ -156,6 +156,17 @@ void MohawkEngine_Zoombini::resetFidgetActivity() {
 		_fidgetThreshold = 64;
 }
 
+void MohawkEngine_Zoombini::setArrivalTurnDirection(int dir) {
+	// IDA: setZmbMovementDirection_45621A — maps movement direction to
+	// post-arrival turn-around state: -1→1 (TurnRight), 0→0 (Idle), 1→2 (TurnLeft).
+	if (dir == -1)
+		_arrivalTurnState = 1; // kSnoidAnimTurnRight
+	else if (dir == 1)
+		_arrivalTurnState = 2; // kSnoidAnimTurnLeft
+	else
+		_arrivalTurnState = 0; // kSnoidAnimIdle
+}
+
 void MohawkEngine_Zoombini::processEvents(ZoombiniPage *page) {
 	Common::Event event;
 

@@ -1145,7 +1145,7 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampOne::onLButtonDown(const Common:
 	// Don't drag snoids that are playing scripts or walking
 	SnoidAnimState state = snoid->getAnimState();
 	if (state == kSnoidAnimScriptReject || state == kSnoidAnimScriptNormal ||
-		state == kSnoidAnimWalkRight || state == kSnoidAnimWalkLeft ||
+		state == kSnoidAnimTurnRight || state == kSnoidAnimTurnLeft ||
 		state == kSnoidAnimDepart || state == kSnoidAnimPath ||
 		state == kSnoidAnimArrivalMotion)
 		return ZmbEventHandleResult::kPassthrough;

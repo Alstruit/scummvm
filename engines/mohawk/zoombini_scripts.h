@@ -973,8 +973,8 @@ Frame[] {
  */
 enum SnoidAnimState : uint8 {
 	kSnoidAnimIdle = 0,           ///< Idle: periodically rolls fidget chance (10%)
-	kSnoidAnimWalkRight = 1,      ///< Walking right: interpolates position toward target
-	kSnoidAnimWalkLeft = 2,       ///< Walking left: interpolates position toward target
+	kSnoidAnimTurnRight = 1,      ///< Turn-around right: post-arrival facing flip (right→left), then idle
+	kSnoidAnimTurnLeft = 2,       ///< Turn-around left: post-arrival facing flip (left→right), then idle
 	kSnoidAnimFlip = 3,           ///< Flipping: swaps shape layers for 6 frames
 	kSnoidAnimArrive = 4,         ///< Arriving: moves to target, then transitions to idle
 	kSnoidAnimDrag = 5,           ///< Being dragged by cursor
@@ -1149,6 +1149,18 @@ public:
 	int16 getAnimSpeedY() const { return _animSpeedY; }
 	void setAnimSpeed(int16 speedX, int16 speedY) { _animSpeedX = speedX; _animSpeedY = speedY; }
 
+	/**
+	 * Set up a straight-line walk to the given target position.
+	 * Sets _animTargetPos and enters kSnoidAnimDepart state, which will
+	 * initialise waypoint routing (or walk straight if no NODE data)
+	 * with dynamic speed from snoidPath_stepAndComputeVelocity_4548DF.
+	 *
+	 * IDA equivalent: animateZoombini(0, 7, core) sets DEPARTING.
+	 *
+	 * @param target The destination position to walk toward.
+	 */
+	void initWalkToTarget(const Common::Point &target);
+
 	/** Set a deferred-start frame (IDA: CFeatureRunner::dNextRenderFrame). See _delayUntilFrame. */
 	void setDelayUntilFrame(uint32 frame) { _delayUntilFrame = frame; }
 
@@ -1211,6 +1223,12 @@ private:
 	bool _needsIdleRedraw = false;
 	/** Counter for flip animation (0..6, swaps layers each tick). */
 	uint16 _flipCounter = 0;
+	/**
+	 * Shadow shape IDs for flip animation (IDA: hsArr[10..14]).
+	 * Computed from trait-specific shape categories (425+head, 430+eye, 435+foot, 440+nose)
+	 * on flip entry, then swapped with main hotspot shapes each tick for 6 ticks.
+	 */
+	int16 _flipShadowShapes[5] = {0, 0, 0, 0, 0};
 	/** Random fidget variant value (0–6, maps to wAnimBaseFlag00F5; selects SCRS 130–136 or 138–144). */
 	uint16 _fidgetValue = 0;
 	/**

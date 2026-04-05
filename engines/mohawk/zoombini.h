@@ -162,6 +162,31 @@ public:
 	uint16 _fidgetSoundPreloadCounter = 0;
 
 	/**
+	 * IDA: word_4B6D4A. Global post-arrival turn-around state.
+	 * Set by setArrivalTurnDirection() which maps movement direction
+	 * (-1/0/1) to SnoidAnimState (1/0/2). On arrival (state 4) and path
+	 * completion (state 112), snoids enter this state instead of idle.
+	 * Values kSnoidAnimTurnRight(1)/kSnoidAnimTurnLeft(2) trigger a brief
+	 * facing-direction flip before settling to idle.
+	 */
+	uint8 _arrivalTurnState = 0; // SnoidAnimState, default kSnoidAnimIdle
+
+	/**
+	 * IDA: ui_bDragLockActive. Global counter of snoids currently walking in.
+	 * Incremented when kSnoidAnimArrivalMotion (state 10) fires, decremented
+	 * when a snoid completes its path (state 112 arrival). Used by the picker
+	 * to prevent concurrent drag during walk-in animations.
+	 */
+	int16 _walkersInProgress = 0;
+
+	/**
+	 * IDA: setZmbMovementDirection_45621A. Sets _arrivalTurnState from a
+	 * movement direction value: -1 → kSnoidAnimTurnRight(1),
+	 * 0 → kSnoidAnimIdle(0), 1 → kSnoidAnimTurnLeft(2).
+	 */
+	void setArrivalTurnDirection(int dir);
+
+	/**
 	 * IDA: currentFrameCounter_46084A. Called on user activity (input events,
 	 * puzzle init, dialog close, etc.) to reset the fidget threshold to its
 	 * default (64) and restart the idle timer.
