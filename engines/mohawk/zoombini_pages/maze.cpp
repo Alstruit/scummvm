@@ -474,4 +474,71 @@ void ZoombiniInteractiveMaze::createCreatureFeatures() {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Animation event dispatch
+// ---------------------------------------------------------------------------
+
+void ZoombiniInteractiveMaze::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+	// IDA: Multiple callbacks share the maze event system:
+	//   maze_obstacleAnimCallback (0x4222FA) — obstacle/room animations (shared with Hotel)
+	//   maze_scriptEventHandler (0x425D55) — grid SCRB events 3-5 (shared with Lilly)
+	//   maze_runnerExitCallback (0x425CCA) — runner exit events 1-3
+	// Only standard snoid events are implemented here; grid events require full
+	// grid state machine which is not yet implemented.
+
+	switch (eventCode) {
+	case kZmbAnimEventM1_End:
+		// End-of-animation.
+		// IDA (maze_obstacleAnimCallback): find runner, calculate target position
+		//      based on difficulty and room slot, play SCRS 14000+offset.
+		// TODO: Implement maze completion/reject animation
+		warning("Maze: event -1 (anim end) not fully implemented");
+		break;
+
+	case 0:
+		// Toggle render visibility.
+		// IDA: *(timerData+290) = *(timerData+290)==0;
+		if (feature->isRenderActivated())
+			feature->deactivateRender();
+		else
+			feature->activateRender();
+		// Apply pending body arrangement (only for snoid features).
+		// IDA: if (word_4AB7C6) { zmb_setBodyLayerShapes(word_4AB7C6-1, ...); word_4AB7C6=0; }
+		if (_pendingBodyArrangement && feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+			static_cast<ZmbSnoid *>(feature)->setBodyArrangement(_pendingBodyArrangement - 1);
+			_pendingBodyArrangement = 0;
+		}
+		break;
+
+	case 1: case 2: case 3: case 4: case 5:
+		// Grid runner events from maze_scriptEventHandler / maze_runnerExitCallback.
+		// These drive the grid state machine for runner arrivals, exits, and cell swaps.
+		// TODO: Implement maze grid state machine
+		warning("Maze: event %d (grid runner) not yet implemented", eventCode);
+		break;
+
+	case 15:
+		// Link overlay runner, set obstacle flags.
+		// IDA (maze_obstacleAnimCallback): link headerOverlayRunner before word_4AB7BE,
+		//      set flags, store scroll data.
+		// TODO: Implement obstacle overlay linking
+		warning("Maze: event 15 (obstacle overlay) not yet implemented");
+		break;
+
+	default:
+		if (eventCode >= kZmbAnimEvent240_BodyArrangePendFirst &&
+		    eventCode <= kZmbAnimEvent243_BodyArrangePendLast) {
+			// IDA: word_4AB7C6 = timerIdx - 239
+			_pendingBodyArrangement = eventCode - 239;
+		} else if (eventCode >= kZmbAnimEvent250_BodyArrangeDirectFirst &&
+		           eventCode <= kZmbAnimEvent253_BodyArrangeDirectLast) {
+			// IDA: zmb_setBodyLayerShapes(timerIdx - 250, timerData + 48)
+			if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+				static_cast<ZmbSnoid *>(feature)->setBodyArrangement(eventCode - 250);
+			}
+		}
+		break;
+	}
+}
+
 } // End of namespace Mohawk

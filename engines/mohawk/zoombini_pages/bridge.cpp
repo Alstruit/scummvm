@@ -353,6 +353,10 @@ void ZoombiniInteractiveBridge::loadZoombinisFromPack() {
 	}
 }
 
+void ZoombiniInteractiveBridge::debugPrepareForDeparture() {
+	_anyZmbCrossed = 1;
+}
+
 void ZoombiniInteractiveBridge::onGoButtonActivated() {	// IDA: bridge_funcOnClick_4157EB case 2
 	// Play departing SFX and start walk-off animation, then fade out when SFX finishes.
 	if (_anyZmbCrossed) {
@@ -788,7 +792,7 @@ void ZoombiniInteractiveBridge::bridgeVisuals_postRender(ZmbFeature *feature) {
 // Delegates to ZoombiniPage::loadScrbOntoFeature (IDA: scrb_loadOnRunner 0x460384).
 // ---------------------------------------------------------------------------
 void ZoombiniInteractiveBridge::reloadScrbAnimation(uint16 featureId, uint16 newScrbId) {
-	ZmbFeature *feature = _scrbFeatureMap.find(featureId);
+	ZmbFeature *feature = _scrbFeatures.find(featureId);
 	if (!feature)
 		return;
 	loadScrbOntoFeature(feature, newScrbId);
@@ -874,7 +878,7 @@ void ZoombiniInteractiveBridge::onEveryFrame() {
 		_trollAnimPending = 0;
 
 		// Hide the lane-2 troll feature (it's offscreen during entrance)
-		ZmbFeature *lane2 = _scrbFeatureMap.find(_scrbTrollLane2Idx);
+		ZmbFeature *lane2 = _scrbFeatures.find(_scrbTrollLane2Idx);
 		if (lane2) {
 			lane2->deactivateRender();
 			lane2->deactivateAnimate();
@@ -957,7 +961,7 @@ void ZoombiniInteractiveBridge::onEveryFrame() {
 	// IDA: word_4AAE7A branch
 	// -----------------------------------------------------------------------
 	if (_pendingLaneEvent) {
-		ZmbFeature *lane = _scrbFeatureMap.find(_pendingLaneEvent);
+		ZmbFeature *lane = _scrbFeatures.find(_pendingLaneEvent);
 		if (lane && _currentMatchResult) {
 			// Load the appropriate troll animation SCRB on the lane feature
 			uint16 trollLaneScrb;
@@ -1153,7 +1157,7 @@ void ZoombiniInteractiveBridge::processLaneStepEvent(ZmbFeature *snoidFeature, i
 		_newArrivalReady = 1;
 		break;
 
-	case -1: {
+	case kZmbAnimEventM1_End: {
 		// End of SCRS playback: reposition rejected Zoombini.
 		_newArrivalReady = 0;
 		if (_isRejectPlaying)
@@ -1196,7 +1200,7 @@ void ZoombiniInteractiveBridge::processEntranceEvent(int16 eventId, ZmbFeature *
 		// 100: load SCRB 1236 (water splash), 101: load SCRB 1103 (normal water)
 		uint16 waterScrbId = (eventId == 100) ? 1236 : 1103;
 		reloadScrbAnimation(_scrbWaterIdx, waterScrbId);
-	} else if (eventId == -1) {
+	} else if (eventId == kZmbAnimEventM1_End) {
 		// End of entrance animation. Maybe play a voice-over.
 		int16 totalCrossed = _lane1Count + _lane2Count;
 		if (totalCrossed < _totalZmbCount) {

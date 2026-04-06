@@ -44,6 +44,11 @@ const Common::Point ZoombiniInteractiveTunnels::kTunnelEntryPositions[4] = {
 // IDA: door index mapping at 0x4A7684 — selects which of the 12 door SCRBs to use as entrance doors
 const int16 ZoombiniInteractiveTunnels::kDoorIndices[4] = { 1, 2, 0, 3 };
 
+// IDA: SCRS replay positions at unk_4A76AA — 4 gate entrance positions for event 10 replay
+const Common::Point ZoombiniInteractiveTunnels::kScrsReplayPositions[4] = {
+	Common::Point(145, 455), Common::Point(210, 434), Common::Point(430, 434), Common::Point(476, 455),
+};
+
 ZoombiniInteractiveTunnels::ZoombiniInteractiveTunnels(MohawkEngine_Zoombini *vm) : ZoombiniInteractive(vm, ZoombiniPageType::kTunnels) {
 }
 
@@ -359,6 +364,8 @@ void ZoombiniInteractiveTunnels::initPuzzleState() {
 	_pendingSoundRunner = 0;
 	_pendingSoundScrbId = 0;
 	_pendingSoundHasCallback = false;
+	_pendingBodyArrangement = 0;
+	_activeScrsResId = 0;
 
 	for (int i = 0; i < 5; i++) {
 		_animQueue[i] = AnimQueueEntry();
@@ -1230,6 +1237,27 @@ void ZoombiniInteractiveTunnels::popAnimQueueEntry() {
 }
 
 // ---------------------------------------------------------------------------
+// clearGateRenderFlag: Clear overlay render flag on gate door features.
+// IDA: tunnels_clearGateRenderFlag @ 0x45DD11
+//
+// For gate type 1: clears 0x4000000 (OVERLAY) on door with queue status 2.
+// For gate type 4: clears 0x4000000 (OVERLAY) on door with queue status 3.
+// In ScummVM, we clear the OVERLAY flag on the relevant door animation features
+// to allow proper Z-ordering during SCRS replay animations.
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::clearGateRenderFlag() {
+	if (_activeGateType == 1 || _activeGateType == 4) {
+		// Clear overlay flag on gate door features that are active
+		for (int i = 0; i < 4; i++) {
+			if (_doorAnimFeatures[i] && _doorAnimFeatures[i]->isRenderActivated()) {
+				_doorAnimFeatures[i]->removeFlag(ZmbFeature::FLAG_04000000_OVERLAY);
+				break;
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // advanceAnimStep: Advance the animation sequence step.
 // IDA: tunnels_advanceAnimStep @ 0x45BF8D
 // ---------------------------------------------------------------------------
@@ -1285,8 +1313,8 @@ void ZoombiniInteractiveTunnels::reloadScrbAnimation(ZmbFeature *feature, uint16
 // ---------------------------------------------------------------------------
 void ZoombiniInteractiveTunnels::processGateAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	// Gate animation event handling
-	// -1 = animation complete, should advance sequence
-	if (eventCode == -1) {
+	// kZmbAnimEventM1_End = animation complete, should advance sequence
+	if (eventCode == kZmbAnimEventM1_End) {
 		_animLocked = false;
 		advanceAnimStep();
 	}
@@ -1300,7 +1328,7 @@ void ZoombiniInteractiveTunnels::processSnoidAnimEvent(ZmbSnoid *snoid, int16 ev
 	if (!snoid)
 		return;
 
-	if (eventCode == -1) {
+	if (eventCode == kZmbAnimEventM1_End) {
 		// Animation complete
 		if (_isSuccessAnim) {
 			// Success: Zoombini entered gate
@@ -1348,14 +1376,68 @@ void ZoombiniInteractiveTunnels::processSnoidAnimEvent(ZmbSnoid *snoid, int16 ev
 		_animLocked = false;
 		_activeAnimSnoid = 0;
 		popAnimQueueEntry();
+	} else if (eventCode == 0) {
+		// Toggle render visibility + apply pending body arrangement.
+		// IDA: *(a4+290) = *(a4+290) == 0; if word_4B7A38[0]: zmb_setBodyLayerShapes(word_4B7A38[0]-1); clear.
+		if (snoid->isRenderActivated())
+			snoid->deactivateRender();
+		else
+			snoid->activateRender();
+
+		if (_pendingBodyArrangement != 0) {
+			snoid->setBodyArrangement(_pendingBodyArrangement - 1);
+			_pendingBodyArrangement = 0;
+		}
 	} else if (eventCode == 10) {
-		// Play snoid script - used for intermediate animations
+		// Replay SCRS animation with gate entrance position as anchor.
+		// IDA: variant = (word_4B7A52 - 8000) / 2 % 4; clearGateRenderFlag();
+		//      snoidScript_initAndPlay(0, &unk_4A76AA[2*variant], word_4B7A52, core);
+		if (_activeScrsResId > 0) {
+			int variantIdx = ((_activeScrsResId - 8000) / 2) & 3;
+
+			clearGateRenderFlag();
+
+			// Set snoid position to gate entrance before replaying SCRS
+			snoid->setPointLoc(kScrsReplayPositions[variantIdx]);
+
+			Common::SeekableReadStream *scrsStream =
+				_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+								 ZmbResource(ZmbArchiveKind::kPage, _activeScrsResId));
+			if (scrsStream) {
+				snoid->startScrsPlayback(scrsStream, _isSuccessAnim, !_isSuccessAnim);
+				debug(3, "Tunnels: Event 10 - Replayed SCRS %d at gate variant %d", _activeScrsResId, variantIdx);
+			}
+		}
 	} else if (eventCode == 13) {
-		// Exit sequence trigger
-	} else if (eventCode >= 240 && eventCode <= 243) {
-		// Special body layer shape toggle (IDA: word_4B7A38[0] = a3 - 239)
-	} else if (eventCode >= 250 && eventCode <= 253) {
-		// Body layer shape direct set (IDA: zmb_setBodyLayerShapes(a3 - 250, core))
+		// Exit sequence: load door SCRB runner, copy Z-sort, unlock interaction, stop sound.
+		// IDA: scrb_initRunnerWithScript(1, tunnels_updateRunnerPosition, word_4B7A56, word_4B7A54);
+		//      runner_preRenderStandard; *(v9+222)=*(a4+222); setInteractionLock(0); stopSound.
+		if (_animQueueCount > 0) {
+			AnimQueueEntry &entry = _animQueue[0];
+			int16 gateIdx = entry.gateIdx;
+
+			// Load door SCRB onto the gate door feature
+			if (entry.doorScrbId > 0 && gateIdx >= 0 && gateIdx < 4 && _doorAnimFeatures[gateIdx]) {
+				reloadScrbAnimation(_doorAnimFeatures[gateIdx], entry.doorScrbId);
+
+				// Copy Z-sort rect from snoid to door feature
+				_doorAnimFeatures[gateIdx]->setSortRect(snoid->getSortRect());
+			}
+
+			// Unlock interaction so player can pick up next Zoombini
+			_animLocked = false;
+
+			// Stop active sound if playing
+			_vm->_sound->stopSound();
+		}
+	} else if (eventCode >= kZmbAnimEvent240_BodyArrangePendFirst && eventCode <= kZmbAnimEvent243_BodyArrangePendLast) {
+		// Set pending body arrangement (applied on next event 0).
+		// IDA: word_4B7A38[0] = a3 - 239 (range 1-4)
+		_pendingBodyArrangement = eventCode - (kZmbAnimEvent240_BodyArrangePendFirst - 1);
+	} else if (eventCode >= kZmbAnimEvent250_BodyArrangeDirectFirst && eventCode <= kZmbAnimEvent253_BodyArrangeDirectLast) {
+		// Direct body arrangement change.
+		// IDA: zmb_setBodyLayerShapes(a3 - 250, core)
+		snoid->setBodyArrangement(eventCode - kZmbAnimEvent250_BodyArrangeDirectFirst);
 	}
 }
 
@@ -1429,6 +1511,7 @@ void ZoombiniInteractiveTunnels::onEveryFrame() {
 			_isSuccessAnim = (entry.isCorrect != 0);
 			_animStepCounter = 0;
 			_animLocked = true;
+			_activeScrsResId = entry.scrsResId;
 
 			// Start SCRS playback on the snoid
 			Common::SeekableReadStream *scrsStream =
@@ -1516,6 +1599,12 @@ void ZoombiniInteractiveTunnels::onEveryFrame() {
 // onLButtonDown: Handle mouse button press.
 // ---------------------------------------------------------------------------
 ZmbEventHandleResult ZoombiniInteractiveTunnels::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+	// Sticky mouse: second click ends drag
+	if (isDragging() && _vm->_state->getEnableStickyMouse()) {
+		endDrag(absPos);
+		return ZmbEventHandleResult::kConsumed;
+	}
+
 	// First check base class handling (buttons, etc.)
 	ZmbEventHandleResult result = ZoombiniInteractive::onLButtonDown(absPos, relPos);
 	if (result == ZmbEventHandleResult::kConsumed) {
@@ -1533,45 +1622,50 @@ ZmbEventHandleResult ZoombiniInteractiveTunnels::onLButtonDown(const Common::Poi
 }
 
 // ---------------------------------------------------------------------------
+// endDrag: Process drop after drag.
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTunnels::endDrag(const Common::Point &dropPos) {
+	ZmbSnoid *snoid = finishSnoidDrag();
+	if (!snoid)
+		return;
+
+	int16 zone = getDropZone(dropPos);
+
+	if (zone > 0) {
+		// For level 0, only zones 1 and 2 are valid
+		if (_difficultyLevel == 0 && zone > 2)
+			zone = 0;
+
+		if (zone > 0) {
+			bool isCorrect = evaluateRule(snoid, zone);
+
+			// Level 0 bias: first-try success on appropriate gate
+			if (_difficultyLevel == 0 && _enteredCount == 0)
+				isCorrect = true;
+
+			handleZoombiniPlacement(snoid, zone, isCorrect);
+			return;
+		}
+	}
+
+	// Dropped outside valid zones - return to original position
+	snoid->setPointLoc(_dragOrigPos);
+	snoid->setAnimState(kSnoidAnimIdle);
+}
+
+// ---------------------------------------------------------------------------
 // onLButtonUp: Handle mouse button release.
 // ---------------------------------------------------------------------------
 ZmbEventHandleResult ZoombiniInteractiveTunnels::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
-	// Check if we were dragging a Zoombini
-	if (isDragging()) {
-		ZmbSnoid *snoid = finishSnoidDrag();
-		if (snoid) {
-			// Check which drop zone we're in
-			int16 zone = getDropZone(absPos);
+	if (!isDragging())
+		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
 
-			if (zone > 0) {
-				// For level 0, only zones 1 and 2 are valid
-				if (_difficultyLevel == 0 && zone > 2) {
-					zone = 0; // Invalid zone for level 0
-				}
-
-				if (zone > 0) {
-					// Evaluate the rule
-					bool isCorrect = evaluateRule(snoid, zone);
-
-					// Level 0 bias: first-try success on appropriate gate
-					if (_difficultyLevel == 0 && _enteredCount == 0) {
-						// Force success on first attempt
-						isCorrect = true;
-					}
-
-					handleZoombiniPlacement(snoid, zone, isCorrect);
-					return ZmbEventHandleResult::kConsumed;
-				}
-			}
-
-			// Dropped outside valid zones - return to original position
-			snoid->setPointLoc(_dragOrigPos);
-			snoid->setAnimState(kSnoidAnimIdle);
-		}
+	// Sticky mouse: button-up does NOT end drag (click again to drop)
+	if (_vm->_state->getEnableStickyMouse())
 		return ZmbEventHandleResult::kConsumed;
-	}
 
-	return ZoombiniInteractive::onLButtonUp(absPos, relPos);
+	endDrag(absPos);
+	return ZmbEventHandleResult::kConsumed;
 }
 
 } // End of namespace Mohawk

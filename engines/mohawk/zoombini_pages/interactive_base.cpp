@@ -278,12 +278,46 @@ void ZoombiniInteractive::onSecondGoButtonActivated() {
 	_pendingGoDepart = true;
 }
 
+void ZoombiniInteractive::debugFinishPuzzle() {
+	debugPrepareForDeparture();
+	onGoButtonActivated();
+}
+
 void ZoombiniInteractive::executeDeparture() {
 	// IDA: puzzleDispatch_sharedCleanup → save_updateZmbPacksOnPuzzleComplete(0, 1)
 	// Write snoid runners back to active pack and route non-occupied to resting packs.
 	// BC1/BC2 override this with their own save+snapshot logic.
 	saveSnoidsToPack();
 	routeNonOccupiedToRestingPack();
+
+	// IDA: execActivePuzzle_435BE8 — route completion flag setting.
+	// When a container puzzle departs, record the route's completion level
+	// in the per-route completion flags. Uses adjusted routeLevel when
+	// the level was just advanced by routeNonOccupiedToRestingPack().
+	if (!_vm->_state->inPracticeMode()) {
+		ZmbStateFile &f = _vm->_state->_f;
+		int16 routeLevel = _vm->_state->readActivePageRouteLevel();
+		if (_vm->_state->_routeLevelJustAdvanced && routeLevel > 0)
+			routeLevel--;
+		uint8 bitmask = static_cast<uint8>(1 << (routeLevel & 3));
+
+		switch (f._currentPage) {
+		case ZMB_DI_PIZZA_09:
+			f._levelFlagRouteBigBadHungry |= bitmask;
+			break;
+		case ZMB_DI_SLIDES_12:
+			f._levelFlagLoWhosBayouHiDeepDarkForest |= (bitmask & 0x0F);
+			break;
+		case ZMB_DI_NET_15:
+			f._levelFlagLoWhosBayouHiDeepDarkForest |= static_cast<uint8>(bitmask << 4);
+			break;
+		case ZMB_DI_MAZE_18:
+			f._levelFlagRouteMontDespair |= bitmask;
+			break;
+		default:
+			break;
+		}
+	}
 
 	if (_departXferSrcSiPage != ZMB_SI_MINUS1) {
 		_vm->_xferSrcSiPage = _departXferSrcSiPage;
@@ -353,24 +387,28 @@ void ZoombiniInteractive::saveSnoidsToPack() {
 }
 
 void ZoombiniInteractive::routeNonOccupiedToRestingPack() {
-	// IDA: second half of save_updateZmbPacksOnPuzzleComplete.
-	// For container puzzles (Pizza/Slides/Net/Maze), route non-occupied
-	// (failed) snoids to the resting pack (BC0/BC1/BC2) based on route.
+	// IDA: second half of save_updateZmbPacksOnPuzzleComplete (0x45536B).
+	// Handles per-puzzle level flags, non-occupied snoid routing,
+	// perfect streak tracking, and route level advancement.
 	ZmbStateFile &f = _vm->_state->_f;
 	ZMB_DI_PAGE currentPage = f._currentPage;
 
-	// IDA: routeIdx = (wActivePuzzleId - 7) / 3 + 1
-	// Only puzzle pages 7-18 have routes.
+	// Only puzzle pages (DI 7-18) participate in route tracking.
 	if (currentPage < ZMB_DI_BRIDGE_07 || currentPage > ZMB_DI_MAZE_18)
 		return;
 
+	// IDA: routeIdx = (wActivePuzzleId - 7) / 3 + 1 (1-4)
 	uint16 routeIdx = static_cast<uint16>((currentPage - ZMB_DI_BRIDGE_07) / 3 + 1);
 
-	// IDA: isContainer check — Pizza(9), Slides(12), Net(15), Maze(18)
 	bool isContainer = (currentPage == ZMB_DI_PIZZA_09 || currentPage == ZMB_DI_SLIDES_12 ||
 	                    currentPage == ZMB_DI_NET_15 || currentPage == ZMB_DI_MAZE_18);
-	if (!isContainer)
-		return;
+
+	// IDA 0x455632-690: Set per-puzzle level flag (low nibble).
+	// pbPuzzleLevelFlagArr[puzzleFlagOffset + 3] |= (1 << routeLevel)
+	// In ScummVM: _levelFlagPageArr[currentPage - 7] |= (1 << routeLevel)
+	uint16 routeLevel = f._routeLevels[routeIdx - 1];
+	uint8 levelBitmask = static_cast<uint8>(1 << (routeLevel & 3));
+	f._levelFlagPageArr[currentPage - ZMB_DI_BRIDGE_07] |= levelBitmask;
 
 	// Count non-occupied snoids in active pack.
 	int16 nonOccupiedCount = 0;
@@ -378,116 +416,171 @@ void ZoombiniInteractive::routeNonOccupiedToRestingPack() {
 		if (!f._zmbPackActive._entries[i]._bIsOccupied)
 			nonOccupiedCount++;
 	}
-	if (nonOccupiedCount <= 0)
-		return;
 
-	// Determine destination pack based on route.
-	// IDA: Route 1 → BC0 (Isle), Route 2-3 → BC1, Route 4 → BC2.
-	ZmbStateActivePack *destPack = nullptr;
-	switch (routeIdx) {
-	case 1:
-		destPack = &f._zmbPackIsle;
-		break;
-	case 2:
-	case 3:
-		destPack = &f._zmbPackBC1;
-		f._zmbStoredBC1Count += nonOccupiedCount;
-		break;
-	case 4:
-		destPack = &f._zmbPackBC2;
-		f._zmbStoredBC2Count += nonOccupiedCount;
-		break;
-	default:
-		return;
-	}
+	_vm->_state->_routeLevelJustAdvanced = false;
 
-	// IDA 0x4556FC-755: if destPack has skipOccupiedAnim, compact out occupied
-	// entries from the dest pack (they were previous departures).
-	if (destPack->_bSkipOccupiedAnim) {
-		for (int16 k = 0; k < destPack->_wPackZmbCount; k++) {
-			if (destPack->_entries[k]._bIsOccupied) {
-				--destPack->_wPackZmbCount;
-				for (int16 m = k; m < destPack->_wPackZmbCount; m++) {
-					destPack->_entries[m] = destPack->_entries[m + 1];
+	if (nonOccupiedCount > 0) {
+		// ---------------------------------------------------------------
+		// Snoids were lost: clear perfect streak and route non-occupied
+		// snoids to resting packs (container puzzles only).
+		// IDA: 0x45569A-8F9
+		// ---------------------------------------------------------------
+		_vm->_state->_perfectStreakFlag = false;
+
+		if (isContainer) {
+			// Determine destination pack based on route.
+			// IDA: Route 1 → BC0 (Isle), Route 2-3 → BC1, Route 4 → BC2.
+			ZmbStateActivePack *destPack = nullptr;
+			switch (routeIdx) {
+			case 1:
+				destPack = &f._zmbPackIsle;
+				break;
+			case 2:
+			case 3:
+				destPack = &f._zmbPackBC1;
+				f._zmbStoredBC1Count += nonOccupiedCount;
+				break;
+			case 4:
+				destPack = &f._zmbPackBC2;
+				f._zmbStoredBC2Count += nonOccupiedCount;
+				break;
+			default:
+				return;
+			}
+
+			// IDA 0x4556FC-755: compact out occupied entries from dest pack.
+			if (destPack->_bSkipOccupiedAnim) {
+				for (int16 k = 0; k < destPack->_wPackZmbCount; k++) {
+					if (destPack->_entries[k]._bIsOccupied) {
+						--destPack->_wPackZmbCount;
+						for (int16 m = k; m < destPack->_wPackZmbCount; m++) {
+							destPack->_entries[m] = destPack->_entries[m + 1];
+						}
+						--k;
+					}
 				}
-				--k;
+			}
+			destPack->_bSkipUnoccupiedAnim = 0;
+			destPack->_bSkipOccupiedAnim = 0;
+
+			// Find first non-occupied entry in active pack.
+			int16 srcIdx = 0;
+			while (srcIdx < f._zmbPackActive._wPackZmbCount && f._zmbPackActive._entries[srcIdx]._bIsOccupied)
+				srcIdx++;
+
+			// Find insertion point in dest pack.
+			int16 destIdx = -1;
+			for (int16 ii = 0; destIdx < 0 && ii <= destPack->_wPackZmbCount; ii++) {
+				if (!destPack->_entries[ii]._traits.isComplete() || ii == destPack->_wPackZmbCount)
+					destIdx = ii;
+			}
+			if (destIdx < 0) {
+				destPack->_wPackZmbCount = 0;
+				destIdx = 0;
+			}
+
+			// Copy non-occupied entries from active → dest pack.
+			for (int16 j = 0; j < nonOccupiedCount; j++) {
+				if (destPack->_wPackZmbCount >= 16 || destIdx >= 16)
+					break;
+
+				ZmbStateActiveEntry &dst = destPack->_entries[destIdx];
+				ZmbStateActiveEntry &src = f._zmbPackActive._entries[srcIdx];
+				dst._traits = src._traits;
+				memcpy(dst._name, src._name, sizeof(dst._name));
+				dst._bIsOccupied = 1;
+				destIdx++;
+				srcIdx++;
+				destPack->_wPackZmbCount++;
+			}
+
+			// Update Val field for dest pack snapshot.
+			switch (routeIdx) {
+			case 1:
+				f._wZmbPackIsleVal = f._wZmbPackActiveVal;
+				break;
+			case 2:
+			case 3:
+				f._wZmbPackBC1Val = f._wZmbPackActiveVal;
+				break;
+			case 4:
+				f._wZmbPackBC2Val = f._wZmbPackActiveVal;
+				break;
+			default:
+				break;
+			}
+
+			// Remove non-occupied entries from active pack.
+			f._zmbPackActive._wPackZmbCount -= nonOccupiedCount;
+		}
+	} else if (_vm->_state->_perfectStreakFlag && isContainer) {
+		// ---------------------------------------------------------------
+		// All snoids survived AND perfect streak intact AND container puzzle.
+		// IDA: 0x45591D-AEA — perfect completion path.
+		// ---------------------------------------------------------------
+
+		// IDA 0x455938-97D: Set per-puzzle level flag high nibble (perfect completion).
+		f._levelFlagPageArr[currentPage - ZMB_DI_BRIDGE_07] |= static_cast<uint8>(levelBitmask << 4);
+
+		// IDA 0x455A8D-AEA: Route level advancement.
+		// Increment per-route perfect completion counter.
+		// Three perfect completions → reset counter and advance route level.
+		if (static_cast<int16>(routeLevel) < 3) {
+			f._routePerfectCounters[routeIdx - 1]++;
+			if (f._routePerfectCounters[routeIdx - 1] >= 3) {
+				f._routePerfectCounters[routeIdx - 1] = 0;
+				f._routeLevels[routeIdx - 1]++;
+				_vm->_state->_routeLevelJustAdvanced = true;
+				debugC(1, kZmbDebugScript, "Route %d level advanced to %d",
+					routeIdx, f._routeLevels[routeIdx - 1]);
 			}
 		}
 	}
-	destPack->_bSkipUnoccupiedAnim = 0;
-	destPack->_bSkipOccupiedAnim = 0;
-
-	// Find the first non-occupied entry in active pack (they come after occupied entries).
-	int16 srcIdx = 0;
-	while (srcIdx < f._zmbPackActive._wPackZmbCount && f._zmbPackActive._entries[srcIdx]._bIsOccupied)
-		srcIdx++;
-
-	// Find insertion point in dest pack.
-	int16 destIdx = -1;
-	for (int16 ii = 0; destIdx < 0 && ii <= destPack->_wPackZmbCount; ii++) {
-		if (!destPack->_entries[ii]._traits.isComplete() || ii == destPack->_wPackZmbCount)
-			destIdx = ii;
-	}
-	if (destIdx < 0) {
-		destPack->_wPackZmbCount = 0;
-		destIdx = 0;
-	}
-
-	// Copy non-occupied entries from active → dest pack.
-	for (int16 j = 0; j < nonOccupiedCount; j++) {
-		if (destPack->_wPackZmbCount >= 16 || destIdx >= 16)
-			break;
-
-		ZmbStateActiveEntry &dst = destPack->_entries[destIdx];
-		ZmbStateActiveEntry &src = f._zmbPackActive._entries[srcIdx];
-		dst._traits = src._traits;
-		memcpy(dst._name, src._name, sizeof(dst._name));
-		dst._bIsOccupied = 1;
-		destIdx++;
-		srcIdx++;
-		destPack->_wPackZmbCount++;
-	}
-
-	// Copy dest pack to the state snapshot.
-	// IDA 0x455886-8E3: qmemcpy to the named pack.
-	// In our implementation destPack already points to the named pack,
-	// so we only need to update the Val field.
-	switch (routeIdx) {
-	case 1:
-		f._wZmbPackIsleVal = f._wZmbPackActiveVal;
-		break;
-	case 2:
-	case 3:
-		f._wZmbPackBC1Val = f._wZmbPackActiveVal;
-		break;
-	case 4:
-		f._wZmbPackBC2Val = f._wZmbPackActiveVal;
-		break;
-	default:
-		break;
-	}
-
-	// Remove non-occupied entries from active pack.
-	f._zmbPackActive._wPackZmbCount -= nonOccupiedCount;
 }
 
 void ZoombiniInteractive::startDepartWalkAnimation(const Common::Point &target, uint32 stagger) {
 	// IDA: zmbMoveAnimation_45479D(staggerDelay, toY, toX)
-	// Iterates idle snoids and sets walk-to-target animation with staggered timing.
+	// 1. zmb_insertionSortByYDepth(0) — sorts snoids by animDestPos.x ascending.
+	//    Only occupied snoids (unk00F7 != 0) are included in the sorted array.
+	// 2. Iterates from count-1 to 0 (highest animDestPos.x first = rightmost/
+	//    front-most snoid departs first).
+	// 3. For each occupied idle snoid: copies posLoc→pos2, overwrites animDestPos
+	//    with (toX, toY), sets animateZoombini state 10, staggers dNextRenderFrame.
 	// IDA: only sets dNextRenderFrame for timing — does NOT touch wBoolDoRender.
-	// Snoids remain visible at their current positions until their stagger
-	// delay expires and the walk animation begins.
 	// IDA: resets ui_bDragLockActive = 0 at the start.
 	_vm->_walkersInProgress = 0;
-	uint32 frameBase = getCurrentFrameCounter();
-	uint16 walkerIdx = 0;
+
+	// Collect eligible snoids: must be TYPE_SNOID, occupied, and idle.
+	// IDA: zmb_insertionSortByYDepth filters by (bitmask & 1) and unk00F7,
+	//      zmbMoveAnimation re-checks unk00F7 and snoidAnimateState == 0.
+	Common::Array<ZmbSnoid *> walkers;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
 		ZmbSnoid *snoid = *it;
 		if (!snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 			continue;
+		if (!snoid->_packIsOccupied)
+			continue;
 		if (snoid->getAnimState() != kSnoidAnimIdle)
 			continue;
+		walkers.push_back(snoid);
+	}
 
+	if (walkers.empty())
+		return;
+
+	// IDA: zmb_insertionSortByYDepth — sort ascending by animDestPos.x.
+	// animDestPos is set to posLoc at load time (zmb_loadAnimationsFromActivePack)
+	// and updated on pedestal drag-drop. The X coordinate determines the
+	// departure stagger order (rightmost/highest-X departs first).
+	Common::sort(walkers.begin(), walkers.end(), [](ZmbSnoid *a, ZmbSnoid *b) {
+		return a->getAnimTargetPos().x < b->getAnimTargetPos().x;
+	});
+
+	// IDA: iterate from count-1 to 0 — highest animDestPos.x (rightmost) departs first.
+	uint32 frameBase = getCurrentFrameCounter();
+	uint16 walkerIdx = 0;
+	for (int i = (int)walkers.size() - 1; i >= 0; i--) {
+		ZmbSnoid *snoid = walkers[i];
 		snoid->setAnimTargetPos(target);
 		snoid->setAnimState(kSnoidAnimArrivalMotion, nullptr);
 
@@ -628,7 +721,7 @@ void ZoombiniInteractive::showNotiBox(const Common::U32String &ustr, bool isNoti
 		_notiBoxShowUntilFrame = UINT32_MAX; // Virtually infinite duration
 
 	// Only register NotiBox feature if not yet registered.
-	if (!_virtualFeatureMap.find(kVirtualFeatureMinus02_NotiBox)) {
+	if (!_virtualFeatures.find(kVirtualFeatureMinus02_NotiBox)) {
 		ZmbFeature::EventHooks hooks;
 		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractive::notiBox_preRenderShape));
 		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractive::notiBox_onPostRender));

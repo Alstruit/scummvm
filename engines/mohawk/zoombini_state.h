@@ -61,10 +61,10 @@ enum ZMB_SI_PAGE : int16 {
 	ZMB_SI_TUNNELS_03 = 3,
 	ZMB_SI_PIZZA_04 = 4,
 	ZMB_SI_BC1_NORTH_05 = 5,
-	ZMB_SI_BC1_SOUTH_06 = 6,
-	ZMB_SI_FERRY_07 = 7,
-	ZMB_SI_LILLY_08 = 8,
-	ZMB_SI_SLIDES_09 = 9,
+	ZMB_SI_FERRY_06 = 6,
+	ZMB_SI_LILLY_07 = 7,
+	ZMB_SI_SLIDES_08 = 8,
+	ZMB_SI_BC1_SOUTH_09 = 9,
 	ZMB_SI_FLEENS_10 = 10,
 	ZMB_SI_HOTEL_11 = 11,
 	ZMB_SI_NET_12 = 12,
@@ -394,14 +394,14 @@ struct ZmbStateFile { // Size: 44559 (0xAE0F)
 	uint8 _twinGenStatus[625] = { 0, };
 	
 	/**
-	 * 0xAE05~0xAE0B: Reserved WORDs added in v2 save format (44559 bytes).
-	 * When loading a v1 save (44549 bytes), these are zeroed out.
-	 * No other code reads or writes these fields; likely reserved padding.
+	 * 0xAE05~0xAE0B: Per-route perfect completion counters (4 x int16).
+	 * IDA: twinGenStatus[2*routeIdx+623] (routes 1-4 → indices 625,627,629,631).
+	 * Incremented each time a route is completed with all snoids surviving
+	 * (perfect streak). When a counter reaches 3, it resets to 0 and the
+	 * corresponding _routeLevels[] entry advances by 1 (max 3).
+	 * Added in v2 save format (44559 bytes); zeroed when loading v1 saves.
 	 */
-	int16 _wReservedAE05 = 0;
-	int16 _wReservedAE07 = 0;
-	int16 _wReservedAE09 = 0;
-	int16 _wReservedAE0B = 0;
+	int16 _routePerfectCounters[4] = { 0, 0, 0, 0 };
 	/**
 	 * 0xAE0D: Town Develop Level (0~6)
 	 */
@@ -489,6 +489,24 @@ public:
 	 */
 	uint16 _lastPageBeforeContainer = 0;
 	bool inPracticeMode() { return _practiceLevel != 0; }
+
+	/**
+	 * IDA: *(_WORD *)&pbPuzzleLevelFlagArr[1] — "perfect streak" flag.
+	 * Set to true when entering the first puzzle of a route (Bridge/Ferry/Fleens/Caves).
+	 * Cleared to false when any snoid is lost (non-occupied) at a puzzle.
+	 * Checked at container puzzles for route level advancement.
+	 * Runtime only (not serialized); the original game overlapped this with
+	 * _levelFlagRouteMontDespair/_levelFlagLoWhosBayouHiDeepDarkForest.
+	 */
+	bool _perfectStreakFlag = false;
+
+	/**
+	 * IDA: wMemorialLevelUpdated — set when a route level advances.
+	 * Used by route completion flag setting to record the PREVIOUS level's
+	 * completion rather than the newly advanced level.
+	 * Runtime only, reset each departure cycle.
+	 */
+	bool _routeLevelJustAdvanced = false;
 
 	/**
 	 * Generate 16 random snoids in the active pack.

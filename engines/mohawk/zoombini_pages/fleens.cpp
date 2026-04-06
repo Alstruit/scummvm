@@ -346,4 +346,132 @@ ZmbRenderResult ZoombiniInteractiveFleens::attrSlots_render(ZmbFeature *feature)
 	return ZmbRenderResult::kRendered;
 }
 
+// ---------------------------------------------------------------------------
+// Animation event dispatch
+// ---------------------------------------------------------------------------
+
+void ZoombiniInteractiveFleens::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+	// IDA: Two callbacks share the Fleens event system:
+	//   fleens_raftAnimStateMachine (0x41E1BD) — main raft state machine (events 0, 4-9, 28, 30,
+	//       132-135, 137, 240-253)
+	//   fleens_raftMovementCallback (0x41E075) — sub-feature movement (events -1, 0, 1, 2, 137,
+	//       140, 218)
+	// In the original, different features have different callbacks. In ScummVM both come here.
+
+	switch (eventCode) {
+	case kZmbAnimEventM1_End:
+		// End-of-animation.
+		// raftAnimStateMachine: reset raft state (word_4A4764=64, clear flags).
+		// raftMovementCallback: clear runner field 112.
+		// TODO: Implement full raft animation completion logic
+		warning("Fleens: event -1 (anim end) not fully implemented");
+		break;
+
+	case 0:
+		// Toggle render visibility.
+		// IDA: *(a4+290) = *(a4+290)==0
+		if (feature->isRenderActivated())
+			feature->deactivateRender();
+		else
+			feature->activateRender();
+		// Apply pending body arrangement (only for snoid features).
+		// IDA: if (word_4AB1A0) { zmb_setBodyLayerShapes(word_4AB1A0-1, a4+48); word_4AB1A0=0; }
+		if (_pendingBodyArrangement && feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+			static_cast<ZmbSnoid *>(feature)->setBodyArrangement(_pendingBodyArrangement - 1);
+			_pendingBodyArrangement = 0;
+		}
+		// IDA: conditional linking of overlay runner if word_4AB1CC && runner matches word_4AB1BA
+		// TODO: Implement overlay runner linking on event 0
+		break;
+
+	case 1:
+		// Link auxiliary runner (if not already linked).
+		// IDA: if (!word_4AB1B6) { link word_4AB1A8 before word_4AB1B8; set flag; re-init SCRB }
+		// TODO: Implement auxiliary runner linking
+		warning("Fleens: event 1 (aux runner link) not yet implemented");
+		break;
+
+	case 2:
+		// Link movement runner after raft runner.
+		// IDA: runner_linkRelativeToParent(word_4AB1BA, 1, word_4AB1B8)
+		// TODO: Implement movement runner linking
+		warning("Fleens: event 2 (link after raft) not yet implemented");
+		break;
+
+	case 4: case 5: case 6: case 7: case 8: case 9:
+		// Raft animation state machine phases.
+		// IDA: fleens_raftAnimStateMachine events 4-9 — complex state transitions,
+		//      runner SCRB resolving, position setup, linking, mismatch processing.
+		// TODO: Implement raft state machine phases
+		warning("Fleens: event %d (raft state phase) not yet implemented", eventCode);
+		break;
+
+	case 28:
+		// Alias for event 8 (self-recursive call in original).
+		// IDA: fleens_raftAnimStateMachine(8, a4)
+		// TODO: Implement event 28 → 8 forwarding
+		warning("Fleens: event 28 (link chain) not yet implemented");
+		break;
+
+	case 30:
+		// Register new overlay SCRB runner.
+		// IDA: register runner with random SCRB 1004-1006, set exit callback.
+		// TODO: Implement overlay runner registration
+		warning("Fleens: event 30 (register overlay) not yet implemented");
+		break;
+
+	case 132:
+		// Play snoid SCRS 7016 on departure queue runners.
+		// IDA: iterate departure queue, snoidScript_initAndPlay(7016+offset), load SCRBs.
+		// TODO: Implement departure queue animation
+		warning("Fleens: event 132 (departure queue anim) not yet implemented");
+		break;
+
+	case 133: case 134: case 135:
+		// Range-check runner offset 288, apply capture SCRB 14 to matching runners.
+		// IDA: iterate 16 runners, check byte at offset 288 within range,
+		//      scrb_resolveToResourceId(14, runner), register with raftMovementCallback.
+		// TODO: Implement capture animation
+		warning("Fleens: event %d (capture anim) not yet implemented", eventCode);
+		break;
+
+	case 137:
+		// Clear runner state (shared by both callbacks).
+		// IDA: *(a4+224) = 0
+		// TODO: Map runner offset 224 to ScummVM field
+		break;
+
+	case 140:
+		// Link movement runner before raft runner.
+		// IDA: runner_linkRelativeToParent(word_4AB1BA, 0, word_4AB1B8)
+		// TODO: Implement pre-link
+		warning("Fleens: event 140 (pre-link) not yet implemented");
+		break;
+
+	case 218:
+		// Play random Fleen sound.
+		// IDA: nextRand_410705(4100, 4124) → scrb_enqueueSoundResource
+		{
+			uint16 sndId = _vm->_rnd->getRandomNumber(4100, 4124);
+			_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, sndId),
+			                          Audio::Mixer::kSFXSoundType);
+		}
+		break;
+
+	default:
+		if (eventCode >= kZmbAnimEvent240_BodyArrangePendFirst &&
+		    eventCode <= kZmbAnimEvent243_BodyArrangePendLast) {
+			// IDA: word_4AB1A0 = a5 - 239
+			_pendingBodyArrangement = eventCode - 239;
+		} else if (eventCode >= kZmbAnimEvent250_BodyArrangeDirectFirst &&
+		           eventCode <= kZmbAnimEvent253_BodyArrangeDirectLast) {
+			// IDA: zmb_setBodyLayerShapes(a5 - 250, a4 + 48)
+			if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+				static_cast<ZmbSnoid *>(feature)->setBodyArrangement(eventCode - 250);
+			}
+		}
+		break;
+	}
+}
+
 } // End of namespace Mohawk

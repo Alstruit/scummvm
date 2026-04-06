@@ -53,6 +53,7 @@ public:
 
 protected:
 	void onGoButtonActivated() override;
+	void debugPrepareForDeparture() override;
 
 	/**
 	 * Build the attribute toll table and select the winning combination.

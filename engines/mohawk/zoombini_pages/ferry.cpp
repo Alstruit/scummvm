@@ -312,8 +312,8 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 
 void ZoombiniInteractiveFerry::onGoButtonActivated() {
 	// IDA: ferry_onClickHandler case 2 -> word_4AB17C=1 -> puzzle_pendingTransitionTarget = 11
-	// Route 2: Ferry -> Slides (via Xfer)
-	_departXferSrcSiPage = ZMB_SI_FERRY_07;
+	// Route 2: Ferry -> Lilly (via Xfer)
+	_departXferSrcSiPage = ZMB_SI_FERRY_06;
 	if (_rejectWalkPending)
 		_interactionLocked = true;
 	_goButtonPressed = true;
@@ -359,7 +359,7 @@ void ZoombiniInteractiveFerry::buildAdjacencyMatrix() {
 	// IDA: each runner's core188 at offset +206/+210 stores clickRect leftTop/rightBottom
 	Common::Rect seatRects[20];
 	for (int16 i = 0; i < _seatCount; i++) {
-		ZmbFeature *seatRunner = _scrbFeatureMap[_seatRunnerIds[i]];
+		ZmbFeature *seatRunner = _scrbFeatures[_seatRunnerIds[i]];
 		if (seatRunner) {
 			seatRects[i] = seatRunner->getClickRect();
 		}
@@ -413,7 +413,7 @@ void ZoombiniInteractiveFerry::buildAdjacencyMatrix() {
 // ---------------------------------------------------------------------------
 int16 ZoombiniInteractiveFerry::getDropTargetSeat(const Common::Point &pos) const {
 	for (int16 i = 0; i < _seatCount; i++) {
-		ZmbFeature *seatRunner = _scrbFeatureMap.find(_seatRunnerIds[i]);
+		ZmbFeature *seatRunner = _scrbFeatures.find(_seatRunnerIds[i]);
 		if (!seatRunner)
 			continue;
 
@@ -446,7 +446,7 @@ bool ZoombiniInteractiveFerry::testAdjacentMatch(int16 seatIdx, ZmbSnoid *droppe
 		// In ScummVM, we need to find a pack snoid whose position corresponds to this seat.
 		// Seat runners are tracked by _seatRunnerIds[]. We need to find
 		// a snoid that's been placed at this adjacent seat position.
-		ZmbFeature *neighborSeatRunner = _scrbFeatureMap.find(_seatRunnerIds[neighborIdx - 1]);
+		ZmbFeature *neighborSeatRunner = _scrbFeatures.find(_seatRunnerIds[neighborIdx - 1]);
 		if (!neighborSeatRunner)
 			continue;
 
@@ -928,20 +928,20 @@ void ZoombiniInteractiveFerry::endDrag(const Common::Point &mousePos) {
 void ZoombiniInteractiveFerry::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	if (feature == _boatAnimFeature) {
 		// Frogman/boat animation completed
-		if (eventCode == -1) {
+		if (eventCode == kZmbAnimEventM1_End) {
 			// IDA: End of SCRB chain — frogman returns to idle
 			_frogmanHotspotGroup = 0;
 		}
 	} else if (feature == _departOverlayFeature || feature == _departRunnerA || feature == _departRunnerB) {
 		// Departure overlay completed
-		if (eventCode == -1) {
+		if (eventCode == kZmbAnimEventM1_End) {
 			_departAnimDone = true;
 			_interactionLocked = false;
 		}
 	} else if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 		// Snoid animation event
 		ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
-		if (eventCode == -1) {
+		if (eventCode == kZmbAnimEventM1_End) {
 			// SCRS playback completed — return snoid to idle
 			snoid->setAnimState(kSnoidAnimIdle);
 			snoid->setupIdleHotspots();

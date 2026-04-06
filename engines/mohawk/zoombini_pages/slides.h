@@ -44,6 +44,7 @@ public:
 	void setBackgroundMusic() override;
 	void setBackgroundBitmap() override;
 	void loadFeatures() override;
+	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
 
 protected:
 	void onGoButtonActivated() override;
@@ -69,6 +70,15 @@ private:
 	 * IDA: slides_cellSpacing
 	 */
 	int16 _cellSpacing = 48;
+
+	/** Pending body arrangement override (1-4, 0=none). IDA: word_4B110E */
+	int16 _pendingBodyArrangement = 0;
+
+	/** Runner ID of Zoombini currently doing a slide travel animation. IDA: word_4B110C */
+	uint16 _activeTravelSnoidId = 0;
+
+	/** Travel direction flag (0=finished, 1=traveling). IDA: word_4B1112 */
+	int16 _travelState = 0;
 };
 
 } // End of namespace Mohawk

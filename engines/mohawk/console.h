@@ -188,6 +188,7 @@ private:
 	bool Cmd_DumpAllResources(int argc, const char **argv);
 	bool Cmd_GoXfer(int argc, const char **argv);
 	bool Cmd_GoPractice(int argc, const char **argv);
+	bool Cmd_FinishPuzzle(int argc, const char **argv);
 	/**
 	 * @return True if an export was successful.
 	 */

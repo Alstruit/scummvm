@@ -40,6 +40,7 @@ public:
 	ZmbEventHandleResult onMouseMove(const Common::Point &absPos, const Common::Point &relPos) override;
 
 protected:
+	void endDrag(const Common::Point &dropPos);
 	void executeDeparture() override;
 	// [*] Virtual feature callbacks — Storage
 	bool storage_preRender(ZmbFeature *feature);
@@ -302,8 +303,16 @@ protected:
 		Common::Rect(520, 259, 545, 300), // [9] button 9 anim hotspot (transport trigger)
 	};
 
-	/** Click region of the full storage panel virtual feature. */
-	const Common::Rect _storageRect = Common::Rect(0x0037, 0x0013, 0x00FF, 0x00FC);
+	/**
+	 * Click region of the full storage panel virtual feature.
+	 * BC2 columns are wider-spaced than BC1:
+	 *   Non-anim (5 cols): X = 0xA3, 0xCB, 0xF3, 0x11B, 0x143
+	 *   Anim     (6 cols): X = 0x8F, 0xB7, 0xDF, 0x107, 0x12F, 0x157
+	 * Rightmost anim column centre at 0x157=343, plus ~30px snoid radius → right ≥ 373.
+	 * Use 0x017F=383 to give a safe margin.  Left/top/bottom unchanged from the
+	 * BC1 original (border at x=101, belt top at y=19, belt bottom at y=252).
+	 */
+	const Common::Rect _storageRect = Common::Rect(0x0037, 0x0013, 0x017F, 0x00FC);
 
 	/** Go button click rect (derived from render position 0x0257,0x0140 + button size). */
 	const Common::Rect _goButtonRect = Common::Rect(0x0257, 0x0140, 0x027E, 0x0165);

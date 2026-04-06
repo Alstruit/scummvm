@@ -409,6 +409,18 @@ void MohawkEngine_Zoombini::loadNextPage() {
 	if (page->getPageCategory() == ZoombiniPageCategory::kInteractive)
 		_state->_f.setCurrentPageType(nextPageType);
 
+	// IDA: execActivePuzzle_435BE8 (0x435E27-60) — perfect streak flag.
+	// Set to true when entering the first puzzle of a route.
+	// In practice mode, always clear.
+	if (_state->inPracticeMode()) {
+		_state->_perfectStreakFlag = false;
+	} else if (nextPageType == ZoombiniPageType::kBridge ||
+	           nextPageType == ZoombiniPageType::kFerry ||
+	           nextPageType == ZoombiniPageType::kFleens ||
+	           nextPageType == ZoombiniPageType::kCaves) {
+		_state->_perfectStreakFlag = true;
+	}
+
 	page->open();
 	page->setBackgroundMusic();
 	page->setBackgroundBitmap();

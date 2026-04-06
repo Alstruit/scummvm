@@ -47,10 +47,17 @@ public:
 
 protected:
 	void onGoButtonActivated() override;
+	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
 
 private:
 	void loadZoombinisFromPack();
 	void registerColumnRunners();
+
+	// Animation event dispatch helpers
+	// IDA: net_scrbAnimCallback (0x43105B) — SCRB feature traversal events
+	void processScrbAnimEvent(ZmbFeature *feature, int16 eventCode);
+	// IDA: net_zmbAnimCallback (0x438EA1) — Zoombini snoid animation events
+	void processSnoidAnimEvent(ZmbFeature *feature, int16 eventCode);
 
 	// Attribute slot render callbacks
 	bool attrSlots_preRender(ZmbFeature *feature);
@@ -108,6 +115,11 @@ private:
 	
 	/** Dirty flag for column label rect. IDA: unk_4A28AE */
 	bool _columnLabelDirty = false;
+
+	// --- Animation event state ---
+
+	/** Pending body arrangement shape (1-4, or 0 for none). IDA: net_pendingAnimShape */
+	int16 _pendingBodyArrangement = 0;
 
 	enum {
 		kResSound996_DepartSFX = 996

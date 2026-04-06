@@ -134,6 +134,40 @@ class MohawkEngine_Zoombini;
 class MohawkSurface;
 
 /**
+ * Animation event codes passed to ZoombiniPage::onFeatureAnimEvent().
+ *
+ * Raw byte from 0xFFxx SCRB/SCRS frame terminators is adjusted to
+ * (raw - 1) before dispatch.  The result is the eventCode parameter.
+ *
+ * Framework-level codes (handled by the engine before/during dispatch):
+ *   -1        End-of-animation (PLAY_ONCE / CHAIN_SCRIPT completion).
+ *   200-239   Voice SFX — intercepted by the framework, never reaches
+ *             onFeatureAnimEvent().  Maps to kVoiceGroupMap[] for snoid
+ *             voice samples.
+ *
+ * Shared conventions (used identically across multiple puzzle pages):
+ *   240-243   Pending snoid body arrangement override.
+ *             Arrangement index = eventCode - 239 (range 1-4).
+ *             Applied on the next event 0 toggle cycle.
+ *             Used by: xfer, tunnels.
+ *   250-253   Direct snoid body arrangement set.
+ *             Arrangement index = eventCode - 250 (range 0-3).
+ *             Used by: xfer, tunnels, smoke.
+ *
+ * All other values (0-199) are page-specific — each puzzle defines its
+ * own meaning in its onFeatureAnimEvent() override.
+ */
+enum ZmbAnimEvent : int16 {
+	kZmbAnimEventM1_End                    = -1,   ///< End-of-animation cycle.
+	kZmbAnimEvent200_VoiceFirst             = 200,  ///< First voice SFX code (intercepted).
+	kZmbAnimEvent239_VoiceLast              = 239,  ///< Last voice SFX code (intercepted).
+	kZmbAnimEvent240_BodyArrangePendFirst   = 240,  ///< First pending body arrangement code.
+	kZmbAnimEvent243_BodyArrangePendLast    = 243,  ///< Last pending body arrangement code.
+	kZmbAnimEvent250_BodyArrangeDirectFirst = 250,  ///< First direct body arrangement code.
+	kZmbAnimEvent253_BodyArrangeDirectLast  = 253,  ///< Last direct body arrangement code.
+};
+
+/**
  * One frame of a snoid walk animation: raw sprite shape and offsets per body slot.
  * Slot ordering follows zmbRunner_setAnimShape_456785 variant convention:
  *   variant=0: slot0=foot, slot1=body(base 0), slot2=nose, slot3=eye, slot4=head
@@ -188,13 +222,12 @@ public:
 	 * IDA: onHotspotShapeOrFrameFunc dispatch (runner offset 0x10).
 	 *
 	 * For SCRS event codes (non-negative), dispatched every frame that carries one.
-	 * For -1 (end-of-animation-cycle), dispatched at most once per activateAnimate()
+	 * For kZmbAnimEventM1_End (-1), dispatched at most once per activateAnimate()
 	 * cycle — one-shot semantics matching the original where the function pointer
 	 * is cleared to 0 after the first -1 fire (0x461F67 / 0x461D03).
 	 *
 	 * @param feature   The feature that fired the event.
-	 * @param eventCode The adjusted event code (IDA convention: raw - 1).
-	 *                  -1 signals end-of-animation (PLAY_ONCE / CHAIN_SCRIPT completion).
+	 * @param eventCode The adjusted event code (raw - 1). See ZmbAnimEvent.
 	 */
 	virtual void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {}
 
@@ -526,14 +559,14 @@ protected:
 	ZoombiniPageType _pageType;
 	bool _useFadeEffect = true;
 
-	ZmbFeatureList<ZmbFeature> _scrbFeatureMap;
-	ZmbFeatureList<ZmbFeature> _virtualFeatureMap;
+	ZmbFeatureList<ZmbFeature> _scrbFeatures;
+	ZmbFeatureList<ZmbFeature> _virtualFeatures;
 	/** Chain-head features from createMainFeatureHead(), not in any feature map. */
 	Common::Array<ZmbFeature *> _mainFeatureHeads;
 	/**
 	 * Sub-features temporarily running independently (e.g. FLAG_00040000_CHAIN_SCRIPT).
 	 */
-	ZmbFeatureList<ZmbFeature> _subFeatureMap;
+	ZmbFeatureList<ZmbFeature> _subFeatures;
 	ZmbFeatureList<ZmbSnoid> _snoidMap;
 	Common::HashMap<uint16, ZmbRegs *> _regsMap;
 	Common::HashMap<uint16, ZmbNode *> _nodeMap;

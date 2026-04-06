@@ -531,6 +531,12 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::goButton_onLButtonDown(ZmbF
 // ---------------------------------------------------------------------------
 
 ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+	// Sticky mouse: second click ends drag
+	if (isDragging() && _vm->_state->getEnableStickyMouse()) {
+		endDrag(absPos);
+		return ZmbEventHandleResult::kConsumed;
+	}
+
 	// Let base class handle button/feature clicks first.
 	ZmbEventHandleResult result = ZoombiniInteractive::onLButtonDown(absPos, relPos);
 	if (result == ZmbEventHandleResult::kConsumed)
@@ -565,7 +571,19 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonDown(const Common:
 					newSnoid->setupIdleHotspots();
 				}
 
-				// Mark storage origin (don't clear slot yet — wait for successful drop)
+				// IDA: bc2_onHotspotHover arg0==1 — zero the origin slot immediately on pickup.
+				// This matches the original engine: the belt stops rendering the snoid there
+				// during the drag, and the cleared slot can be found as an empty target if
+				// the user drops back onto the belt (enabling belt-to-belt rearrangement).
+				chunk._entries[storageIdx]._traits = ZmbTrait();
+				chunk._entries[storageIdx]._rect = Common::Rect();
+				if (_storedCount > 0)
+					_storedCount--;
+				if (f._zmbStoredBC2Count > 0)
+					f._zmbStoredBC2Count--;
+				_storageLastOccupiedIdx = findLastOccupiedSlot();
+				recalcStorageCapacity(-1);
+
 				snoid = newSnoid;
 				_dragFromStorage = true;
 				_dragStorageOriginSlot = storageIdx;
@@ -617,6 +635,15 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonUp(const Common::P
 	if (!isDragging())
 		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
 
+	// Sticky mouse: button-up does NOT end drag (click again to drop)
+	if (_vm->_state->getEnableStickyMouse())
+		return ZmbEventHandleResult::kConsumed;
+
+	endDrag(absPos);
+	return ZmbEventHandleResult::kConsumed;
+}
+
+void ZoombiniInteractiveBasecampTwo::endDrag(const Common::Point &dropPos) {
 	// Clear pedestal hover highlight before ending drag
 	deactivatePedestalHover();
 
@@ -625,40 +652,99 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonUp(const Common::P
 	_dragActive = false;
 
 	ZmbStateFile &f = _vm->_state->_f;
-	Common::Point dropPos = snoid->getPointLoc();
+	Common::Point snoidPos = snoid->getPointLoc();
+
+	// --- Helper: find nearest empty pedestal within snap radius ---
+	// IDA: getDropTargetResult_453571 / beginDragFeatureRunner_45360F pedestal snap
+	// Both field and storage drags use the same pedestal snap logic.
+	int16 pedestalIdx = -1;
+	{
+		int32 bestDistSq = (int32)(kPedestalHoverRadius + 1) * (kPedestalHoverRadius + 1);
+		for (int16 i = 0; i < 16; i++) {
+			bool occupied = false;
+			for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+				if (*it == snoid)
+					continue;
+				Common::Point opos = (*it)->getPointLoc();
+				int32 ddx = opos.x - _pedestalPoints[i].x;
+				int32 ddy = opos.y - _pedestalPoints[i].y;
+				if (ddx * ddx + ddy * ddy < 100) { occupied = true; break; }
+			}
+			if (occupied)
+				continue;
+			int32 dx = snoidPos.x - _pedestalPoints[i].x;
+			int32 dy = snoidPos.y - _pedestalPoints[i].y;
+			int32 d = dx * dx + dy * dy;
+			if (d < bestDistSq) { bestDistSq = d; pedestalIdx = i; }
+		}
+	}
 
 	if (_dragFromStorage) {
 		// --- Snoid was picked from storage belt ---
 		// IDA: bc2_onHotspotHover arg0==2, dragFromStorage path
-		if (!_storageRect.contains(dropPos) && validateTerrainDrop(snoid)) {
-			// Dropped on valid terrain → place on field
-			// Clear the original storage slot now
-			ZmbStateStoredChunk &chunk = f._storedChunkBC2;
-			chunk._entries[_dragStorageOriginSlot]._traits = ZmbTrait();
-			chunk._entries[_dragStorageOriginSlot]._rect = Common::Rect();
+		// NOTE: Origin slot was already cleared and _storedCount pre-decremented at pickup.
+		ZmbStateStoredChunk &chunk = f._storedChunkBC2;
 
-			// Update stored count & capacity
-			if (_storedCount > 0)
-				_storedCount--;
-			if (f._zmbStoredBC2Count > 0)
-				f._zmbStoredBC2Count--;
-			_storageLastOccupiedIdx = findLastOccupiedSlot();
-			recalcStorageCapacity(-1);
-
+		if (pedestalIdx >= 0) {
+			// Dropped onto a pedestal seat — place on field, seat occupied.
+			// Origin slot was already cleared and count already decremented.
+			snoid->_packIsOccupied = true;
+			snoid->setAnimTargetPos(_pedestalPoints[pedestalIdx]);
+			snoid->setAnimState(kSnoidAnimArrive);
+		} else if (!_storageRect.contains(snoidPos) && validateTerrainDrop(snoid)) {
+			// Dropped on valid terrain outside the belt → stays on field.
 			snoid->_packIsOccupied = false;
 			snoid->setAnimState(kSnoidAnimIdle);
 			snoid->setupIdleHotspots();
+		} else if (_storageRect.contains(snoidPos)) {
+			// Dropped on the belt → find nearest empty slot.
+			// Since origin was pre-cleared it can be found again (same-position = restore).
+			int16 targetSlot = findStorageSlotIndex(false, snoidPos,
+													static_cast<uint16>(_storageLeftmostColumnIdx));
+			if (targetSlot < 0)
+				targetSlot = _dragStorageOriginSlot; // No empty slot near drop: fallback to origin
+			chunk._entries[targetSlot]._traits = snoid->_trait;
+			Common::String nameBytes = _vm->_text->fromU32String(snoid->_name);
+			memset(chunk._entries[targetSlot]._name, 0, sizeof(chunk._entries[targetSlot]._name));
+			uint32 nameLen = MIN<uint32>(nameBytes.size(), sizeof(chunk._entries[targetSlot]._name));
+			memcpy(chunk._entries[targetSlot]._name, nameBytes.c_str(), nameLen);
+			chunk._entries[targetSlot]._rect = Common::Rect();
+
+			// Restore count (was pre-decremented at pickup)
+			_storedCount++;
+			f._zmbStoredBC2Count++;
+			_storageLastOccupiedIdx = findLastOccupiedSlot();
+			recalcStorageCapacity(-1);
+
+			unloadSnoid(snoid->getId());
 		} else {
-			// Dropped back on storage belt or invalid terrain → return to storage
-			// Remove the temporary snoid
+			// Dropped on invalid terrain → return snoid to the origin belt slot
+			chunk._entries[_dragStorageOriginSlot]._traits = snoid->_trait;
+			Common::String nameBytes = _vm->_text->fromU32String(snoid->_name);
+			memset(chunk._entries[_dragStorageOriginSlot]._name, 0, sizeof(chunk._entries[_dragStorageOriginSlot]._name));
+			uint32 nameLen = MIN<uint32>(nameBytes.size(), sizeof(chunk._entries[_dragStorageOriginSlot]._name));
+			memcpy(chunk._entries[_dragStorageOriginSlot]._name, nameBytes.c_str(), nameLen);
+			chunk._entries[_dragStorageOriginSlot]._rect = Common::Rect();
+
+			// Restore count (was pre-decremented at pickup)
+			_storedCount++;
+			f._zmbStoredBC2Count++;
+			_storageLastOccupiedIdx = findLastOccupiedSlot();
+			recalcStorageCapacity(-1);
+
 			unloadSnoid(snoid->getId());
 		}
 	} else {
 		// --- Snoid was picked from field ---
-		if (_storageRect.contains(dropPos)) {
+		if (pedestalIdx >= 0) {
+			// Dropped onto a pedestal seat
+			snoid->_packIsOccupied = true;
+			snoid->setAnimTargetPos(_pedestalPoints[pedestalIdx]);
+			snoid->setAnimState(kSnoidAnimArrive);
+		} else if (_storageRect.contains(snoidPos)) {
 			// Dropped on storage belt → store the snoid
 			// IDA: caves_findHotspotUnderCursor_414124(0, dropRect, scrollOffset)
-			int16 emptySlot = findStorageSlotIndex(false, dropPos,
+			int16 emptySlot = findStorageSlotIndex(false, snoidPos,
 												   static_cast<uint16>(_storageLeftmostColumnIdx));
 			if (emptySlot >= 0) {
 				ZmbStateStoredChunk &chunk = f._storedChunkBC2;
@@ -694,18 +780,23 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonUp(const Common::P
 	}
 
 	// Update Go button state
+	// IDA bridge_funcOnHover_41392D: bridge_bCheckAllPlacedVsPack / bridge_bAllZmbOnField
 	int16 totalFieldCount = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
 		if ((*it)->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 			totalFieldCount++;
 	}
-	_canGoEnabled = (totalFieldCount > 0);
+	if (_notFirstArrival) {
+		int16 totalStoredCount = static_cast<int16>(f._zmbPackIsle._wPackZmbCount) +
+			f._zmbStoredBC1Count + f._zmbStoredBC2Count;
+		_canGoEnabled = (totalFieldCount > 0) && (totalStoredCount <= totalFieldCount);
+	} else {
+		_canGoEnabled = (16 <= totalFieldCount);
+	}
 	setGoButtonsEnabled(_canGoEnabled);
 
 	_dragFromStorage = false;
 	_dragStorageOriginSlot = -1;
-
-	return ZmbEventHandleResult::kConsumed;
 }
 
 ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
@@ -759,7 +850,7 @@ void ZoombiniInteractiveBasecampTwo::updatePedestalHover(const Common::Point &sn
 
 	// Deactivate previous highlight if any
 	if (_hoveredPedestalIdx >= 0) {
-		ZmbFeature *pedestal = _scrbFeatureMap.find(kResScrb7000_Pedestal + _hoveredPedestalIdx);
+		ZmbFeature *pedestal = _scrbFeatures.find(kResScrb7000_Pedestal + _hoveredPedestalIdx);
 		if (pedestal) {
 			// IDA: highlightRunner->bitmask |= 0x10000u; highlightRunner->dNextRenderFrame = 0;
 			pedestal->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
@@ -768,7 +859,7 @@ void ZoombiniInteractiveBasecampTwo::updatePedestalHover(const Common::Point &sn
 
 	// Activate new highlight if any
 	if (nearestIdx >= 0) {
-		ZmbFeature *pedestal = _scrbFeatureMap.find(kResScrb7000_Pedestal + nearestIdx);
+		ZmbFeature *pedestal = _scrbFeatures.find(kResScrb7000_Pedestal + nearestIdx);
 		if (pedestal) {
 			// IDA: wBoolDoRender = 1; wGroupFrameIdx0098 = 0; dwHotspotIdx009A = 1;
 			pedestal->activateRender();
@@ -782,7 +873,7 @@ void ZoombiniInteractiveBasecampTwo::updatePedestalHover(const Common::Point &sn
 void ZoombiniInteractiveBasecampTwo::deactivatePedestalHover() {
 	// Clear any pedestal hover highlight when drag ends
 	if (_hoveredPedestalIdx >= 0) {
-		ZmbFeature *pedestal = _scrbFeatureMap.find(kResScrb7000_Pedestal + _hoveredPedestalIdx);
+		ZmbFeature *pedestal = _scrbFeatures.find(kResScrb7000_Pedestal + _hoveredPedestalIdx);
 		if (pedestal) {
 			pedestal->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
 		}
@@ -803,7 +894,7 @@ bool ZoombiniInteractiveBasecampTwo::updateButtonAnimations(const Common::Point 
 		if (i >= 10 || _buttonAnimRunnerIdxs[i] == 0)
 			continue;
 
-		ZmbFeature *runner = _scrbFeatureMap.find(_buttonAnimRunnerIdxs[i]);
+		ZmbFeature *runner = _scrbFeatures.find(_buttonAnimRunnerIdxs[i]);
 		if (!runner)
 			continue;
 
@@ -1157,7 +1248,7 @@ void ZoombiniInteractiveBasecampTwo::compactStorage() {
 
 void ZoombiniInteractiveBasecampTwo::resetStorageSortRect() {
 	// Reset the storage feature's sort rect.
-	ZmbFeature *storage = _virtualFeatureMap.find(_storageRunnerIdx);
+	ZmbFeature *storage = _virtualFeatures.find(_storageRunnerIdx);
 	if (storage)
 		storage->setSortRect(Common::Rect());
 }

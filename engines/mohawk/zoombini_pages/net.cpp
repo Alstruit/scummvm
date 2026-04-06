@@ -334,4 +334,167 @@ ZmbRenderResult ZoombiniInteractiveNet::attrSlots_render(ZmbFeature *feature) {
 	return ZmbRenderResult::kRendered;
 }
 
+// ---------------------------------------------------------------------------
+// Animation event dispatch
+// ---------------------------------------------------------------------------
+
+void ZoombiniInteractiveNet::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+		processSnoidAnimEvent(feature, eventCode);
+	} else {
+		processScrbAnimEvent(feature, eventCode);
+	}
+}
+
+void ZoombiniInteractiveNet::processSnoidAnimEvent(ZmbFeature *feature, int16 eventCode) {
+	// IDA: net_zmbAnimCallback (0x438EA1)
+	// Handles Zoombini snoid animation events during net sorting.
+	ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
+
+	if (eventCode == kZmbAnimEventM1_End) {
+		// End-of-animation completion handler.
+		// IDA: Two branches based on net_zmbsAtColumns:
+		//   nonzero → exit animation: play anim at dword_4A27DE[exitPositionIdx++],
+		//             set advanceReady, check completion.
+		//   zero → walk-off cleanup: find walkSlotRunners match, clear slot,
+		//          animateZoombini(0, 2), trigger feedback SCRB when all empty.
+		// TODO: Implement full net sorting completion logic
+		warning("Net: snoid event -1 (anim end) not fully implemented");
+		return;
+	}
+
+	switch (eventCode) {
+	case 0:
+		// Toggle render visibility.
+		// IDA: *(animData+290) = *(animData+290)==0;
+		if (feature->isRenderActivated())
+			feature->deactivateRender();
+		else
+			feature->activateRender();
+		// Apply pending body arrangement.
+		// IDA: if (net_pendingAnimShape) { zmb_setBodyLayerShapes(net_pendingAnimShape-1, ...); net_pendingAnimShape=0; }
+		if (_pendingBodyArrangement) {
+			snoid->setBodyArrangement(_pendingBodyArrangement - 1);
+			_pendingBodyArrangement = 0;
+		}
+		break;
+
+	case 2:
+		// Spawn Zoombini at slot.
+		// IDA: net_spawnZmbAtSlot(a1, net_currentSlotIndex)
+		// TODO: Implement net_spawnZmbAtSlot
+		warning("Net: snoid event 2 (spawn at slot) not yet implemented");
+		break;
+
+	case 4:
+		// Start snoid travel to column with runner linking.
+		// IDA: find runner, play SCRS (14000+colIdx) at kEntryPositions[colIdx],
+		//      link 4-runner chain: activeSlotRunners → columnScrbRunners[0]
+		//      → word_4B098C → word_4B098E → activeZmbRunner
+		// TODO: Implement column travel start
+		warning("Net: snoid event 4 (column travel) not yet implemented");
+		break;
+
+	case 20:
+		// Activate runner at column slot, play arrival SCRS.
+		// IDA: activate columnSlotRunners[colIdx], play SCRS (13016+offset),
+		//      set pending zmb index, clear column slot, queue management
+		// TODO: Implement column arrival
+		warning("Net: snoid event 20 (column arrival) not yet implemented");
+		break;
+
+	case 30:
+		// Play column exit SCRS, link runner chain.
+		// IDA: play SCRS (13031+offset) at kExitPositions[colIdx],
+		//      increment zmbsAtColumns, link lastLinkedRunner → activeZmbRunner
+		// TODO: Implement column exit
+		warning("Net: snoid event 30 (column exit) not yet implemented");
+		break;
+
+	default:
+		if (eventCode >= kZmbAnimEvent240_BodyArrangePendFirst &&
+		    eventCode <= kZmbAnimEvent243_BodyArrangePendLast) {
+			// IDA: net_pendingAnimShape = a2 - 239
+			_pendingBodyArrangement = eventCode - 239;
+		} else if (eventCode >= kZmbAnimEvent250_BodyArrangeDirectFirst &&
+		           eventCode <= kZmbAnimEvent253_BodyArrangeDirectLast) {
+			// IDA: zmb_setBodyLayerShapes(a2 - 250, a3 + 48)
+			snoid->setBodyArrangement(eventCode - 250);
+		}
+		break;
+	}
+}
+
+void ZoombiniInteractiveNet::processScrbAnimEvent(ZmbFeature *feature, int16 eventCode) {
+	// IDA: net_scrbAnimCallback (0x43105B)
+	// Handles SCRB feature traversal events using ASCII char-based codes.
+	switch (eventCode) {
+	case 50:  // '2': Load SCRB on row runner
+		// IDA: find runner by word_4AF3F6[runnerPtr[69]],
+		//      scrb_loadOnRunner(1, word_4A1D08[offset], runner)
+		// TODO: Implement row SCRB loading
+		warning("Net: SCRB event '2'/50 (load row SCRB) not yet implemented");
+		break;
+
+	case 61:  // '=': Play traversal script
+	case 71:  // 'G': Play traversal script
+	case 81:  // 'Q': Play traversal script
+		// IDA: net_playTraversalScript(0, callback, runnerPtr[111], runnerPtr)
+		// TODO: Implement traversal script playback
+		warning("Net: SCRB event traversal script (%d) not yet implemented", eventCode);
+		break;
+
+	case 62:  // '>': Setup traversal step
+		// IDA: net_setupTraversalStep(0, callback, runnerPtr[111], runnerPtr)
+		// TODO: Implement traversal step setup
+		warning("Net: SCRB event '>'/62 (traversal step) not yet implemented");
+		break;
+
+	case 64:  // '@': Store runner data
+	case 84:  // 'T': Store runner data
+		// IDA: word_4AFF88[word_4B00CA++] = runnerPtr[74]
+		// TODO: Implement runner data storage
+		warning("Net: SCRB event store data (%d) not yet implemented", eventCode);
+		break;
+
+	case 65:  // 'A': Spawn traversal runner (param=1)
+		// IDA: net_spawnTraversalRunner(1, callback, runnerPtr[111], runnerPtr)
+		// TODO: Implement runner spawning
+		warning("Net: SCRB event 'A'/65 (spawn runner 1) not yet implemented");
+		break;
+
+	case 66:  // 'B': Set slot + clear
+	case 76:  // 'L': Set slot + clear
+	case 86:  // 'V': Set slot + clear
+		// IDA: scrb_setSlotFeatureRunnerIdx(0, runnerPtr[68]),
+		//      word_4AF33C[runnerPtr[68]] = 0
+		// TODO: Implement slot assignment
+		warning("Net: SCRB event set slot (%d) not yet implemented", eventCode);
+		break;
+
+	case 72:  // 'H': Setup traversal step (param=1)
+	case 82:  // 'R': Setup traversal step (param=1)
+		// IDA: net_setupTraversalStep(1, callback, runnerPtr[111], runnerPtr)
+		// TODO: Implement traversal step setup (alternate)
+		warning("Net: SCRB event traversal step alt (%d) not yet implemented", eventCode);
+		break;
+
+	case 74:  // 'J': Store + clear runner
+		// IDA: word_4AFF88[word_4B00CA++] = runnerPtr[74]; runnerPtr[74] = 0
+		// TODO: Implement store + clear
+		warning("Net: SCRB event 'J'/74 (store+clear) not yet implemented");
+		break;
+
+	case 75:  // 'K': Spawn traversal runner (param=0)
+	case 85:  // 'U': Spawn traversal runner (param=0)
+		// IDA: net_spawnTraversalRunner(0, callback, runnerPtr[111], runnerPtr)
+		// TODO: Implement runner spawning (param=0)
+		warning("Net: SCRB event spawn runner 0 (%d) not yet implemented", eventCode);
+		break;
+
+	default:
+		break;
+	}
+}
+
 } // End of namespace Mohawk

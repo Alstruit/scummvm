@@ -47,6 +47,7 @@ public:
 
 protected:
 	void onGoButtonActivated() override;
+	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
 
 private:
 	void loadZoombinisFromPack();
@@ -108,6 +109,11 @@ private:
 	ZmbFeature *_raftFeature = nullptr;
 	/** 7 overlay runners (SCRB 1200-1206). IDA: word_4AA848[] */
 	ZmbFeature *_overlayFeatures[7] = {};
+
+	// --- Animation event state ---
+
+	/** Pending body arrangement shape (1-4, or 0 for none). IDA: word_4AB1A0 */
+	int16 _pendingBodyArrangement = 0;
 };
 
 } // End of namespace Mohawk

@@ -1443,7 +1443,7 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 			_scrsHideOnComplete = false;
 			// IDA: fires onHotspotShapeOrFrameFunc(-1) completion callback.
 			if (page)
-				page->onFeatureAnimEvent(this, -1);
+				page->onFeatureAnimEvent(this, kZmbAnimEventM1_End);
 			needsRedraw = true;
 		}
 		break;

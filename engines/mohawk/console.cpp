@@ -59,6 +59,7 @@
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_graphics.h"
 #include "mohawk/zoombini_page.h"
+#include "mohawk/zoombini_pages/interactive_base.h"
 #include "mohawk/zoombini_debug.h"
 #endif
 
@@ -972,6 +973,7 @@ ZoombiniConsole::ZoombiniConsole(MohawkEngine_Zoombini *vm) : GUI::Debugger(), _
 	registerCmd("dumpAllResources",		WRAP_METHOD(ZoombiniConsole, Cmd_DumpAllResources));
 	registerCmd("goXfer",				WRAP_METHOD(ZoombiniConsole, Cmd_GoXfer));
 	registerCmd("goPractice",			WRAP_METHOD(ZoombiniConsole, Cmd_GoPractice));
+	registerCmd("finishPuzzle",			WRAP_METHOD(ZoombiniConsole, Cmd_FinishPuzzle));
 }
 
 ZoombiniConsole::~ZoombiniConsole() {
@@ -2033,77 +2035,96 @@ bool ZoombiniConsole::Cmd_DumpAllResources(int argc, const char **argv) {
 }
 
 bool ZoombiniConsole::Cmd_GoXfer(int argc, const char **argv) {
+	// Map: destination name/DI page -> source SI page needed to show that xfer transition
 	static const struct {
 		const char *name;
-		ZMB_SI_PAGE siPage;
+		ZMB_DI_PAGE diPage;
+		ZMB_SI_PAGE srcSiPage;
 		const char *desc;
-	} xferRoutes[] = {
-		{ "picker",    ZMB_SI_PICKER_01,     "Picker -> Bridge (From Isle)" },
-		{ "bridge",    ZMB_SI_BRIDGE_02,     "Bridge -> Tunnels (Big Bad & Hungry)" },
-		{ "tunnels",   ZMB_SI_TUNNELS_03,    "Tunnels -> Pizza (Big Bad & Hungry)" },
-		{ "pizza",     ZMB_SI_PIZZA_04,      "Pizza -> Basecamp1 (Big Bad & Hungry)" },
-		{ "bc1north",  ZMB_SI_BC1_NORTH_05,  "Basecamp1 North -> Ferry (Who's Bayou)" },
-		{ "bc1south",  ZMB_SI_BC1_SOUTH_06,  "Basecamp1 South -> Lilly (Who's Bayou)" },
-		{ "ferry",     ZMB_SI_FERRY_07,      "Ferry -> Slides (Who's Bayou)" },
-		{ "lilly",     ZMB_SI_LILLY_08,      "Lilly -> Basecamp2 (Who's Bayou)" },
-		{ "slides",    ZMB_SI_SLIDES_09,     "Slides -> Fleens (Deep Dark Forest)" },
-		{ "fleens",    ZMB_SI_FLEENS_10,     "Fleens -> Hotel (Deep Dark Forest)" },
-		{ "hotel",     ZMB_SI_HOTEL_11,      "Hotel -> Net (Deep Dark Forest)" },
-		{ "net",       ZMB_SI_NET_12,        "Net -> Basecamp2 (Deep Dark Forest)" },
-		{ "bc2",       ZMB_SI_BASECAMP2_13,  "Basecamp2 -> Caves (Mountain of Despair)" },
-		{ "caves",     ZMB_SI_CAVES_14,      "Caves -> Smoke (Mountain of Despair)" },
-		{ "smoke",     ZMB_SI_SMOKE_15,      "Smoke -> Maze (Mountain of Despair)" },
-		{ "maze",      ZMB_SI_MAZE_16,       "Maze -> Town (To Town)" },
+	} xferDestinations[] = {
+		{ "bridge",    ZMB_DI_BRIDGE_07,    ZMB_SI_PICKER_01,    "From Isle -> Bridge" },
+		{ "tunnels",   ZMB_DI_TUNNELS_08,   ZMB_SI_BRIDGE_02,    "Big Bad & Hungry: Bridge -> Tunnels" },
+		{ "pizza",     ZMB_DI_PIZZA_09,     ZMB_SI_TUNNELS_03,   "Big Bad & Hungry: Tunnels -> Pizza" },
+		{ "bc1",       ZMB_DI_BC1_04,       ZMB_SI_PIZZA_04,     "Big Bad & Hungry: Pizza -> Basecamp1" },
+		{ "ferry",     ZMB_DI_FERRY_10,     ZMB_SI_BC1_NORTH_05, "Who's Bayou: Basecamp1N -> Ferry" },
+		{ "lilly",     ZMB_DI_LILLY_11,     ZMB_SI_FERRY_06,     "Who's Bayou: Ferry -> Lilly" },
+		{ "slides",    ZMB_DI_SLIDES_12,    ZMB_SI_LILLY_07,     "Who's Bayou: Lilly -> Slides" },
+		{ "bc2north",  ZMB_DI_BC2_05,       ZMB_SI_SLIDES_08,    "Who's Bayou: Slides -> Basecamp2" },
+		{ "fleens",    ZMB_DI_FLEENS_13,    ZMB_SI_BC1_SOUTH_09, "Deep Dark Forest: Basecamp1S -> Fleens" },
+		{ "hotel",     ZMB_DI_HOTEL_14,     ZMB_SI_FLEENS_10,    "Deep Dark Forest: Fleens -> Hotel" },
+		{ "net",       ZMB_DI_NET_15,       ZMB_SI_HOTEL_11,     "Deep Dark Forest: Hotel -> Net" },
+		{ "bc2south",  ZMB_DI_BC2_05,       ZMB_SI_NET_12,       "Deep Dark Forest: Net -> Basecamp2" },
+		{ "caves",     ZMB_DI_CAVES_16,     ZMB_SI_BASECAMP2_13, "Mountain of Despair: Basecamp2 -> Caves" },
+		{ "smoke",     ZMB_DI_SMOKE_17,     ZMB_SI_CAVES_14,     "Mountain of Despair: Caves -> Smoke" },
+		{ "maze",      ZMB_DI_MAZE_18,      ZMB_SI_SMOKE_15,     "Mountain of Despair: Smoke -> Maze" },
+		{ "town",      ZMB_DI_TOWN_06,      ZMB_SI_MAZE_16,      "To Town: Maze -> Town" },
 	};
 
-	if (argc != 2) {
-		debugPrintf("Jump to the xfer (transition) page with a chosen route.\n");
-		debugPrintf("Usage: goXfer <route>\n");
-		debugPrintf("Available routes:\n");
-		for (uint i = 0; i < ARRAYSIZE(xferRoutes); i++) {
-			debugPrintf("  %-10s  SI %2d  %s\n", xferRoutes[i].name,
-				(int)xferRoutes[i].siPage, xferRoutes[i].desc);
+	if (argc < 2 || argc > 3) {
+		debugPrintf("Jump to the xfer (transition) page to a chosen destination.\n");
+		debugPrintf("Usage: goXfer <destination> [level]\n");
+		debugPrintf("  destination: name or DI page number of the target puzzle\n");
+		debugPrintf("  level: optional difficulty level (1-4)\n");
+		debugPrintf("Available destinations:\n");
+		for (uint i = 0; i < ARRAYSIZE(xferDestinations); i++) {
+			debugPrintf("  %-10s  (DI %2d)  %s\n", xferDestinations[i].name,
+				(int)xferDestinations[i].diPage, xferDestinations[i].desc);
 		}
 		return true;
 	}
 
-	// Match by name (case-insensitive) or SI page number
-	ZMB_SI_PAGE targetSi = ZMB_SI_MINUS1;
+	// Parse optional level parameter
+	uint16 level = 0;
+	if (argc == 3) {
+		int32 levelVal;
+		if (!ZmbResource::parseInt(argv[2], levelVal) || levelVal < 1 || levelVal > 4) {
+			debugPrintf("Invalid level '%s'. Must be 1-4.\n", argv[2]);
+			return true;
+		}
+		level = (uint16)levelVal;
+	}
+
+	// Match by name (case-insensitive) or DI page number
+	ZMB_SI_PAGE srcSiPage = ZMB_SI_MINUS1;
 	int32 numVal;
 	if (ZmbResource::parseInt(argv[1], numVal)) {
-		// Numeric: treat as SI page index
-		for (uint i = 0; i < ARRAYSIZE(xferRoutes); i++) {
-			if ((int16)numVal == xferRoutes[i].siPage) {
-				targetSi = xferRoutes[i].siPage;
+		// Numeric: treat as DI page index
+		for (uint i = 0; i < ARRAYSIZE(xferDestinations); i++) {
+			if ((int16)numVal == xferDestinations[i].diPage) {
+				srcSiPage = xferDestinations[i].srcSiPage;
 				break;
 			}
 		}
 	} else {
 		// Name match
-		for (uint i = 0; i < ARRAYSIZE(xferRoutes); i++) {
-			if (scumm_stricmp(argv[1], xferRoutes[i].name) == 0) {
-				targetSi = xferRoutes[i].siPage;
+		for (uint i = 0; i < ARRAYSIZE(xferDestinations); i++) {
+			if (scumm_stricmp(argv[1], xferDestinations[i].name) == 0) {
+				srcSiPage = xferDestinations[i].srcSiPage;
 				break;
 			}
 		}
 	}
 
-	if (targetSi == ZMB_SI_MINUS1) {
-		debugPrintf("Unknown route '%s'. Use goXfer without arguments to see available routes.\n", argv[1]);
+	if (srcSiPage == ZMB_SI_MINUS1) {
+		debugPrintf("Unknown destination '%s'. Use goXfer without arguments to see available destinations.\n", argv[1]);
 		return true;
 	}
 
 	// Generate 16 random snoids as the active pack (same as practice mode)
 	_vm->_state->generateRandomPack();
 
+	// Set difficulty level if specified (same as practice mode)
+	if (0 < level)
+		_vm->_state->_practiceLevel = level;
+
 	// Close the current page and queue the xfer transition
-	_vm->_xferSrcSiPage = targetSi;
+	_vm->_xferSrcSiPage = srcSiPage;
 	_vm->setNextPage(ZoombiniPageType::kXfer);
 	if (_vm->getActivePage())
 		_vm->getActivePage()->close();
 
 	debugPrintf("Generated 16 random snoids in active pack\n");
-	debugPrintf("Jumping to xfer with source SI page %d\n", (int)targetSi);
+	debugPrintf("Jumping to xfer with destination (level %u)\n", level);
 	return false; // Close the debugger console
 }
 
@@ -2184,6 +2205,24 @@ bool ZoombiniConsole::Cmd_GoPractice(int argc, const char **argv) {
 	debugPrintf("Generated 16 random snoids in active pack\n");
 	debugPrintf("Jumping directly to puzzle page %d\n", (int)targetPage);
 	return false; // Close the debugger console
+}
+
+bool ZoombiniConsole::Cmd_FinishPuzzle(int argc, const char **argv) {
+	ZoombiniPage *page = _vm->getActivePage();
+	if (!page) {
+		debugPrintf("No active page.\n");
+		return true;
+	}
+
+	ZoombiniInteractive *interactive = dynamic_cast<ZoombiniInteractive *>(page);
+	if (!interactive) {
+		debugPrintf("Current page is not a puzzle page.\n");
+		return true;
+	}
+
+	interactive->debugFinishPuzzle();
+	debugPrintf("Departure triggered.\n");
+	return true;
 }
 
 bool ZoombiniConsole::exportSurfaceToBMP(const Common::String &filename, const Graphics::Surface *surface, const byte *palette) {

@@ -1036,18 +1036,24 @@ void ZoombiniInteractiveSmoke::onEveryFrame() {
 
 void ZoombiniInteractiveSmoke::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
-		// Snoid animation event
-		ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
-		SnoidAnimState state = snoid->getAnimState();
-		
-		if (state == kSnoidAnimScriptReject) {
-			// Reject script finished — return to idle
-			snoid->setAnimState(kSnoidAnimIdle);
-			snoid->setupIdleHotspots();
-		} else if (state == kSnoidAnimScriptNormal) {
-			// Normal script (entering smoke) finished — hide snoid
-			snoid->deactivateRender();
-			snoid->deactivateAnimate();
+		if (eventCode == kZmbAnimEventM1_End) {
+			// End-of-animation handling for snoids
+			ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
+			SnoidAnimState state = snoid->getAnimState();
+
+			if (state == kSnoidAnimScriptReject) {
+				// Reject script finished — return to idle
+				snoid->setAnimState(kSnoidAnimIdle);
+				snoid->setupIdleHotspots();
+			} else if (state == kSnoidAnimScriptNormal) {
+				// Normal script (entering smoke) finished — hide snoid
+				snoid->deactivateRender();
+				snoid->deactivateAnimate();
+			}
+		} else {
+			// Intermediate events during SCRS playback go through common dispatch.
+			// IDA: smoke_scrbAnimDispatch handles both snoid and SCRB events.
+			processAnimDispatchEvent(feature, eventCode);
 		}
 	} else {
 		// SCRB feature animation event
@@ -1061,11 +1067,13 @@ void ZoombiniInteractiveSmoke::processAnimDispatchEvent(ZmbFeature *feature, int
 	
 	switch (eventCode) {
 	case 0:
-		// Toggle render flag on runner
-		if (feature->hasFlag(ZmbFeature::FLAG_01000000_DEFER_RENDER)) {
-			feature->removeFlag(ZmbFeature::FLAG_01000000_DEFER_RENDER);
-		} else {
-			feature->addFlag(ZmbFeature::FLAG_01000000_DEFER_RENDER);
+		// Toggle render visibility — only for snoid features (IDA: flags==1 check).
+		// IDA: if (*(animData+32)==1) *(animData+290) = *(animData+290)==0;
+		if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+			if (feature->isRenderActivated())
+				feature->deactivateRender();
+			else
+				feature->activateRender();
 		}
 		break;
 		
@@ -1169,11 +1177,17 @@ void ZoombiniInteractiveSmoke::processAnimDispatchEvent(ZmbFeature *feature, int
 		break;
 		
 	case 60:  // '<'
-		// Reset navigation state
+		// Reset navigation/drag state.
+		// IDA: ui_bDragLockActive = 0; ui_dragLockCounter = 1;
+		_vm->_walkersInProgress = 0;
 		break;
 		
 	case 251:
-		// Set animation shape on Zoombini runner
+		// Set body arrangement to 1 for snoid features.
+		// IDA: if (*(animData+32)==1) zmb_setBodyLayerShapes(1, animData+48);
+		if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+			static_cast<ZmbSnoid *>(feature)->setBodyArrangement(1);
+		}
 		break;
 		
 	default:

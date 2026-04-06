@@ -780,7 +780,7 @@ void ZoombiniInteractiveHotel::registerWinCheckpoints() {
 // onFeatureAnimEvent: Called when a feature's animation cycle ends.
 // ---------------------------------------------------------------------------
 void ZoombiniInteractiveHotel::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
-	if (eventCode != -1)
+	if (eventCode != kZmbAnimEventM1_End)
 		return; // Only handle end-of-animation
 
 	if (feature == _roomAnimFeature) {

@@ -186,19 +186,19 @@ ZmbEventHandleResult ZoombiniPage::onQuit() {
 }
 
 ZmbFeature *ZoombiniPage::loadScrbFeature(ZmbResource imgResource, uint16 scrbId, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks) {
-	return registerFeature(this, _scrbFeatureMap, imgResource, scrbId, frameInterval, Common::Point(0, 0), flags, true, nullptr, eventHooks);
+	return registerFeature(this, _scrbFeatures, imgResource, scrbId, frameInterval, Common::Point(0, 0), flags, true, nullptr, eventHooks);
 }
 
 ZmbFeature *ZoombiniPage::loadScrbFeature(ZmbResource imgResource, uint16 scrbId, uint32 frameInterval, const Common::Point &pointRef, uint32 flags, const ZmbFeature::EventHooks &eventHooks) {
-	return registerFeature(this, _scrbFeatureMap, imgResource, scrbId, frameInterval, pointRef, flags, true, nullptr, eventHooks);
+	return registerFeature(this, _scrbFeatures, imgResource, scrbId, frameInterval, pointRef, flags, true, nullptr, eventHooks);
 }
 
 ZmbFeature *ZoombiniPage::loadVirtualFeature(ZmbResource imgResource, uint16 virtFeatureId, const Common::Array<ZmbHotspot> &hotspots, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks) {
-	return registerFeature(this, _virtualFeatureMap, imgResource, virtFeatureId, frameInterval, Common::Point(0, 0), flags, false, &hotspots, eventHooks);
+	return registerFeature(this, _virtualFeatures, imgResource, virtFeatureId, frameInterval, Common::Point(0, 0), flags, false, &hotspots, eventHooks);
 }
 
 ZmbFeature *ZoombiniPage::loadVirtualFeature(uint16 virtFeatureId, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks) {
-	return registerFeature(this, _virtualFeatureMap, ZmbResource(ZmbArchiveKind::kPage, 0), virtFeatureId, frameInterval, Common::Point(0, 0), flags, false, nullptr, eventHooks);
+	return registerFeature(this, _virtualFeatures, ZmbResource(ZmbArchiveKind::kPage, 0), virtFeatureId, frameInterval, Common::Point(0, 0), flags, false, nullptr, eventHooks);
 }
 
 ZmbFeature *ZoombiniPage::registerFeature(ZoombiniPage *page, ZmbFeatureList<ZmbFeature> &featureList, ZmbResource imgResource, uint16 scrbId, uint32 frameInterval, const Common::Point &pointRef, uint32 flags, bool isPhysicalScrb, const Common::Array<ZmbHotspot> *virtualHotspots, const ZmbFeature::EventHooks &eventHooks) {
@@ -264,11 +264,11 @@ ZmbFeature *ZoombiniPage::createMainFeatureHead(uint32 flags) {
 }
 
 void ZoombiniPage::unloadScrbFeature(uint16 scrbId) {
-	deregisterFeature(_scrbFeatureMap, scrbId);
+	deregisterFeature(_scrbFeatures, scrbId);
 }
 
 void ZoombiniPage::unloadVirtualFeature(uint16 virtFeatureId) {
-	deregisterFeature(_virtualFeatureMap, virtFeatureId);
+	deregisterFeature(_virtualFeatures, virtFeatureId);
 }
 
 void ZoombiniPage::loadScrbOntoFeature(ZmbFeature *feature, uint16 newScrbId, bool scheduleRender) {
@@ -295,11 +295,11 @@ void ZoombiniPage::attachSubFeature(ZmbFeature *subFeature) {
 	uint16 id = subFeature->getId();
 
 	// Guard against duplicate registration (e.g. user clicks before animation finishes)
-	if (_subFeatureMap.find(id))
+	if (_subFeatures.find(id))
 		return;
 
 	// Insert without taking ownership - the parent feature still owns this pointer
-	_subFeatureMap.insert(id, subFeature);
+	_subFeatures.insert(id, subFeature);
 }
 
 void ZoombiniPage::deregisterFeature(ZmbFeatureList<ZmbFeature> &featureList, uint16 featureId) {
@@ -537,11 +537,11 @@ void ZoombiniPage::buildSortedRenderList(Common::Array<ZmbFeature *> &outList) {
 	// Step 1: Categorize features into render buckets.
 	// IDA check order: LOOP_ANIM → pre-existing OVERLAY → entity type → normalList.
 	// Original binary iterates a single linked list in registration order.
-	for (ZmbFeature *f : _scrbFeatureMap)
+	for (ZmbFeature *f : _scrbFeatures)
 		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
-	for (ZmbFeature *f : _subFeatureMap)
+	for (ZmbFeature *f : _subFeatures)
 		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
-	for (ZmbFeature *f : _virtualFeatureMap)
+	for (ZmbFeature *f : _virtualFeatures)
 		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
 	for (ZmbSnoid *s : _snoidMap)
 		categorizeFeature(s, loopAnimList, normalList, entityList, overlayList);
@@ -568,9 +568,9 @@ void ZoombiniPage::buildSortedRenderList(Common::Array<ZmbFeature *> &outList) {
 void ZoombiniPage::buildSortedEventList(Common::Array<ZmbFeature *> &outList) {
 	Common::Array<ZmbFeature *> loopAnimList, normalList, entityList, overlayList;
 
-	for (ZmbFeature *f : _scrbFeatureMap)
+	for (ZmbFeature *f : _scrbFeatures)
 		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
-	for (ZmbFeature *f : _virtualFeatureMap)
+	for (ZmbFeature *f : _virtualFeatures)
 		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
 
 	outList.clear();
@@ -600,11 +600,11 @@ void ZoombiniPage::renderFeatures() {
 	//   blits background, then iterates calling pPostRenderFunc (0x45F35F).
 
 	// Pass 1: Pre-render all features — animation logic
-	for (ZmbFeature *f : _scrbFeatureMap)
+	for (ZmbFeature *f : _scrbFeatures)
 		f->onPreRender(this);
-	for (ZmbFeature *f : _subFeatureMap)
+	for (ZmbFeature *f : _subFeatures)
 		f->onPreRender(this);
-	for (ZmbFeature *f : _virtualFeatureMap)
+	for (ZmbFeature *f : _virtualFeatures)
 		f->onPreRender(this);
 	for (ZmbSnoid *s : _snoidMap)
 		s->onPreRender(this);
@@ -626,8 +626,8 @@ void ZoombiniPage::renderFeatures() {
 
 void ZoombiniPage::checkCloseFeatures() {
 	ZmbFeatureList<ZmbFeature> *deleteLists[2] = {
-		&_scrbFeatureMap,
-		&_virtualFeatureMap,
+		&_scrbFeatures,
+		&_virtualFeatures,
 	};
 
 	for (uint32 i = 0; i < ARRAYSIZE(deleteLists); i++) {
@@ -642,14 +642,14 @@ void ZoombiniPage::checkCloseFeatures() {
 			deregisterFeature(*listPtr, deleteId);
 	}
 
-	// Detach sub-features: erase from _subFeatureMap but do NOT delete - the parent feature owns the pointer
+	// Detach sub-features: erase from _subFeatures but do NOT delete - the parent feature owns the pointer
 	Common::Array<uint16> detachIds;
-	for (ZmbFeature *f : _subFeatureMap) {
+	for (ZmbFeature *f : _subFeatures) {
 		if (f->isDetachScheduled())
 			detachIds.push_back(f->getId());
 	}
 	for (uint16 detachId : detachIds) {
-		ZmbFeature *subFeature = _subFeatureMap.erase(detachId);
+		ZmbFeature *subFeature = _subFeatures.erase(detachId);
 		if (!subFeature)
 			continue;
 		subFeature->clearDetach();
@@ -759,7 +759,7 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 						// generation and resets _animEndCallbackFired to false.
 						// We must NOT mark the fresh SCRB's callback as fired.
 						uint32 genBefore = feature->getScrbLoadGeneration();
-						onFeatureAnimEvent(feature, -1);
+						onFeatureAnimEvent(feature, kZmbAnimEventM1_End);
 						if (feature->getScrbLoadGeneration() == genBefore)
 							feature->markAnimEndCallbackFired();
 					}
@@ -796,12 +796,12 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 					if (soundGroup->hasAssignedEventCode() && !feature->hasAnimEndCallbackFired()) {
 						uint8 eventCode = soundGroup->getAssignedEventCode();
 						uint8 adjustedCode = eventCode - 1;
-						if (adjustedCode >= 200 && adjustedCode <= 239 && feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+						if (adjustedCode >= kZmbAnimEvent200_VoiceFirst && adjustedCode <= kZmbAnimEvent239_VoiceLast && feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 							static const int16 kVoiceGroupMap[18] = {
 								8, 6, 7, 10, 2, 12, 1, 9,
 								0, 4, 5, 3, 11, 13, 14, 15, 16, 17};
 
-							uint8 voiceIdx = adjustedCode - 200;
+							uint8 voiceIdx = adjustedCode - kZmbAnimEvent200_VoiceFirst;
 							int16 voiceGroup = (voiceIdx < 18) ? kVoiceGroupMap[voiceIdx] : 0;
 							if (voiceGroup != 0) {
 								const ZmbSnoid *snoid = static_cast<const ZmbSnoid *>(feature);
@@ -828,7 +828,7 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 		// One-shot: onHotspotShapeOrFrameFunc is cleared to 0 after firing.
 		if (didChainScript && !feature->hasAnimEndCallbackFired()) {
 			uint32 genBefore = feature->getScrbLoadGeneration();
-			onFeatureAnimEvent(feature, -1);
+			onFeatureAnimEvent(feature, kZmbAnimEventM1_End);
 			if (feature->getScrbLoadGeneration() == genBefore)
 				feature->markAnimEndCallbackFired();
 		}
@@ -958,11 +958,11 @@ ZmbRenderResult ZoombiniPage::blitShapes(ZmbFeature *feature) {
 	}
 	if (hasSortRect) {
 		feature->setSortRect(sortRect);
-		// IDA runner_preRenderStandard 0x4620F5–0x462172: clickRect is set from the first frame's
-		// hotspot bounding box (hotspot pos + REGS shape width/height). In ScummVM, we derive the
-		// same bounding box from the actual drawn rect, which is equivalent. Only set once — the
-		// first time a feature renders, its sort rect becomes the permanent clickRect.
-		if (!feature->hasClickRect())
+		// Snoids: IDA snoidScript_renderFrame_4562B2 clears pZmb->clickRect to (0,0,0,0) and
+		// rebuilds it via rect_mergeUnion each frame — clickRect always reflects the current
+		// rendered bounding box for z-sorting and hit-testing as the snoid moves.
+		// Non-snoids: IDA runner_preRenderStandard 0x4620F5 sets clickRect once from first frame.
+		if (!feature->hasClickRect() || feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 			feature->setClickRect(sortRect);
 	}
 
@@ -1055,10 +1055,10 @@ void ZoombiniPage::clear() {
 }
 
 void ZoombiniPage::clearScrbFeatures() {
-	for (ZmbFeature *f : _scrbFeatureMap) {
+	for (ZmbFeature *f : _scrbFeatures) {
 		delete f;
 	}
-	_scrbFeatureMap.clear();
+	_scrbFeatures.clear();
 }
 
 void ZoombiniPage::clearMainFeatureHeads() {
@@ -1070,18 +1070,18 @@ void ZoombiniPage::clearMainFeatureHeads() {
 
 void ZoombiniPage::clearSubFeatures() {
 	// Sub-features are owned by their parent features - only clear the map, do NOT delete.
-	for (ZmbFeature *f : _subFeatureMap) {
+	for (ZmbFeature *f : _subFeatures) {
 		f->setSubFeatureRunning(false);
 		f->clearDetach();
 	}
-	_subFeatureMap.clear();
+	_subFeatures.clear();
 }
 
 void ZoombiniPage::clearVirtualFeatures() {
-	for (ZmbFeature *f : _virtualFeatureMap) {
+	for (ZmbFeature *f : _virtualFeatures) {
 		delete f;
 	}
-	_virtualFeatureMap.clear();
+	_virtualFeatures.clear();
 }
 
 void ZoombiniPage::clearSnoids() {
@@ -1127,6 +1127,10 @@ ZmbSnoid *ZoombiniPage::loadSnoidFromPack(uint16 snoidId, const Common::Point &p
 	_snoidMap.insert(snoidId, snoid);
 
 	snoid->setPointLoc(point);
+	// IDA: animDestPos = posLoc; pos2 = posLoc; posSpawnXY = posLoc;
+	// Original engine sets animDestPos equal to posLoc at load time.
+	// This is used as the sort key by zmb_insertionSortByYDepth (sorts by animDestPos.x).
+	snoid->setAnimTargetPos(point);
 	// Seed the z-sort rect so the very first frame sorts correctly by position.
 	// blitShapes() will overwrite this with the actual bounding box each frame.
 	snoid->setSortRect(Common::Rect(point.x, point.y, point.x + 1, point.y + 1));

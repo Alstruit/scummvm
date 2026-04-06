@@ -56,6 +56,7 @@ protected:
 	void onGoButtonActivated() override;
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;
+	void endDrag(const Common::Point &dropPos);
 
 private:
 	void loadZoombinisFromPack();
@@ -252,6 +253,19 @@ private:
 	/** Pending sound use callback flag. IDA: word_4B7A2C */
 	bool _pendingSoundHasCallback = false;
 
+	/** Pending body arrangement override (1-4, 0=none). IDA: word_4B7A38[0] */
+	int16 _pendingBodyArrangement = 0;
+
+	/** Active SCRS resource ID for replay in event 10. IDA: word_4B7A52 */
+	int16 _activeScrsResId = 0;
+
+	/**
+	 * SCRS replay positions per gate variant (4 entries).
+	 * Used by event 10 to anchor the replayed SCRS at the gate entrance.
+	 * IDA: unk_4A76AA (int16 pairs: x,y × 4 variants)
+	 */
+	static const Common::Point kScrsReplayPositions[4];
+
 	// ========================================
 	// Animation Callbacks
 	// ========================================
@@ -285,6 +299,14 @@ private:
 	 * IDA: callIfNonZero_45BF72
 	 */
 	void popAnimQueueEntry();
+
+	/**
+	 * Clear render flag on the gate runner matching the active gate type.
+	 * For gate type 1: finds entry with queue status==2.
+	 * For gate type 4: finds entry with queue status==3.
+	 * IDA: tunnels_clearGateRenderFlag @ 0x45DD11
+	 */
+	void clearGateRenderFlag();
 
 	/**
 	 * Find an idle Zoombini from the pack.

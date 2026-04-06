@@ -41,6 +41,19 @@ public:
 	void hideNotiBoxShort();
 	void showNotiBoxLong(ZoombiniText::Key textKey);
 
+	/**
+	 * Debug: force immediate departure, bypassing puzzle completion guards.
+	 * Called from the console "finishPuzzle" command.
+	 * Calls debugPrepareForDeparture() then onGoButtonActivated().
+	 */
+	void debugFinishPuzzle();
+
+	/**
+	 * Override to set any page-specific state needed for a forced debug departure.
+	 * Default implementation does nothing.
+	 */
+	virtual void debugPrepareForDeparture() {}
+
 protected:
 	/**
 	 * Represent buttons that continously do something while being pressed, e.g. storage scroll buttons

@@ -47,27 +47,27 @@ public:
 protected:
 	// Constants
 	enum kPageResourceId : uint16 {
-		kResBackgroundBigBadHungry = 1000,
-		kResShapesBigBadHungry = 1100,
-		kResBackgroundWhosBayou = 2000,
-		kResShapesWhosBayou = 2100,
-		kResBackgroundDeepDarkForest = 3000,
-		kResShapesDeepDarkForest = 3100,
-		kResBackgroundMountainOfDespair = 4000,
-		kResShapesMountainOfDespair = 4100,
-		kResBackgroundFromIsle = 5000,
-		kResShapesFromIsle = 5100,
-		kResBackgroundToTown = 6000,
-		kResShapesToTown = 6100,
+		kResBackground1000_BigBadHungry = 1000,
+		kResShapes1100_BigBadHungry = 1100,
+		kResBackground2000_WhosBayou = 2000,
+		kResShapes2100_WhosBayou = 2100,
+		kResBackground3000_DeepDarkForest = 3000,
+		kResShapes3100_DeepDarkForest = 3100,
+		kResBackground4000_MountainOfDespair = 4000,
+		kResShapes4100_MountainOfDespair = 4100,
+		kResBackground5000_FromIsle = 5000,
+		kResShapes5100_FromIsle = 5100,
+		kResBackground6000_ToTown = 6000,
+		kResShapes6100_ToTown = 6100,
 	};
 
 	enum kXferRouteId : uint16 {
-		XFER_ROUTE_FROM_ISLE = 0,
-		XFER_ROUTE_BIG_BAD_HUNGRY = 1,
-		XFER_ROUTE_WHOS_BAYOU = 2,
-		XFER_ROUTE_DEEP_DARK_FOREST = 3,
-		XFER_ROUTE_MOUNTAIN_OF_DESPAIR = 4,
-		XFER_ROUTE_TO_TOWN = 5,
+		XFER_ROUTE0_FROM_ISLE = 0,
+		XFER_ROUTE1_BIG_BAD_HUNGRY = 1,
+		XFER_ROUTE2_WHOS_BAYOU = 2,
+		XFER_ROUTE3_DEEP_DARK_FOREST = 3,
+		XFER_ROUTE4_MOUNTAIN_OF_DESPAIR = 4,
+		XFER_ROUTE5_TO_TOWN = 5,
 	};
 
 	enum kSnoidBase : uint16 {
@@ -81,10 +81,10 @@ protected:
 	uint16 selectXferSound() const;
 
 	// XFer state, set by computeXferRoute()
-	uint16 _xferView = XFER_ROUTE_FROM_ISLE;
+	uint16 _xferView = XFER_ROUTE0_FROM_ISLE;
 	ZoombiniPageType _nextPageType = ZoombiniPageType::kBridge;
-	uint16 _xferBgId = kResBackgroundFromIsle;
-	uint16 _xferShapesId = kResShapesFromIsle;
+	uint16 _xferBgId = kResBackground5000_FromIsle;
+	uint16 _xferShapesId = kResShapes5100_FromIsle;
 	uint16 _xferScrbCount = 9;   ///< Number of main environment SCRBs to load
 
 	uint16 _nextPackSnoidId = 0;
@@ -209,12 +209,13 @@ protected:
 	ZmbFeature *_routePathFeature = nullptr;
 
 	/**
-	 * Working pixel buffer for flood-fill (copied from shape pixels).
-	 * Allocated on first post-render call; dimensions match the path overlay shape.
+	 * Working pixel buffer for flood-fill (points into shape surface pixels).
+	 * Set on first render call; dimensions match the path overlay shape.
 	 */
 	byte *_routePathPixels = nullptr;
 	uint16 _routePathWidth = 0;
 	uint16 _routePathHeight = 0;
+	uint32 _routePathPitch = 0;
 
 	/**
 	 * BFS queue for flood-fill expansion.
@@ -247,11 +248,41 @@ protected:
 	 */
 	Common::Rect _routePathScreenRect;
 
+	// -----------------------------------------------------------------------
+	// Route View Slot State (XFER_1-4 only)
+	// IDA: xfer_updateRouteViewSlots (0x467B2C) — remaps main SCRB shapes
+	// based on puzzle completion to show completed bands in foreground colors.
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Per-puzzle completion level array (IDA: xfer_puzzleCompletionArr, 0x4B97C0).
+	 * Built from game state flags by buildPuzzleCompletionArray().
+	 * Index = ZMB_SI_PAGE enum value (0-16).
+	 * Values: -1 = current band (being animated), 0 = not completed, 1-4 = highest level.
+	 */
+	int8 _puzzleCompletionArr[17] = {};
+
+	/**
+	 * Route progress level for shape variant selection (IDA: xfer_wRouteProgressLevel, 0x4B97B6).
+	 * Used by routeView_updateSlots to select shape variant for the current & cascading bands.
+	 * -1 = uninitialized, 0-4 = level.
+	 */
+	int16 _routeProgressLevel = -1;
+
+	/**
+	 * Global route slot index for the current destination (IDA: word_4B97F8).
+	 * Maps to a position in kRouteViewSlotTable.
+	 */
+	int16 _routeSlotIndex = 0;
+
 	// Route path methods
 	void computeRoutePathLevel();
 	void computeRoutePathColorLevel();
+	void buildPuzzleCompletionArray();
+	static uint16 readPuzzleLevelFlag(const ZmbStateFile &state, ZMB_SI_PAGE siPage);
+	void routeView_updateSlots(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
 	void routePath_selectBand(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
-	void routePath_onPostRender(ZmbFeature *feature);
+	ZmbRenderResult routePath_onPostRender(ZmbFeature *feature);
 	void routePath_initGrid(int16 seedX, int16 seedY, byte mark1, byte mark2, byte replace1, byte replace2);
 	void routePath_expandFloodFill(uint32 counter);
 	void routePath_reserveSlot(int16 y, int16 x, byte *pixel);

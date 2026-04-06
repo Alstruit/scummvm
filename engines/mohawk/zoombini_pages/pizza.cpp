@@ -264,7 +264,7 @@ void ZoombiniInteractivePizza::loadFeatures() {
 
 	// Save a pointer to overlay sub-feature for delivery overlays
 	{
-		ZmbFeature *found = _subFeatureMap.find(12000);
+		ZmbFeature *found = _subFeatures.find(12000);
 		if (found) {
 			_toppingOverlayFeature = found;
 		}
@@ -649,12 +649,12 @@ void ZoombiniInteractivePizza::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 
 	// --- Order base feature events (Arno) ---
 	if (feature == _orderBaseFeature) {
-		if (_orderBasePhase == kPhaseDeliveryEval && eventCode != -1) {
+		if (_orderBasePhase == kPhaseDeliveryEval && eventCode != kZmbAnimEventM1_End) {
 			// IDA: delivery callback events (61, 0, etc.) during eval SCRB
 			handleZmbDeliveryEvent(feature, eventCode);
 			return;
 		}
-		if (eventCode == -1) {
+		if (eventCode == kZmbAnimEventM1_End) {
 			switch (_orderBasePhase) {
 			case kPhaseIntro:
 				_orderBasePhase = kPhaseNone;
@@ -674,7 +674,7 @@ void ZoombiniInteractivePizza::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 				break;
 			case kPhaseDeliveryEval:
 				_orderBasePhase = kPhaseNone;
-				handleZmbDeliveryEvent(feature, -1);
+				handleZmbDeliveryEvent(feature, kZmbAnimEventM1_End);
 				break;
 			case kPhaseDeliveryResult:
 				// IDA: slot 38 done → registerToppingRunner, then advance
@@ -691,11 +691,11 @@ void ZoombiniInteractivePizza::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 
 	// --- Order 1 feature events (Willa) ---
 	if (feature == _order1Feature) {
-		if (_order1Phase == kPhaseDeliveryEval && eventCode != -1) {
+		if (_order1Phase == kPhaseDeliveryEval && eventCode != kZmbAnimEventM1_End) {
 			handleZmbDeliveryEvent(feature, eventCode);
 			return;
 		}
-		if (eventCode == -1) {
+		if (eventCode == kZmbAnimEventM1_End) {
 			switch (_order1Phase) {
 			case kPhaseIntro:
 				_order1Phase = kPhaseNone;
@@ -712,7 +712,7 @@ void ZoombiniInteractivePizza::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 				break;
 			case kPhaseDeliveryEval:
 				_order1Phase = kPhaseNone;
-				handleZmbDeliveryEvent(feature, -1);
+				handleZmbDeliveryEvent(feature, kZmbAnimEventM1_End);
 				break;
 			case kPhaseDeliveryResult:
 				// IDA: slot 38 done → registerToppingRunner, then advance
@@ -729,11 +729,11 @@ void ZoombiniInteractivePizza::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 
 	// --- Order 2 feature events (Shyler) ---
 	if (feature == _order2Feature) {
-		if (_order2Phase == kPhaseDeliveryEval && eventCode != -1) {
+		if (_order2Phase == kPhaseDeliveryEval && eventCode != kZmbAnimEventM1_End) {
 			handleZmbDeliveryEvent(feature, eventCode);
 			return;
 		}
-		if (eventCode == -1) {
+		if (eventCode == kZmbAnimEventM1_End) {
 			switch (_order2Phase) {
 			case kPhaseIntro:
 				_order2Phase = kPhaseNone;
@@ -750,7 +750,7 @@ void ZoombiniInteractivePizza::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 				break;
 			case kPhaseDeliveryEval:
 				_order2Phase = kPhaseNone;
-				handleZmbDeliveryEvent(feature, -1);
+				handleZmbDeliveryEvent(feature, kZmbAnimEventM1_End);
 				break;
 			case kPhaseDeliveryResult:
 				// IDA: slot 38 done → registerToppingRunner, then advance
@@ -767,7 +767,7 @@ void ZoombiniInteractivePizza::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 
 	// --- Topping overlay events ---
 	if (feature == _toppingOverlayFeature) {
-		if (eventCode == -1) {
+		if (eventCode == kZmbAnimEventM1_End) {
 			if (_overlayPhase == kPhaseToppingDelivery) {
 				_overlayPhase = kPhaseNone;
 				onToppingDelivered();
@@ -795,7 +795,7 @@ void ZoombiniInteractivePizza::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 	// --- Snoid events ---
 	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 		ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
-		if (eventCode == -1) {
+		if (eventCode == kZmbAnimEventM1_End) {
 			SnoidAnimState state = snoid->getAnimState();
 			if (state == kSnoidAnimScriptNormal || state == kSnoidAnimScriptReject) {
 				snoid->setAnimState(kSnoidAnimIdle);
@@ -810,7 +810,7 @@ void ZoombiniInteractivePizza::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 	// SCRB (7067/7068) finishes, clear _isDeliveryInProgress and pick
 	// the next snoid for delivery.
 	if (feature == _drawOnRegFeature) {
-		if (eventCode == -1 && _drawOnRegPhase == kPhaseSpawnAnswer) {
+		if (eventCode == kZmbAnimEventM1_End && _drawOnRegPhase == kPhaseSpawnAnswer) {
 			// IDA: wUnk002C+50h handler — answer display SCRB (7067/7068)
 			// finished. Clear phase and delivery lock. The snoid was already
 			// picked/walked by autoPickAnswerSnoid() before spawnAnswerZmb().
@@ -1760,7 +1760,7 @@ void ZoombiniInteractivePizza::handleZmbDeliveryEvent(ZmbFeature *feature, int16
 		_deliveryCallbackActive = true;
 
 		debugC(kZmbDebugPage, "Pizza: Delivery callback event 61 — SCRS %d", scrsId);
-	} else if (eventCode == -1) {
+	} else if (eventCode == kZmbAnimEventM1_End) {
 		// IDA: event -1 — delivery evaluation SCRB complete
 		// Original: delivery callback -1 handles snoid correct/wrong flags,
 		// then slot 33 completion triggers loadDeliveryResultScrb.

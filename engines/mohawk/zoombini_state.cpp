@@ -565,11 +565,10 @@ void ZmbStateFile::sync(Common::Serializer &s) {
 	// 0xAB94: Zoombini Twin Status
 	s.syncBytes(_twinGenStatus, ARRAYSIZE(_twinGenStatus));
 
-	// 0xAE05: Reserved WORDs (zeroed when loading v1 format / 44549-byte saves)
-	s.syncAsSint16LE(_wReservedAE05);
-	s.syncAsSint16LE(_wReservedAE07);
-	s.syncAsSint16LE(_wReservedAE09);
-	s.syncAsSint16LE(_wReservedAE0B);
+	// 0xAE05: Per-route perfect completion counters (zeroed when loading v1 format / 44549-byte saves)
+	for (int32 i = 0; i < ARRAYSIZE(_routePerfectCounters); i++) {
+		s.syncAsSint16LE(_routePerfectCounters[i]);
+	}
 	s.syncAsSint16LE(_townDevelopLevel);
 
 	// 0xAE0F: EOF

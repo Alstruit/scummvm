@@ -153,9 +153,63 @@ void ZoombiniInteractiveSlides::loadFeatures() {
 
 void ZoombiniInteractiveSlides::onGoButtonActivated() {
 	// IDA: slides_onClickHandler case 2 -> puzzle_pendingTransitionTarget = 5 (BC2)
-	// Route 2: Slides -> Fleens (via Xfer)
-	_departXferSrcSiPage = ZMB_SI_SLIDES_09;
+	// Route 2: Slides -> Basecamp2 (via Xfer)
+	_departXferSrcSiPage = ZMB_SI_SLIDES_08;
 	ZoombiniInteractive::onGoButtonActivated();
+}
+
+// ---------------------------------------------------------------------------
+// onFeatureAnimEvent: Snoid travel animation callback.
+// IDA: slides_snoidTravelCallback @ 0x4462BC
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveSlides::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+	if (!feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+		return;
+
+	ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
+
+	if (eventCode == 0) {
+		// Toggle render visibility + apply pending body arrangement.
+		// IDA: *(runnerData+290) = *(runnerData+290)==0; if word_4B110E: apply & clear.
+		if (snoid->isRenderActivated())
+			snoid->deactivateRender();
+		else
+			snoid->activateRender();
+
+		if (_pendingBodyArrangement != 0) {
+			snoid->setBodyArrangement(_pendingBodyArrangement - 1);
+			_pendingBodyArrangement = 0;
+		}
+	} else if (eventCode >= 90 && eventCode <= 93) {
+		// Directional travel animations.
+		// IDA: events 90-93 initiate SCRS 14000-14003 (left/right/up/down)
+		// on the active travel snoid with re-set callback.
+		if (_activeTravelSnoidId == 0)
+			return;
+
+		ZmbSnoid *travelSnoid = getSnoid(_activeTravelSnoidId);
+		if (!travelSnoid)
+			return;
+
+		int16 scrsId = 14000 + (eventCode - 90);
+		Common::SeekableReadStream *scrsStream =
+			_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+							 ZmbResource(ZmbArchiveKind::kPage, scrsId));
+		if (scrsStream) {
+			travelSnoid->startScrsPlayback(scrsStream, false, false);
+			// IDA: events 90-92 set word_4B1112=1 (traveling), event 93 sets 0 (arrived)
+			_travelState = (eventCode == 93) ? 0 : 1;
+			debug(3, "Slides: Travel SCRS %d on snoid %d", scrsId, _activeTravelSnoidId);
+		}
+	} else if (eventCode >= kZmbAnimEvent240_BodyArrangePendFirst && eventCode <= kZmbAnimEvent243_BodyArrangePendLast) {
+		// Pending body arrangement (applied on next event 0).
+		// IDA: word_4B110E = travelIdx - 239 (range 1-4)
+		_pendingBodyArrangement = eventCode - (kZmbAnimEvent240_BodyArrangePendFirst - 1);
+	} else if (eventCode >= kZmbAnimEvent250_BodyArrangeDirectFirst && eventCode <= kZmbAnimEvent253_BodyArrangeDirectLast) {
+		// Direct body arrangement change.
+		// IDA: zmb_setBodyLayerShapes(travelIdx - 250, core)
+		snoid->setBodyArrangement(eventCode - kZmbAnimEvent250_BodyArrangeDirectFirst);
+	}
 }
 
 void ZoombiniInteractiveSlides::loadZoombinisFromPack() {

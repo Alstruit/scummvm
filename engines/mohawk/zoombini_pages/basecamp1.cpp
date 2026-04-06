@@ -372,7 +372,7 @@ void ZoombiniInteractiveBasecampOne::executeDeparture() {
 	if (_departRouteDirection == 1)
 		_vm->_xferSrcSiPage = ZMB_SI_BC1_NORTH_05;
 	else
-		_vm->_xferSrcSiPage = ZMB_SI_BC1_SOUTH_06;
+		_vm->_xferSrcSiPage = ZMB_SI_BC1_SOUTH_09;
 	_vm->setNextPage(ZoombiniPageType::kXfer);
 	close();
 }
@@ -983,7 +983,7 @@ int16 ZoombiniInteractiveBasecampOne::findNearestEmptyPedestal(const Common::Poi
 void ZoombiniInteractiveBasecampOne::endDrag(const Common::Point &dropPos) {
 	// Deactivate pedestal hover highlight if any
 	if (_hoveredPedestalIdx >= 0) {
-		ZmbFeature *pedestal = _scrbFeatureMap.find(kResScrb1200_Pedestal + _hoveredPedestalIdx);
+		ZmbFeature *pedestal = _scrbFeatures.find(kResScrb1200_Pedestal + _hoveredPedestalIdx);
 		if (pedestal) {
 			pedestal->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
 		}
@@ -1221,7 +1221,7 @@ void ZoombiniInteractiveBasecampOne::updatePedestalHover(const Common::Point &sn
 
 	// Deactivate previous highlight if any
 	if (_hoveredPedestalIdx >= 0) {
-		ZmbFeature *pedestal = _scrbFeatureMap.find(kResScrb1200_Pedestal + _hoveredPedestalIdx);
+		ZmbFeature *pedestal = _scrbFeatures.find(kResScrb1200_Pedestal + _hoveredPedestalIdx);
 		if (pedestal) {
 			// IDA: highlightRunner->bitmask |= 0x10000u; highlightRunner->dNextRenderFrame = 0;
 			pedestal->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
@@ -1230,7 +1230,7 @@ void ZoombiniInteractiveBasecampOne::updatePedestalHover(const Common::Point &sn
 
 	// Activate new highlight if any
 	if (nearestIdx >= 0) {
-		ZmbFeature *pedestal = _scrbFeatureMap.find(kResScrb1200_Pedestal + nearestIdx);
+		ZmbFeature *pedestal = _scrbFeatures.find(kResScrb1200_Pedestal + nearestIdx);
 		if (pedestal) {
 			// IDA: wBoolDoRender = 1; wGroupFrameIdx0098 = 0; dwHotspotIdx009A = 1;
 			pedestal->activateRender();

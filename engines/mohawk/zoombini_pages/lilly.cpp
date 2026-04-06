@@ -190,8 +190,8 @@ void ZoombiniInteractiveLilly::loadFeatures() {
 
 void ZoombiniInteractiveLilly::onGoButtonActivated() {
 	// IDA: lilly_onClickHandler case 2
-	// Route 2: Lilly -> Basecamp2 (via Xfer)
-	_departXferSrcSiPage = ZMB_SI_LILLY_08;
+	// Route 2: Lilly -> Slides (via Xfer)
+	_departXferSrcSiPage = ZMB_SI_LILLY_07;
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
