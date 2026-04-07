@@ -34,9 +34,6 @@ public:
 	void open() override;
 	void loadFeatures() override;
 
-	enum VirtualFeatureId {
-		kVirtualFeatureDrawLines = 1,
-	};
 
 protected:
 	ZmbEventHandleResult creditScreen_onMouseLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);

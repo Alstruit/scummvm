@@ -108,6 +108,10 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 					hooks1002);
 
 	// [*] SCRB 1003: Mode Select Combobox (red circle shape)
+	// IDA rodmap_runScrbPanels_1002_1003_1004: SCRB 1003 is registered after SCRB 1002
+	// with FLAG_00100000_PLAY_ONCE only. The OVERLAY optimisation in buildSortedRenderList
+	// preserves the registration order after the first Z-sort, so SCRB 1003 always draws
+	// on top of SCRB 1002 — matching the original engine's linked-list behaviour.
 	ZmbFeature::EventHooks hooks1003;
 	hooks1003.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::drawComboBox1003_preRenderShape));
 	hooks1003.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveRodMap::selectMode1003_onLButtonDown));
@@ -115,10 +119,14 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 					ZmbFeature::FLAG_00100000_PLAY_ONCE,
 					hooks1003);
 
-	// [*] Virtual Feature: Route Names
+	// [*] Callback-only runner: Route Names
+	// IDA: rodmap_drawRouteNames is called DIRECTLY from
+	// rodmap_runScrbPanels_1002_1003_1004 (not via a runner callback).
+	// In the original engine route names are drawn once to the background port.
+	// We approximate this with a scrbId=0 runner whose postRender draws labels.
 	ZmbFeature::EventHooks hooksRouteNames;
 	hooksRouteNames.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::textRouteNames_postRender));
-	loadVirtualFeature(kVirtualFeatureRouteNames, 0, ZmbFeature::FLAG_00100000_PLAY_ONCE, hooksRouteNames);
+	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0, ZmbFeature::FLAG_00100000_PLAY_ONCE, hooksRouteNames);
 }
 
 ZmbEventHandleResult ZoombiniInteractiveRodMap::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {

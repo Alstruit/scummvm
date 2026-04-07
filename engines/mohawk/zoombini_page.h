@@ -41,8 +41,15 @@ namespace Mohawk {
  * iteration while providing O(1) lookup by uint16 ID.
  *
  * The original engine stores all feature/snoid runners in a single singly-linked
- * list (zmb_pRunnerListHead). Iteration order = registration order, and lookups
+ * list (zmb_pRunnerListHead). Each runner has a unique auto-incremented
+ * wFeatureRunnerIdx and a separate wResId (SCRB resource ID). Multiple runners
+ * may share the same wResId. Iteration order = registration order, and lookups
  * walk the list (runner_findByIndex). We keep a HashMap for efficient lookups.
+ *
+ * Duplicate keys: insert() always appends to the iteration list. The HashMap
+ * index stores only the FIRST entry for each key; subsequent entries with the
+ * same key are list-only. This matches the original engine where multiple
+ * runners may share a wResId. Use eraseByPtr() for pointer-identity removal.
  */
 template<class T>
 class ZmbFeatureList {
@@ -60,13 +67,12 @@ public:
 	bool empty() const { return _list.empty(); }
 
 	/** Insert a feature at the tail (= registered last = drawn last in
-	 *  LOOP_ANIM bucket). Returns false if ID already exists. */
-	bool insert(uint16 id, T *feature) {
-		if (_index.contains(id))
-			return false;
+	 *  LOOP_ANIM bucket). Always succeeds; duplicate keys are allowed
+	 *  (only the first entry per key is indexed in the HashMap). */
+	void insert(uint16 id, T *feature) {
 		_list.push_back(feature);
-		_index[id] = feature;
-		return true;
+		if (!_index.contains(id))
+			_index[id] = feature;
 	}
 
 	/** Lookup by ID.  Returns nullptr when not found. */
@@ -92,6 +98,21 @@ public:
 			}
 		}
 		return ptr;
+	}
+
+	/** Erase by pointer identity. Removes from the iteration list and,
+	 *  if this pointer is the HashMap-indexed entry for @p keyHint,
+	 *  removes the index entry as well. */
+	void eraseByPtr(T *ptr, uint16 keyHint) {
+		auto hashIt = _index.find(keyHint);
+		if (hashIt != _index.end() && hashIt->_value == ptr)
+			_index.erase(hashIt);
+		for (auto listIt = _list.begin(); listIt != _list.end(); ++listIt) {
+			if (*listIt == ptr) {
+				_list.erase(listIt);
+				return;
+			}
+		}
 	}
 
 	void clear() {
@@ -244,8 +265,15 @@ public:
 	// [*] Feature Script (SCRB: Map Object)
 	ZmbFeature *loadScrbFeature(ZmbResource imgResource, uint16 scrbId, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks = ZmbFeature::EventHooks());
 	ZmbFeature *loadScrbFeature(ZmbResource imgResource, uint16 scrbId, uint32 frameInterval, const Common::Point &point, uint32 flags, const ZmbFeature::EventHooks &eventHooks = ZmbFeature::EventHooks());
-	ZmbFeature *loadVirtualFeature(ZmbResource imgResource, uint16 virtFeatureId, const Common::Array<ZmbHotspot> &hotspots, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks);
-	ZmbFeature *loadVirtualFeature(uint16 virtFeatureId, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks);
+	/**
+	 * Load a callback-only SCRB feature with virtual hotspots.
+	 * IDA: runner_registerAndAllocate (0x45F60C) with wResId=0 creates a
+	 * callback-only runner that never loads SCRB data.  This overload
+	 * matches that pattern: the feature is stored in @c _scrbFeatures
+	 * (same as real SCRB features) with scrbId=0, using @p hotspots
+	 * for click detection instead of SCRB-embedded hotspot groups.
+	 */
+	ZmbFeature *loadScrbFeature(ZmbResource imgResource, uint16 scrbId, const Common::Array<ZmbHotspot> &hotspots, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks = ZmbFeature::EventHooks());
 	ZmbFeature *loadSubFeature(ZmbFeature *parentFeature, ZmbResource imgResource, uint16 scrbId);
 	/**
 	 * Create a chain-head feature for sub-feature chaining.
@@ -255,8 +283,7 @@ public:
 	 * loadSubFeature() chains — providing inherited flags and frame interval.
 	 */
 	ZmbFeature *createMainFeatureHead(uint32 flags);
-	void unloadScrbFeature(uint16 scrbId);
-	void unloadVirtualFeature(uint16 virtFeatureId);
+	void unloadScrbFeature(ZmbFeature *feature);
 	/**
 	 * Swap the SCRB data on an already-registered feature.
 	 * IDA: scrb_loadOnRunner (0x460384) — loads/reloads SCRB resource data
@@ -325,7 +352,6 @@ public:
 
 	void clear();
 	void clearScrbFeatures();
-	void clearVirtualFeatures();
 	void clearSubFeatures();
 	void clearMainFeatureHeads();
 	void clearSnoids();
@@ -467,12 +493,6 @@ public:
 		kResStrl30006_ZoombiniNames = 30006,
 	};
 
-	enum VirtualFeatureId : uint16 {
-		kVirtualFeatureMinus02_NotiBox = 0xFFFE,
-		kVirtualFeatureMinus01_ButtonLast = 0xFFFF,
-		kVirtualFeaturePlus01_ButtonRoot = 0x0001,
-	};
-
 	enum ShapeId0001 {
 		kShape0001_01_OptionsDialog = 1,
 		kShape0001_02_OptionsFrame = 2,
@@ -560,7 +580,6 @@ protected:
 	bool _useFadeEffect = true;
 
 	ZmbFeatureList<ZmbFeature> _scrbFeatures;
-	ZmbFeatureList<ZmbFeature> _virtualFeatures;
 	/** Chain-head features from createMainFeatureHead(), not in any feature map. */
 	Common::Array<ZmbFeature *> _mainFeatureHeads;
 	/**
@@ -568,6 +587,9 @@ protected:
 	 */
 	ZmbFeatureList<ZmbFeature> _subFeatures;
 	ZmbFeatureList<ZmbSnoid> _snoidMap;
+
+	/** Monotonic counter for feature registration order tracking. */
+	uint32 _nextRegistrationIndex = 0;
 	Common::HashMap<uint16, ZmbRegs *> _regsMap;
 	Common::HashMap<uint16, ZmbNode *> _nodeMap;
 
@@ -610,10 +632,29 @@ protected:
 	uint32 _currentFrameCounter = 0;
 	uint32 _lastFrameTime = 0;
 	uint32 _lastFrameCounter = 0;
-	bool _doForceRedraw = false;
+	bool _doForceRedraw = true;
+	bool _forceRedrawPending = false;
+
+	// Dirty-rect tracking: IDA gfx_renderFrame (0x45F070) dirty region system.
+	// The original engine uses a precise dirty region (list of rectangles,
+	// internally an RMap structure) clipped via GDI clip regions.  We maintain
+	// the individual rects AND their bounding box for quick early-out.
+	Common::Array<Common::Rect> _dirtyRects;
+	Common::Rect _dirtyBounds;
+	bool _hasDirtyBounds = false;
+	void addDirtyRect(const Common::Rect &rect);
+
+	/**
+	 * IDA: scrb_currentRenderRunnerIdx accumulator.
+	 * Collects dirty rects from external sources (e.g. feature loads, SCRB swaps)
+	 * between render frames.  Merged into _dirtyBounds at start of renderFeatures().
+	 */
+	Common::Rect _externalDirtyBounds;
+	bool _hasExternalDirtyBounds = false;
+	void addExternalDirtyRect(const Common::Rect &rect);
 
 	static ZmbFeature *registerFeature(ZoombiniPage *page, ZmbFeatureList<ZmbFeature> &featureList, ZmbResource imgResource, uint16 scrbId, uint32 frameInterval, const Common::Point &point, uint32 flags, bool isPhysicalScrb, const Common::Array<ZmbHotspot> *virtualHotspots, const ZmbFeature::EventHooks &eventHooks = ZmbFeature::EventHooks());
-	static void deregisterFeature(ZmbFeatureList<ZmbFeature> &featureList, uint16 featureId);
+	static void deregisterFeature(ZmbFeatureList<ZmbFeature> &featureList, ZmbFeature *feature);
 
 	void loadNODE(ZmbArchiveKind archiveKind, uint16 imgResource);
 	void loadREGS(ZmbArchiveKind archiveKind, uint16 imgResource);
@@ -736,11 +777,20 @@ protected:
 	ZmbEventHandleResult genericToggleButton_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, Common::StableMap<uint32, ToggleButtonState> &buttonStateMap, ToggleButtonGetRectFunc getRectFunc);
 
 private:
-	static void categorizeFeature(ZmbFeature *feature, Common::Array<ZmbFeature *> &loopAnimList, Common::Array<ZmbFeature *> &normalList, Common::Array<ZmbFeature *> &entityList, Common::Array<ZmbFeature *> &overlayList);
+	static void categorizeFeature(ZmbFeature *feature, Common::Array<ZmbFeature *> &loopAnimList, Common::Array<ZmbFeature *> &overlayList, Common::Array<ZmbFeature *> &normalList, Common::Array<ZmbFeature *> &entityList);
 	static void insertionSortFeatures(Common::Array<ZmbFeature *> &list);
 	static void mergeSortedListInto(Common::Array<ZmbFeature *> &existingList, const Common::Array<ZmbFeature *> &incomingList);
 	void buildSortedRenderList(Common::Array<ZmbFeature *> &outList);
 	void buildSortedEventList(Common::Array<ZmbFeature *> &outList);
+
+	/**
+	 * Cached render order from the previous frame for the OVERLAY optimisation.
+	 * IDA 0x46093E: After the first Z-sort, non-TOPMOST normal features are
+	 * marked OVERLAY. On subsequent frames they skip re-sorting and reuse
+	 * the order captured here (matching the original engine's linked-list
+	 * preservation of the first-frame sort result).
+	 */
+	Common::Array<ZmbFeature *> _cachedOverlayOrder;
 
 	bool _isClosed = false;
 };

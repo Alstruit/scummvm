@@ -46,6 +46,7 @@ public:
 	void loadFeatures() override;
 
 protected:
+	void onEveryFrame() override;
 	void onGoButtonActivated() override;
 	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
 
@@ -114,6 +115,21 @@ private:
 
 	/** Pending body arrangement shape (1-4, or 0 for none). IDA: word_4AB1A0 */
 	int16 _pendingBodyArrangement = 0;
+
+	// --- Idle animation state (IDA: fleens_onHoverPerFrame @ 0x41CA77) ---
+
+	/** Number of idle animations played this round. IDA: word_4AB1D0 */
+	int16 _idleAnimCount = 0;
+	/** Target number of idle animations to play. IDA: word_4AB1A2 */
+	int16 _idleAnimTarget = 0;
+	/** Frame counter of last idle anim trigger. IDA: dword_4AB438 */
+	uint32 _idleAnimLastFrame = 0;
+	/** Idle anim interval in frames. IDA: dword_4AB43C (init 60) */
+	uint32 _idleAnimInterval = 0;
+	/** Non-repeat random pool state for idle anim selection. IDA: dword_4AB440 */
+	uint32 _idleAnimPoolState = 0;
+	/** Number of loaded Zoombinis from active pack. */
+	int16 _loadedZmbCount = 0;
 };
 
 } // End of namespace Mohawk

@@ -128,13 +128,7 @@ protected:
 		kResSound1008_AllZoombinisGenerated = 1008,
 	};
 
-	enum VirtualFeatureId {
-		kVirtualFeatureGoMapButtons = 0,
-		kVirtualFeatureHelpButton,
-		kVirtualFeaturePickerMatrix,
-		kVirtualFeaturePickerButtons,
-		kVirtualFeatureZoombiniPreview,
-		kVirtualFeatureLoadDialog = 65000,
+	enum FeatureId {
 		kSnoidPackBase = 60000,
 	};
 

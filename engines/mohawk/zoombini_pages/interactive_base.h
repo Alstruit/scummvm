@@ -100,11 +100,6 @@ protected:
 	void helpButton_onPostAnimation(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs);
 	ZmbEventHandleResult helpButton_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 
-	enum ThreeButtonsFeatureId {
-		kVirtualFeatureGoMapButtons = 90,
-		kVirtualFeatureHelpButton,
-	};
-
 	enum ThreeButtonHotspotIdx {
 		kHotspotGoButtonNormal = 0,
 		kHotspotSecondGoButtonNormal = 1,
@@ -386,6 +381,7 @@ private:
 	uint32 _notiBoxShowUntilFrame = 0;
 	Common::U32String _notiBoxText;
 	bool _isNotiBoxLong = false;
+	ZmbFeature *_notiBoxFeature = nullptr;
 
 protected:
 	// [*] Active Help Sound (F1 key replay)

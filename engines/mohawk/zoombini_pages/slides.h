@@ -48,6 +48,7 @@ public:
 
 protected:
 	void onGoButtonActivated() override;
+	void onEveryFrame() override;
 
 private:
 	void loadZoombinisFromPack();
@@ -79,6 +80,22 @@ private:
 
 	/** Travel direction flag (0=finished, 1=traveling). IDA: word_4B1112 */
 	int16 _travelState = 0;
+
+	// Celebration state (IDA: slides_puzzleHoverUpdate @ 0x4427B7)
+	/** One-shot flag: set once celebration starts, never cleared until target reached. IDA: slides_celebrationActive (0x4B1C16) */
+	bool _celebrationActive = false;
+	/** Number of celebrations played so far. IDA: slides_celebrationIndex (0x4B1C12) */
+	int16 _celebrationIndex = 0;
+	/** Total celebrations needed before reset (= loaded zmb count). IDA: slides_celebrationTarget (0x4B1C10) */
+	int16 _celebrationTarget = 0;
+	/** Non-repeat random pool bitmask. IDA: dword_4B1C0C */
+	uint32 _celebrationPoolState = 0;
+	/** Frame counter of last celebration. IDA: dword_4B1C00 */
+	uint32 _celebrationLastFrame = 0;
+	/** Number of matched columns (trigger for celebration). IDA: slides_matchCount (0x4B1C14) */
+	int16 _matchCount = 0;
+	/** Number of loaded Zoombinis (pool size for celebration). IDA: slides_numZoombinis (0x4B1AE8) */
+	int16 _loadedZmbCount = 0;
 };
 
 } // End of namespace Mohawk

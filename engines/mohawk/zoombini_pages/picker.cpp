@@ -174,13 +174,15 @@ void ZoombiniInteractivePicker::loadFeatures() {
 	setMapButton(_mapButtonRect, kShape4200_11_MapButtonNormal, kShape4200_12_MapButtonPressed);
 	setHelpButton(_helpButtonRect);
 
-	// [*] Virtual Feature (tBMP 4200) - Go, Map Buttons
+	// [*] Callback-only runner (tBMP 4200) - Go, Map Buttons
 	ZoombiniInteractive::loadGoMapButtonsFeature(kResBitmapShapes4200_Buttons);
 
-	// [*] Virtual Features (tBMP c:0001) - Help Button
+	// [*] Callback-only runner (tBMP c:0001) - Help Button
 	ZoombiniInteractive::loadHelpButtonFeature();
 
-	{ // [*] Virtual Feature (tBMP 4400) - Picker Matrix
+	{ // [*] Callback-only runner (tBMP 4400) - Picker Matrix
+		// IDA: picker_init registers a single wResId=0 runner with custom
+		// picker_onPreRenderUI / picker_onPostRenderUI callbacks.
 		ZmbFeature::EventHooks hooks;
 		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractivePicker::pickerMatrix_onPreRenderShape));
 		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractivePicker::pickerMatrix_onPostRender));
@@ -198,13 +200,13 @@ void ZoombiniInteractivePicker::loadFeatures() {
 			hotspots.push_back(ZmbHotspot(i + 20, pressedShapeId, 0, _pickerMatrixRects[i]));
 		}
 
-		loadVirtualFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4400_PickerMatrix), kVirtualFeaturePickerMatrix,
-						   hotspots, 0,
-						   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
-						   hooks);
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4400_PickerMatrix), 0,
+						hotspots, 0,
+						ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
+						hooks);
 	}
 
-	{ // [*] Virtual Feature (tBMP 4200) - Picker Buttons
+	{ // [*] Callback-only runner (tBMP 4200) - Picker Buttons
 		ZmbFeature::EventHooks hooks;
 		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractivePicker::pickerButtons_onPreRenderShape));
 		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractivePicker::pickerButtons_onPostRender));
@@ -219,13 +221,13 @@ void ZoombiniInteractivePicker::loadFeatures() {
 		hotspots.push_back(ZmbHotspot(kHotspotDiceButtonPressed, kShape4200_05_DiceButtonPressed, 0, _diceButtonRect));
 		hotspots.push_back(ZmbHotspot(kHotspotNameBox, kShape4200_13_NameBox, 0, _nameBoxRect));
 
-		loadVirtualFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4200_Buttons), kVirtualFeaturePickerButtons,
-						   hotspots, 0,
-						   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
-						   hooks);
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4200_Buttons), 0,
+						hotspots, 0,
+						ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
+						hooks);
 	}
 
-	{ // [*] Virtual Feature (tBMP 4300) - Zoombini Preview
+	{ // [*] Callback-only runner (tBMP 4300) - Zoombini Preview
 		ZmbFeature::EventHooks hooks;
 		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractivePicker::zoombiniPreview_onPreRenderShape));
 
@@ -239,24 +241,24 @@ void ZoombiniInteractivePicker::loadFeatures() {
 		hotspots.push_back(ZmbHotspot(kHotspotPreviewNose, ZmbHotspot::kShapeNone, 0, previewTraitOffsetX, previewTraitOffsetY));
 		hotspots.push_back(ZmbHotspot(kHotspotPreviewFoot, ZmbHotspot::kShapeNone, 0, previewTraitOffsetX, previewTraitOffsetY));
 
-		loadVirtualFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4300_ZoombiniPreview), kVirtualFeatureZoombiniPreview,
-						   hotspots, 0,
-						   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
-						   hooks);
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4300_ZoombiniPreview), 0,
+						hotspots, 0,
+						ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
+						hooks);
 	}
 
 	// Generate initial preview name.
 	// IDA: init_pickerPuzzleRunner_439674 calls getNextZoombiniNameStr_453E12.
 	generateZoombiniName();
 
-	// [*] Virtual Feature - open loadDialog if required
+	// [*] Callback-only runner - open loadDialog if required
 	if (_mode == kPickerMode_LoadGame) {
 		ZmbFeature::EventHooks hooks;
 		hooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractivePicker::oneTimeLoadDialog_onRenderShape));
 
-		loadVirtualFeature(kVirtualFeatureLoadDialog, 0,
-						   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
-						   hooks);
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
+						ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
+						hooks);
 	}
 }
 

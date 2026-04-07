@@ -197,7 +197,9 @@ void ZoombiniInteractive::loadGoMapButtonsFeature(uint16 bitmapResId) {
 	// Go/Map button shapes & hotspots are stored in page archives.
 	// Derived class is responsible for setting proper shapes & hotspots.
 
-	// [*] Virtual Feature - Go, Map Buttons
+	// [*] Callback-only runner - Go, Map Buttons
+	// IDA: bc1_initAndSetupPuzzle and other pages register a wResId=0 runner
+	// (overlay03) with preRender/postRender for proceed/map/help button drawing.
 	ZmbFeature::EventHooks hooksGoMapButtons;
 	hooksGoMapButtons.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractive::goMapButtons_preRenderShape));
 	hooksGoMapButtons.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractive::goMapButtons_onPostRender));
@@ -214,10 +216,12 @@ void ZoombiniInteractive::loadGoMapButtonsFeature(uint16 bitmapResId) {
 	hotspots.push_back(ZmbHotspot(kHotspotSecondGoButtonPressed, _secondGoButtonShapePressedId, 0, _secondGoButtonRect));
 	hotspots.push_back(ZmbHotspot(kHotspotMapButtonPressed, _mapButtonShapePressedId, 0, _mapButtonRect));
 
-	loadVirtualFeature(ZmbResource(ZmbArchiveKind::kPage, _goMapBitmapResId), kVirtualFeatureGoMapButtons,
-					   hotspots, 0,
-					   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
-					   hooksGoMapButtons);
+	// IDA overlay03: registered with FLAG_00001000_TOPMOST only (no OVERLAY).
+	// TOPMOST → normalList tail → rendered last → always on top of all features.
+	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, _goMapBitmapResId), 0,
+					hotspots, 0,
+					ZmbFeature::FLAG_00001000_TOPMOST,
+					hooksGoMapButtons);
 }
 
 void ZoombiniInteractive::loadHelpButtonFeature() {
@@ -231,7 +235,8 @@ void ZoombiniInteractive::loadHelpButtonFeature() {
 	_helpButtonStateMap[kThreeButtons_Help] = ButtonState(soundResId, kHotspotHelpButtonNormal, kHotspotHelpButtonPressed,
 														  kShape0001_24_HelpButtonNormal, kShape0001_25_HelpButtonPressed);
 
-	// [*] Virtual Features (tBMP c:0001) - Help Button
+	// [*] Callback-only runner (tBMP c:0001) - Help Button
+	// IDA: Same overlay03 wResId=0 runner handles Help alongside Go/Map.
 	ZmbFeature::EventHooks hooksHelpMapButton;
 	hooksHelpMapButton.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractive::helpButton_preRenderShape));
 	hooksHelpMapButton.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractive::helpButton_onPostRender));
@@ -241,10 +246,11 @@ void ZoombiniInteractive::loadHelpButtonFeature() {
 	hotspots.push_back(ZmbHotspot(kHotspotHelpButtonNormal, kShape0001_24_HelpButtonNormal, 0, _helpButtonRect));
 	hotspots.push_back(ZmbHotspot(kHotspotHelpButtonPressed, kShape0001_25_HelpButtonPressed, 0, _helpButtonRect));
 
-	loadVirtualFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0001_Dialog), kVirtualFeatureHelpButton,
-					   hotspots, 0,
-					   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
-					   hooksHelpMapButton);
+	// IDA overlay03: same TOPMOST-only flags as Go/Map buttons.
+	loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0001_Dialog), 0,
+					hotspots, 0,
+					ZmbFeature::FLAG_00001000_TOPMOST,
+					hooksHelpMapButton);
 }
 
 void ZoombiniInteractive::goMapButtons_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
@@ -721,7 +727,7 @@ void ZoombiniInteractive::showNotiBox(const Common::U32String &ustr, bool isNoti
 		_notiBoxShowUntilFrame = UINT32_MAX; // Virtually infinite duration
 
 	// Only register NotiBox feature if not yet registered.
-	if (!_virtualFeatures.find(kVirtualFeatureMinus02_NotiBox)) {
+	if (!_notiBoxFeature) {
 		ZmbFeature::EventHooks hooks;
 		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractive::notiBox_preRenderShape));
 		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractive::notiBox_onPostRender));
@@ -730,16 +736,25 @@ void ZoombiniInteractive::showNotiBox(const Common::U32String &ustr, bool isNoti
 		hotspots.push_back(ZmbHotspot(kHotspotNotiBoxShort, kShape3001_01_NotiBoxShort, 0, _notiBoxShortRect));
 		hotspots.push_back(ZmbHotspot(kHotspotNotiBoxLong, kShape3001_02_NotiBoxLong, 0, _notiBoxLongRect));
 
-		loadVirtualFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap3001_NotiBox), kVirtualFeatureMinus02_NotiBox,
-						   hotspots, 0,
-						   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
-						   hooks);
+		_notiBoxFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap3001_NotiBox), 0,
+						hotspots, 0,
+						ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
+						hooks);
+		// IDA runner_preRenderStandard LABEL_70 (0x4620F5): the original
+		// computes clickRect from shape metadata in preRender so the
+		// notibox area is dirty on its very first frame.  Because we
+		// compute sortRect from drawn bounds (which may be clipped on
+		// the first frame), explicitly add the notibox rect as an
+		// external dirty rect to break the first-frame deadlock.
+		addExternalDirtyRect(isNotiBoxLong ? _notiBoxLongRect : _notiBoxShortRect);
 	}
 }
 
 void ZoombiniInteractive::notiBox_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
-	if (_notiBoxShowUntilFrame < _currentFrameCounter)
+	if (_notiBoxShowUntilFrame < _currentFrameCounter) {
 		feature->scheduleClose();
+		_notiBoxFeature = nullptr;
+	}
 
 	uint16 hideShapeIdx = _isNotiBoxLong ? kHotspotNotiBoxShort : kHotspotNotiBoxLong;
 	hotspots[hideShapeIdx]._shapeIdx = ZmbHotspot::kShapeNone;

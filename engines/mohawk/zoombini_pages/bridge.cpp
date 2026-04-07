@@ -126,7 +126,7 @@ void ZoombiniInteractiveBridge::loadFeatures() {
 	_reqAttrCount = 0;
 	memset(_reqAttrTypes, 0, sizeof(_reqAttrTypes));
 	memset(_reqAttrValues, 0, sizeof(_reqAttrValues));
-	_trollSlot = 0;
+	_bRandomLaneSwap = 0;
 	_successCount = 0;
 	_bridgeTransitCount = 0;
 	_isRejectPlaying = 0;
@@ -146,13 +146,15 @@ void ZoombiniInteractiveBridge::loadFeatures() {
 	_trollAttrState = 0;
 	_crossingHotspotIdx = 0;
 	_pendingLaneEvent = 0;
-	_newArrivalReady = 0;
+	_bRetryAllowed = 0;
 	_trollAnimPending = 0;
 	_celebrationTarget = 0;
 	_celebrationsPlayed = 0;
 	_celebrationTimer = 0;
-	_celebrationInterval = 60;
+	_celebrationInterval = 120;
 	_celebrationPoolCursor = 0;
+	_prevExcludeCount = 0;
+	_prevExcludePattern = 0;
 
 	// Preload images (feature groups)
 	_vm->_gfx->preloadImage(kResBitmapShape1100);
@@ -651,9 +653,18 @@ void ZoombiniInteractiveBridge::buildAttrTollTable() {
 		}
 	}
 
+	// IDA: bridge_prevExcludeCount/bridge_prevExcludePattern at 0x41665D
+	_prevExcludeCount = 0;
+	_prevExcludePattern = 0;
+	if (!_routeLevel && found == 1) {
+		_prevExcludeCount = chosenCount;
+		_prevExcludePattern = targetCombo;
+	}
+
 	// Decode the selected combo into reqAttrTypes/reqAttrValues
 	_puzzleReady = true;
-	_trollSlot = _vm->_rnd->getRandomNumber(1, 2);
+	// IDA: bridge_bRandomLaneSwap = nextRand_410705(1, 0) at 0x4166A0
+	_bRandomLaneSwap = _vm->_rnd->getRandomNumber(0, 1);
 
 	if (_routeLevel == 0) {
 		// Level 0: single attribute
@@ -738,8 +749,8 @@ void ZoombiniInteractiveBridge::buildAttrTollTable() {
 
 bool ZoombiniInteractiveBridge::testAttrMatch(const ZmbTrait &trait, int16 targetSlot) const {
 	// IDA: bridge_testAttrMatchRule_4168E9
-	// targetSlot=1: returns true if ANY required attribute matches (match lane)
-	// targetSlot=2: returns true if NONE matches (reject lane, inverted)
+	// Uses _bRandomLaneSwap to determine which lane is the "match" lane.
+	// targetSlot=1 or 2, laneResult is computed from match + randomSwap + slot inversion.
 
 	if (targetSlot < 1 || targetSlot > 2)
 		targetSlot = 1;
@@ -759,8 +770,19 @@ bool ZoombiniInteractiveBridge::testAttrMatch(const ZmbTrait &trait, int16 targe
 			anyMatch = true;
 	}
 
-	// targetSlot=2 inverts: match lane wants ANY match, reject lane wants NONE
-	return (targetSlot == 2) ? !anyMatch : anyMatch;
+	// IDA exact logic at 0x4168E9:
+	//   if (anyMatch) laneResult = bRandomLaneSwap;
+	//   else          laneResult = (bRandomLaneSwap == 0) ? 1 : 0;
+	//   if (targetSlot == 2) laneResult = (laneResult == 0) ? 1 : 0;
+	//   return laneResult == 0;
+	int16 laneResult;
+	if (anyMatch)
+		laneResult = _bRandomLaneSwap;
+	else
+		laneResult = (_bRandomLaneSwap == 0) ? 1 : 0;
+	if (targetSlot == 2)
+		laneResult = (laneResult == 0) ? 1 : 0;
+	return laneResult == 0;
 }
 
 void ZoombiniInteractiveBridge::bridgeButtons_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
@@ -1009,18 +1031,41 @@ void ZoombiniInteractiveBridge::onEveryFrame() {
 
 		do {
 			attempts++;
-			// Pick a random pack snoid.
-			uint16 poolIdx = _vm->_rnd->getRandomNumber(0, _totalZmbCount > 0 ? _totalZmbCount - 1 : 0);
+
+			// IDA: e2GetPoolValue_nonRepeatRandom_46EE10(0, bridge_totalZmbCount, &bridge_celebrationPoolState)
+			// Non-repeat random pool: uses bitmask to track which indices have been used.
+			// Picks a random index, scans forward if already used. Resets when all exhausted.
+			uint16 poolIdx;
+			{
+				uint16 rndIdx = _vm->_rnd->getRandomNumber(0, _totalZmbCount > 0 ? _totalZmbCount - 1 : 0);
+				uint16 startIdx = rndIdx;
+				while (_celebrationPoolCursor & (1u << rndIdx)) {
+					rndIdx++;
+					if (rndIdx >= _totalZmbCount)
+						rndIdx = 0;
+					if (rndIdx == startIdx) {
+						// All used — reset pool
+						_celebrationPoolCursor = 0;
+					}
+				}
+				_celebrationPoolCursor |= (1u << rndIdx);
+				poolIdx = rndIdx;
+			}
+
 			uint16 snoidId = 10000 + poolIdx;
 
 			ZmbSnoid *snoid = getSnoid(snoidId);
+			// IDA: checks *((_BYTE *)v16 + 295) nonzero (animState active)
+			// AND (v16[8] & 1) != 0 (TYPE_SNOID flag)
 			if (snoid && snoid->getAnimState() == kSnoidAnimIdle &&
 				snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
-				// Play celebration SCRS: foot trait + 2019
+				// Play celebration SCRS: shapeImageIdx + 2019
 				// IDA: snoidScript_initAndPlay(0, 0, *((char *)v16 + 239) + 2019, ...)
+				// shapeImageIdx (byte 239) is typically 1, so SCRS = foot + 2019
+				uint16 scrsId = snoid->_trait._foot + 2019;
 				Common::SeekableReadStream *scrsStream =
 					_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
-						ZmbResource(ZmbArchiveKind::kPage, snoid->_trait._foot + 2019));
+						ZmbResource(ZmbArchiveKind::kPage, scrsId));
 				if (scrsStream) {
 					snoid->startScrsPlayback(scrsStream, false, true);
 					_celebrationsPlayed++;
@@ -1071,17 +1116,21 @@ void ZoombiniInteractiveBridge::processLaneStepEvent(ZmbFeature *snoidFeature, i
 		// Zoombini arrives at destination lane.
 		_bridgeTransitCount--;
 
-		// Set depart animation
+		// IDA: *(linkDirection+47) = 0; animateZoombini(0, 7, core); flags |= 0x4008000
+		snoid->finishScrsPlayback();
+		snoid->addFlag(static_cast<ZmbFeature::Flag>(ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE));
+
+		// Set depart animation to arrival position
 		Common::Point destPos;
 		if (stepCode == 6) {
-			// Arrived at lane 1 (top)
+			// Arrived at lane 1 (top) — IDA: lane2ArrivedRunnerIds table
 			if (_lane1Count < 16) {
 				destPos = kLane1Positions[_lane1Count];
 				_lane1ZmbIds[_lane1Count] = snoid->getId();
 				_lane1Count++;
 			}
 		} else {
-			// Arrived at lane 2 (bottom)
+			// Arrived at lane 2 (bottom) — IDA: lane1ArrivedRunnerIds table
 			if (_lane2Count < 16) {
 				destPos = kLane2Positions[_lane2Count];
 				_lane2ZmbIds[_lane2Count] = snoid->getId();
@@ -1089,7 +1138,6 @@ void ZoombiniInteractiveBridge::processLaneStepEvent(ZmbFeature *snoidFeature, i
 			}
 		}
 
-		snoid->finishScrsPlayback();
 		snoid->setAnimState(kSnoidAnimDepart, &destPos);
 
 		// Track crossed count for Go button and celebration scheduling
@@ -1131,12 +1179,21 @@ void ZoombiniInteractiveBridge::processLaneStepEvent(ZmbFeature *snoidFeature, i
 		default: scrsBase = 1016; break; // default
 		}
 
-		// Offset by lane number
-		if (_currentDropLane == 1)
+		// IDA: set initial position and offset by lane number
+		Common::Point initPos;
+		if (_currentDropLane == 1) {
 			scrsBase += 2;
+			initPos = Common::Point(38, 106);
+		} else {
+			initPos = Common::Point(56, 205);
+		}
 
 		// Random variant (0 or 1)
 		scrsBase += _vm->_rnd->getRandomNumber(0, 1);
+
+		// IDA: snoidScript_initAndPlay(0, &pInitPos, scrsBase, core)
+		// Set snoid position before starting SCRS playback
+		snoid->setPointLoc(initPos);
 
 		Common::SeekableReadStream *scrsStream =
 			_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsBase));
@@ -1154,12 +1211,13 @@ void ZoombiniInteractiveBridge::processLaneStepEvent(ZmbFeature *snoidFeature, i
 		_bridgeTransitCount--;
 		if (_successCount < 6)
 			_successCount++;
-		_newArrivalReady = 1;
+		// IDA: bridge_bRetryAllowed = 1 at case 20
+		_bRetryAllowed = 1;
 		break;
 
 	case kZmbAnimEventM1_End: {
 		// End of SCRS playback: reposition rejected Zoombini.
-		_newArrivalReady = 0;
+		_bRetryAllowed = 0;
 		if (_isRejectPlaying)
 			_isRejectPlaying = 0;
 
@@ -1195,17 +1253,24 @@ void ZoombiniInteractiveBridge::processEntranceEvent(int16 eventId, ZmbFeature *
 	if (eventId >= 1 && eventId <= 6) {
 		// Record the troll attribute display state (which attribute the troll shows)
 		_trollAttrState = eventId;
-	} else if (eventId == 100 || eventId == 101) {
+	} else if (eventId != 10 && eventId >= 100 && eventId <= 101) {
+		// IDA: (trollEventId - 100) < 2, but exclude 10
 		// Change water overlay animation.
 		// 100: load SCRB 1236 (water splash), 101: load SCRB 1103 (normal water)
 		uint16 waterScrbId = (eventId == 100) ? 1236 : 1103;
 		reloadScrbAnimation(_scrbWaterIdx, waterScrbId);
 	} else if (eventId == kZmbAnimEventM1_End) {
 		// End of entrance animation. Maybe play a voice-over.
+		// IDA: if (getLoadedZmbRunnerCount() < totalZmbCount
+		//        && (nextRand(4,0) > diffLevel || (puzzleFlag & 0xFFF) <= 3))
+		//     { if (getLoadedZmbRunnerCount() > 0) playVoice; }
 		int16 totalCrossed = _lane1Count + _lane2Count;
-		if (totalCrossed < _totalZmbCount) {
-			if (totalCrossed > 0 || _vm->_state->getDifficultyIdFromPageFlag(
-					_vm->_state->_f._pageFlagBridge) <= ZMB_DIFFICULTY_LEVEL2_02) {
+		int16 diffLevel = _vm->_state->getDifficultyIdFromPageFlag(
+			_vm->_state->_f._pageFlagBridge);
+		if (totalCrossed < _totalZmbCount &&
+			(_vm->_rnd->getRandomNumber(0, 4) > diffLevel ||
+			 (_vm->_state->_f._pageFlagBridge & 0xFFF) <= 3)) {
+			if (totalCrossed > 0) {
 				uint16 sndId = _vm->_rnd->getRandomNumber(20045, 20048);
 				_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, sndId),
 										  Audio::Mixer::kSFXSoundType);
@@ -1233,7 +1298,11 @@ ZmbEventHandleResult ZoombiniInteractiveBridge::onLButtonDown(const Common::Poin
 	if (result == ZmbEventHandleResult::kConsumed)
 		return result;
 
-	// Zoombini drag start
+	// IDA: bridge_funcOnClick_4157EB case 4
+	// Guard: no more crosses allowed, or already dragging.
+	// IDA original also checked (ui_bDragLockActive <= 0 || bridge_bFirstInteraction)
+	// to prevent re-entering drag-start while a drag was in progress. In ScummVM this
+	// is already covered by isDragging() above.
 	if (_successCount >= 6 || isDragging())
 		return ZmbEventHandleResult::kPassthrough;
 
@@ -1246,11 +1315,12 @@ ZmbEventHandleResult ZoombiniInteractiveBridge::onLButtonDown(const Common::Poin
 	if (state == kSnoidAnimScriptReject)
 		return ZmbEventHandleResult::kPassthrough;
 	if (state == kSnoidAnimScriptNormal) {
-		if (!_newArrivalReady)
+		// IDA: if (!bridge_bRetryAllowed) return;
+		if (!_bRetryAllowed)
 			return ZmbEventHandleResult::kPassthrough;
 		if (_isRejectPlaying)
 			_isRejectPlaying = 0;
-		_newArrivalReady = 0;
+		_bRetryAllowed = 0;
 	}
 
 	// Begin drag — IDA: beginDragFeatureRunner_45360F

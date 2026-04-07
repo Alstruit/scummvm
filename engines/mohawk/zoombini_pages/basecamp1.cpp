@@ -70,27 +70,31 @@ void ZoombiniInteractiveBasecampOne::loadFeatures() {
 	_vm->_gfx->preloadImage(kResBitmapShape2000_Storage);
 	_vm->_gfx->preloadImage(kResBitmapShape2100_Buttons);
 
-	{ // [*] Virtual Feature: Storage (refers to tBMP 2000)
+	{ // [*] Callback-only runner: Storage (refers to tBMP 2000)
+		// IDA: bc1_initAndSetupPuzzle registers a wResId=0 runner with
+		// postRender=bc1_postRenderStorage for the stored-zoombini grid viewer.
 		ZmbFeature::EventHooks hooksStorage;
 		hooksStorage.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractiveBasecampOne::storage_render));
 		hooksStorage.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveBasecampOne::storage_postRender));
-		ZmbFeature *vfeature = loadVirtualFeature(kVirtualFeature2000_Storage, 6,
-												  ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM,
-												  hooksStorage);
-		vfeature->setClickRect(_storageRect);
+		ZmbFeature *storageFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 6,
+													 ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM,
+													 hooksStorage);
+		storageFeature->setClickRect(_storageRect);
 	}
 
-	// [*] Virtual Feature (tBMP 2100) - Go, Map, Scroll Buttons
+	// [*] Callback-only runner (tBMP 2100) - Go, Map Buttons
 	setGoButton(_goRouteUpButtonRect, kShape2100_GoRouteUpButtonDisabled_15, kShape2100_GoRouteUpButtonNormal_01, kShape2100_GoRouteUpButtonPressed_02);
 	setSecondGoButton(_goRouteDownButtonRect, kShape2100_GoRouteDownButtonDisabled_16, kShape2100_GoRouteDownButtonNormal_03, kShape2100_GoRouteDownButtonPressed_04);
 	setMapButton(_mapButtonRect, kShape2100_MapNormal_05, kShape2100_MapPressed_06);
 	ZoombiniInteractive::loadGoMapButtonsFeature(kResBitmapShape2100_Buttons);
 
-	// [*] Virtual Feature (tBMP c:0001) - Help Button
+	// [*] Callback-only runner (tBMP c:0001) - Help Button
 	setHelpButton(_helpButtonRect);
 	ZoombiniInteractive::loadHelpButtonFeature();
 
-	{ // [*] Virtual Feature: Storage Scroll Buttons (refers to tBMP 2100)
+	{ // [*] Callback-only runner: Storage Scroll Buttons (refers to tBMP 2100)
+		// IDA: bc1_initAndSetupPuzzle registers a wResId=0 runner with
+		// postRender=bc1_postRenderOverlay02 for scroll button drawing.
 		ZmbFeature::EventHooks hooksScroll;
 		hooksScroll.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveBasecampOne::scroll_preRenderShape));
 		hooksScroll.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveBasecampOne::scroll_postRender));
@@ -108,9 +112,11 @@ void ZoombiniInteractiveBasecampOne::loadFeatures() {
 		scrollHotspots.push_back(ZmbHotspot(6, kShape2100_ScrollRightOnePressed_12, 0, _scrollRightOneButtonRect));
 		scrollHotspots.push_back(ZmbHotspot(7, kShape2100_ScrollRightFourPressed_14, 0, _scrollRightFourButtonRect));
 
-		loadVirtualFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape2100_Buttons), kVirtualFeatureBasecamp1_ScrollButtons, scrollHotspots, 0,
-						   ZmbFeature::FLAG_00001000_TOPMOST,
-						   hooksScroll);
+		// IDA overlay02: FLAG_00001000_TOPMOST | FLAG_00008000_LOOP_ANIM.
+		// LOOP_ANIM checked first → loopAnimList (rendered behind sorted features).
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape2100_Buttons), 0, scrollHotspots, 0,
+						ZmbFeature::FLAG_00001000_TOPMOST | ZmbFeature::FLAG_00008000_LOOP_ANIM,
+						hooksScroll);
 	}
 
 	// [*] SCRB 1200 ~ 1215: Pedestals
@@ -183,8 +189,9 @@ void ZoombiniInteractiveBasecampOne::loadFeatures() {
 	}
 
 	// [*] SCRB 1100 ~ 1103: Bottom shapes
+	// IDA: runner_registerAndAllocate(0, 0, 0, 0, v0++, ...) — dFrameInterval=0.
 	for (uint32 i = kResScrb1100_BottomShape1; i <= kResScrb1103_BottomShape4; i++) {
-		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), i, 6,
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100), i, 0,
 						ZmbFeature::FLAG_00000000_TYPE_SHAPES);
 	}
 

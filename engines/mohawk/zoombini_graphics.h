@@ -88,6 +88,24 @@ public:
 	 * Called at the start of each render frame, before shapes are drawn.
 	 */
 	void copyBackToShapeScreen();
+	/**
+	 * Copy background port → composite buffer, clipped to the given rect.
+	 * Only pixels within clipRect are overwritten on the shapeScreen.
+	 * Used by the dirty-rect render pipeline to restore background in changed areas only.
+	 */
+	void copyBackToShapeScreen(const Common::Rect &clipRect);
+
+	// [*] Render clip region
+	/**
+	 * IDA: port_selectActiveRegion (0x48F40C) — confine all drawing to
+	 * the accumulated dirty region (list of rectangles).  The original engine
+	 * uses Windows GDI clip regions (union of rectangles) set on the port's HDC.
+	 * We replicate this by maintaining a list of individual dirty rects and
+	 * clipping each draw operation to each rect's intersection.
+	 */
+	void setRenderClipRects(const Common::Array<Common::Rect> &rects);
+	void addRenderClipRect(const Common::Rect &rect);
+	void clearRenderClipRect();
 
 	// [*] Resource Management Extensions
 	MohawkSurface *findImage(ZmbResource imgResource);
@@ -517,6 +535,13 @@ private:
 	Graphics::Surface *_backScreen = nullptr;
 	Graphics::Surface *_shapeScreen = nullptr;
 	bool _isScreenDirty = false;
+
+	// IDA: port_selectActiveRegion — render clip region (list of rects).
+	// The original engine uses GDI clip regions (union of rectangles) on the
+	// port's HDC.  We store the individual rects and their bounding box.
+	Common::Array<Common::Rect> _renderClipRects;
+	Common::Rect _renderClipBounds;  // bounding box for quick early-out
+	bool _hasRenderClipRect = false;
 
 	// An image cache that stores ZOOMBINI.MHK images
 	Common::HashMap<uint16, MohawkSurface *> _sysImageCache;

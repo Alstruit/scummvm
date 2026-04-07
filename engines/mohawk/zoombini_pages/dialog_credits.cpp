@@ -66,9 +66,9 @@ void ZoombiniDialogCredits::loadFeatures() {
 	// Load Virtual Feature - drawLines
 	ZmbFeature::EventHooks hooksDrawLines;
 	hooksDrawLines.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogCredits::drawLines_render));
-	loadVirtualFeature(kVirtualFeatureDrawLines, 0,
-					   ZmbFeature::FLAG_00001000_TOPMOST,
-					   hooksDrawLines);
+loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
+					ZmbFeature::FLAG_00001000_TOPMOST,
+					hooksDrawLines);
 
 	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound20104_TownBGM), Audio::Mixer::SoundType::kMusicSoundType, true);
 }

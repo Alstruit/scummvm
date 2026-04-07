@@ -155,7 +155,7 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 		ZmbFeature::EventHooks attrSlotHooks;
 		attrSlotHooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveFleens::attrSlots_preRender));
 		attrSlotHooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractiveFleens::attrSlots_render));
-		loadVirtualFeature(100, 0, ZmbFeature::FLAG_00001000_TOPMOST, attrSlotHooks);
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0, ZmbFeature::FLAG_00001000_TOPMOST, attrSlotHooks);
 	}
 
 	// Load Zoombinis from active pack at 16 pedestal positions
@@ -208,6 +208,13 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 		}
 		_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, helpSoundId);
 	}
+
+	// Idle animation state init (IDA: fleens_clearAllPuzzleState @ 0x41C0B4)
+	_idleAnimCount = 0;
+	_idleAnimTarget = 0; // Set by fleens_onRaftExitComplete when raft exits
+	_idleAnimLastFrame = 0;
+	_idleAnimInterval = 60; // IDA: dword_4AB43C = s_updateMode ? 120 : 60
+	_idleAnimPoolState = 0;
 }
 
 void ZoombiniInteractiveFleens::onGoButtonActivated() {
@@ -215,6 +222,50 @@ void ZoombiniInteractiveFleens::onGoButtonActivated() {
 	// Route 3: Fleens -> Hotel (via Xfer)
 	_departXferSrcSiPage = ZMB_SI_FLEENS_10;
 	ZoombiniInteractive::onGoButtonActivated();
+}
+
+// ---------------------------------------------------------------------------
+// onEveryFrame: Idle celebration animation for waiting Zoombinis.
+// IDA: fleens_onHoverPerFrame @ 0x41CA77
+// Triggered after first raft exit completes (sets _idleAnimTarget > 0).
+// Only targets Zoombinis on the left shore (x <= 270).
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveFleens::onEveryFrame() {
+	if (_loadedZmbCount <= 0)
+		return;
+
+	if (!_bInteractionAllowed || _idleAnimCount >= _idleAnimTarget)
+		return;
+
+	if (getCurrentFrameCounter() - _idleAnimLastFrame <= _idleAnimInterval)
+		return;
+	_idleAnimLastFrame = getCurrentFrameCounter();
+
+	bool triggered = false;
+	int16 attempts = 0;
+
+	do {
+		uint16 poolIdx = _vm->_rnd->getNonRepeatRandom(_loadedZmbCount, _idleAnimPoolState);
+		uint16 snoidId = 10000 + poolIdx;
+		ZmbSnoid *snoid = getSnoid(snoidId);
+
+		if (snoid && snoid->isRenderActivated() &&
+			snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID) &&
+			snoid->getPointLoc().x <= 270) {
+			// IDA: fleens_eventToScrsId_41E860 type 5 → foot + 7030
+			uint16 scrsId = snoid->_trait._foot + 7030;
+			Common::SeekableReadStream *scrsStream =
+				_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+					ZmbResource(ZmbArchiveKind::kPage, scrsId));
+			if (scrsStream) {
+				snoid->startScrsPlayback(scrsStream, false, true);
+				_idleAnimCount++;
+				triggered = true;
+			}
+		} else if (++attempts > 20) {
+			triggered = true;
+		}
+	} while (!triggered);
 }
 
 void ZoombiniInteractiveFleens::loadZoombinisFromPack() {
@@ -239,6 +290,8 @@ void ZoombiniInteractiveFleens::loadZoombinisFromPack() {
 		}
 		posIdx++;
 	}
+
+	_loadedZmbCount = posIdx;
 }
 
 void ZoombiniInteractiveFleens::buildZmbTraitSetup() {

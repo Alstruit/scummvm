@@ -250,9 +250,9 @@ void ZoombiniInteractiveTown::loadFeatures() {
 		ZmbFeature::EventHooks hooks;
 		hooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractiveTown::townZoombini_render));
 		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveTown::townZoombini_postRender));
-		loadVirtualFeature(kVirtualFeatureTownZoombini, 0,
-						   ZmbFeature::FLAG_00001000_TOPMOST,
-						   hooks);
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
+						ZmbFeature::FLAG_00001000_TOPMOST,
+						hooks);
 	}
 
 	// IDA 0x4581d9: SCRB 6000 memorial statue feature
@@ -364,6 +364,48 @@ void ZoombiniInteractiveTown::loadFeatures() {
 	if (_entrySoundRes.hasId() && _playEntrySoundImmediately && !_developAnimTimer) {
 		_vm->_sound->playZmbSound(_entrySoundRes, Audio::Mixer::kSFXSoundType);
 	}
+
+	// Idle animation state init (IDA: town_clearAllPuzzleState @ 0x457B3C)
+	_idleAnimBudget = 0;
+	_idleAnimLastFrame = 0;
+	_idleAnimInterval = 120; // IDA: town_idleAnimInterval = s_updateMode ? 600 : 120
+	_idleAnimPoolState = 0;
+}
+
+// ---------------------------------------------------------------------------
+// onEveryFrame: Walking Zoombini idle celebration scheduling.
+// IDA: town_onHoverPerFrame @ 0x458B40
+// Budget-based system: budget is recalculated from storedTownCount when exhausted.
+// NOTE: Walking Zoombinis are not yet individual snoid features in ScummVM,
+// so SCRS playback is deferred until walker feature system is implemented.
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveTown::onEveryFrame() {
+	if (_walkingZmbCount <= 0)
+		return;
+
+	// Recalculate budget when exhausted.
+	// IDA: budget thresholds based on storedTownCount
+	if (_idleAnimBudget <= 0) {
+		uint16 storedCount = _vm->_state->_f._zmbStoredTownCount;
+		if (storedCount == 0)
+			return;
+		else if (storedCount <= 156)
+			_idleAnimBudget = 1;
+		else if (storedCount <= 312)
+			_idleAnimBudget = 4;
+		else if (storedCount <= 624)
+			_idleAnimBudget = 6;
+		else
+			_idleAnimBudget = 8;
+	}
+
+	if (getCurrentFrameCounter() - _idleAnimLastFrame <= _idleAnimInterval)
+		return;
+	_idleAnimLastFrame = getCurrentFrameCounter();
+
+	// TODO: Pick random walker via getNonRepeatRandom(_walkingZmbCount, _idleAnimPoolState),
+	// check walker x > 20 && x < 620, play SCRS (foot + 4999), decrement _idleAnimBudget.
+	// Requires walking Zoombinis to be implemented as snoid features.
 }
 
 void ZoombiniInteractiveTown::transferActivePackToTownStorage() {

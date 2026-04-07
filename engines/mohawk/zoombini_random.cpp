@@ -31,7 +31,9 @@
 
 namespace Mohawk {
 
-ZoombiniRandom::ZoombiniRandom(const Common::String &name) {
+ZoombiniRandom::ZoombiniRandom(const Common::String &name) : _scummRnd(name) {
+	_useOriginal = ConfMan.getBool("original_prng");
+
 #ifdef ENABLE_EVENTRECORDER
 	assert(g_system);
 	setSeed(g_eventRec.getRandomSeed(name));
@@ -51,8 +53,11 @@ uint16 ZoombiniRandom::generateNewSeed() {
 }
 
 uint16 ZoombiniRandom::getRandomNumber(uint16 max) {
-	_randSeed = 214013u * _randSeed + 2531011u;
-	return static_cast<uint16>(_randSeed) % (max + 1);
+	if (_useOriginal) {
+		_randSeed = 214013u * _randSeed + 2531011u;
+		return static_cast<uint16>(_randSeed) % (max + 1);
+	}
+	return static_cast<uint16>(_scummRnd.getRandomNumber(max));
 }
 
 uint16 ZoombiniRandom::getRandomNumber(uint16 min, uint16 max) {
@@ -73,6 +78,18 @@ int16 ZoombiniRandom::getRandomNumberSigned(int16 min, int16 max) {
 		min = tmp;
 	}
 	return getRandomNumber(max - min) + min;
+}
+
+uint16 ZoombiniRandom::getNonRepeatRandom(uint16 poolSize, uint32 &bitmask) {
+	uint32 fullMask = (poolSize < 32) ? ((1u << poolSize) - 1u) : 0xFFFFFFFFu;
+	if ((bitmask & fullMask) == fullMask)
+		bitmask = 0;
+
+	uint16 idx = getRandomNumber(poolSize - 1);
+	while (bitmask & (1u << idx))
+		idx = (idx + 1) % poolSize;
+	bitmask |= (1u << idx);
+	return idx;
 }
 
 } // End of namespace Mohawk

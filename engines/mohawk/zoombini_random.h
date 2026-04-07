@@ -23,15 +23,19 @@
 #define MOHAWK_ZOOMBINI_RANDOM_H
 
 #include "common/scummsys.h"
+#include "common/random.h"
 
 namespace Mohawk {
 
 /**
- * Mimics the random algorithms used in the Zoombinis
+ * Wraps both the original Zoombini PRNG and ScummVM's default PRNG.
+ * The active algorithm is selected by the "original_prng" config option.
  */
 class ZoombiniRandom {
 private:
 	uint16 _randSeed;
+	Common::RandomSource _scummRnd;
+	bool _useOriginal;
 
 public:
 	/**
@@ -39,6 +43,9 @@ public:
 	 * The name used must be globally unique, and is used to
 	 * register the randomness source with the active event recorder,
 	 * if any.
+	 *
+	 * Reads "original_prng" from ConfMan to select the algorithm.
+	 * Defaults to the original engine PRNG if the key is absent.
 	 */
 	ZoombiniRandom(const Common::String &name);
 
@@ -75,6 +82,16 @@ public:
 	 * @return	a random number in the interval [min, max]
 	 */
 	int16 getRandomNumberSigned(int16 min, int16 max);
+
+	/**
+	 * Pick a non-repeating random index from a pool of size poolSize.
+	 * Uses a bitmask to track which indices have been used; resets when all exhausted.
+	 * IDA: e2GetPoolValue_nonRepeatRandom_46EE10
+	 * @param poolSize	Number of items in the pool (max 32)
+	 * @param bitmask	Caller-owned state tracking which indices have been picked
+	 * @return		A randomly chosen index in [0, poolSize-1]
+	 */
+	uint16 getNonRepeatRandom(uint16 poolSize, uint32 &bitmask);
 };
 
 } // End of namespace Mohawk

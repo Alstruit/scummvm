@@ -135,10 +135,6 @@ protected:
 		kResScrbMenuButton1006 = 1006,
 	};
 
-	enum VirtualFeatureId : uint16 {
-		kVirtualFeatureRouteNames = 0,
-	};
-
 	enum ShapeId : uint16 {
 		kResShapeBridge01 = 1,
 		kResShapeTunnels02 = 2,

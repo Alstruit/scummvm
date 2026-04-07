@@ -490,6 +490,10 @@ ZoombiniOptionsWidget::ZoombiniOptionsWidget(GuiObject *boss, const Common::Stri
 	_brightenPaletteCheckbox = new GUI::CheckboxWidget(widgetsBoss(), "ZoombiniEngineOptionsDialog.BrightenPalette",
 		_("Brighten palette (original behavior)"),
 		_("Applies the brightness adjustment to SHPL palettes as the original engine does."));
+
+	_originalPrngCheckbox = new GUI::CheckboxWidget(widgetsBoss(), "ZoombiniEngineOptionsDialog.OriginalPRNG",
+		_("Use original PRNG"),
+		_("Uses the original engine's pseudo-random number generator instead of ScummVM's default."));
 }
 
 ZoombiniOptionsWidget::~ZoombiniOptionsWidget() {
@@ -501,6 +505,7 @@ void ZoombiniOptionsWidget::defineLayout(GUI::ThemeEval &layouts, const Common::
 			.addPadding(0, 0, 0, 0)
 			.addWidget("AudioDiscontinuityFix", "Checkbox")
 			.addWidget("BrightenPalette", "Checkbox")
+			.addWidget("OriginalPRNG", "Checkbox")
 		.closeLayout()
 	.closeDialog();
 }
@@ -508,11 +513,13 @@ void ZoombiniOptionsWidget::defineLayout(GUI::ThemeEval &layouts, const Common::
 void ZoombiniOptionsWidget::load() {
 	_audioPopFixCheckbox->setState(ConfMan.getBool("fix_audio_pops", _domain));
 	_brightenPaletteCheckbox->setState(ConfMan.getBool("brighten_palette", _domain));
+	_originalPrngCheckbox->setState(ConfMan.getBool("original_prng", _domain));
 }
 
 bool ZoombiniOptionsWidget::save() {
 	ConfMan.setBool("fix_audio_pops", _audioPopFixCheckbox->getState(), _domain);
 	ConfMan.setBool("brighten_palette", _brightenPaletteCheckbox->getState(), _domain);
+	ConfMan.setBool("original_prng", _originalPrngCheckbox->getState(), _domain);
 	return true;
 }
 

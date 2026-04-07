@@ -48,6 +48,7 @@ public:
 protected:
 	void onGoButtonActivated() override;
 	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
+	void onEveryFrame() override;
 
 private:
 	void loadZoombinisFromPack();
@@ -120,6 +121,22 @@ private:
 
 	/** Pending body arrangement shape (1-4, or 0 for none). IDA: net_pendingAnimShape */
 	int16 _pendingBodyArrangement = 0;
+
+	// Celebration state (IDA: net_onFrameTick @ 0x43728B)
+	/** Idle animation trigger flag. IDA: net_idleAnimTrigger */
+	bool _idleAnimTrigger = false;
+	/** Number of idle animations played. IDA: net_idleAnimCount */
+	int16 _idleAnimCount = 0;
+	/** Target idle animation count. IDA: net_idleAnimMax */
+	int16 _idleAnimMax = 0;
+	/** Non-repeat random pool bitmask. IDA: dword_4B0B44 */
+	uint32 _idleAnimPoolState = 0;
+	/** Frame counter of last idle animation. IDA: dword_4B0B3C */
+	uint32 _idleAnimLastFrame = 0;
+	/** Number of loaded Zoombinis (pool size). IDA: net_zoombiniCount */
+	int16 _loadedZmbCount = 0;
+	/** Whether current round is complete (allows celebration on "locked" snoids). IDA: net_roundCompletedFlag */
+	bool _roundCompletedFlag = false;
 
 	enum {
 		kResSound996_DepartSFX = 996

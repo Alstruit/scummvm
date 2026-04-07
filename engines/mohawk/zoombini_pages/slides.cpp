@@ -149,6 +149,15 @@ void ZoombiniInteractiveSlides::loadFeatures() {
 
 	// IDA: sound_activeHandle = 20078 — slides narrator voice (F1 key replay)
 	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, 20078);
+
+	// Celebration state init (IDA: slides_puzzleInit @ 0x441F0C)
+	_celebrationActive = false;
+	_celebrationIndex = 0;
+	// IDA: slides_celebrationTarget = slides_numZoombinis
+	_celebrationTarget = _loadedZmbCount;
+	_celebrationPoolState = 0;
+	_celebrationLastFrame = 0;
+	_matchCount = 0;
 }
 
 void ZoombiniInteractiveSlides::onGoButtonActivated() {
@@ -156,6 +165,56 @@ void ZoombiniInteractiveSlides::onGoButtonActivated() {
 	// Route 2: Slides -> Basecamp2 (via Xfer)
 	_departXferSrcSiPage = ZMB_SI_SLIDES_08;
 	ZoombiniInteractive::onGoButtonActivated();
+}
+
+// ---------------------------------------------------------------------------
+// onEveryFrame: Per-frame celebration scheduling.
+// IDA: slides_puzzleHoverUpdate @ 0x4427B7
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveSlides::onEveryFrame() {
+	if (_loadedZmbCount <= 0)
+		return;
+
+	// Celebration scheduling.
+	// Once _celebrationActive is set, it stays set (one celebration per match event).
+	// Resets when _celebrationIndex reaches _celebrationTarget (= loaded zmb count).
+	if (_celebrationActive || !_matchCount || _celebrationIndex >= _celebrationTarget) {
+		if (_celebrationIndex >= _celebrationTarget) {
+			_celebrationPoolState = 0;
+			_celebrationLastFrame = 0;
+			_matchCount = 0;
+			_celebrationIndex = 0;
+		}
+	} else {
+		_celebrationActive = true;
+		if (getCurrentFrameCounter() - _celebrationLastFrame > 30) {
+			_celebrationLastFrame = getCurrentFrameCounter();
+			bool triggered = false;
+			int16 attempts = 0;
+
+			do {
+				uint16 poolIdx = _vm->_rnd->getNonRepeatRandom(_loadedZmbCount, _celebrationPoolState);
+				uint16 snoidId = 10000 + poolIdx;
+				ZmbSnoid *snoid = getSnoid(snoidId);
+
+				if (snoid && snoid->isRenderActivated() &&
+					snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+					// IDA: snoidScript_initAndPlay(0, 0, byte_239 - 1 + 13001, core)
+					uint16 scrsId = snoid->_trait._foot - 1 + 13001;
+					Common::SeekableReadStream *scrsStream =
+						_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+							ZmbResource(ZmbArchiveKind::kPage, scrsId));
+					if (scrsStream) {
+						snoid->startScrsPlayback(scrsStream, false, true);
+						_celebrationIndex++;
+						triggered = true;
+					}
+				} else if (++attempts > 20) {
+					triggered = true;
+				}
+			} while (!triggered);
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +293,8 @@ void ZoombiniInteractiveSlides::loadZoombinisFromPack() {
 		}
 		posIdx++;
 	}
+
+	_loadedZmbCount = posIdx;
 }
 
 } // End of namespace Mohawk

@@ -90,19 +90,19 @@ void ZoombiniInteractiveBasecampTwo::loadFeatures() {
 		ZmbFeature::EventHooks hooks;
 		hooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveBasecampTwo::storage_preRender));
 		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveBasecampTwo::storage_postRender));
-		ZmbFeature *vf = loadVirtualFeature(kVirtualFeature_Storage, 6,
+		ZmbFeature *vf = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 6,
 											ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM,
 											hooks);
 		vf->setClickRect(_storageRect);
-		_storageRunnerIdx = kVirtualFeature_Storage;
+		_storageFeature = vf;
 	}
 
 	{ // [*] Virtual Feature: Scroll-button panel (postRender draws scroll arrows via SHPL 9000)
 		ZmbFeature::EventHooks hooks;
 		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveBasecampTwo::buttons_postRender));
-		loadVirtualFeature(kVirtualFeature_Buttons, 0,
-						   ZmbFeature::FLAG_00001000_TOPMOST | ZmbFeature::FLAG_00008000_LOOP_ANIM,
-						   hooks);
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
+						ZmbFeature::FLAG_00001000_TOPMOST | ZmbFeature::FLAG_00008000_LOOP_ANIM,
+						hooks);
 	}
 
 	{ // [*] Virtual Feature: Go/Map/Save buttons
@@ -110,9 +110,9 @@ void ZoombiniInteractiveBasecampTwo::loadFeatures() {
 		hooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveBasecampTwo::goButton_preRender));
 		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveBasecampTwo::goButton_postRender));
 		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveBasecampTwo::goButton_onLButtonDown));
-		ZmbFeature *vf = loadVirtualFeature(kVirtualFeature_GoButton, 0,
-						   ZmbFeature::FLAG_00001000_TOPMOST,
-						   hooks);
+		ZmbFeature *vf = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
+											ZmbFeature::FLAG_00001000_TOPMOST,
+											hooks);
 		vf->setClickRect(Common::Rect(0x0257, 0x0140, 0x027E, 0x018B)); // covers Go + Map
 	}
 
@@ -1248,7 +1248,7 @@ void ZoombiniInteractiveBasecampTwo::compactStorage() {
 
 void ZoombiniInteractiveBasecampTwo::resetStorageSortRect() {
 	// Reset the storage feature's sort rect.
-	ZmbFeature *storage = _virtualFeatures.find(_storageRunnerIdx);
+	ZmbFeature *storage = _storageFeature;
 	if (storage)
 		storage->setSortRect(Common::Rect());
 }

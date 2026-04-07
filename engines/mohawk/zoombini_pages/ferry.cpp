@@ -58,21 +58,6 @@ const uint16 ZoombiniInteractiveFerry::kBadReactionPool[11] = {
 // IDA: word_4A0D4C — moved-from-dock reaction SCRB pool (3 entries)
 const uint16 ZoombiniInteractiveFerry::kMoveReactionPool[3] = { 1820, 1821, 1822 };
 
-// ---------------------------------------------------------------------------
-// Non-repeat random pool helper (IDA: e2GetPoolValue_nonRepeatRandom_46EE10)
-// ---------------------------------------------------------------------------
-static uint16 getNonRepeatRandom(ZoombiniRandom *rnd, uint16 poolSize, uint32 &bitmask) {
-	uint32 fullMask = (poolSize < 32) ? ((1u << poolSize) - 1u) : 0xFFFFFFFFu;
-	if ((bitmask & fullMask) == fullMask)
-		bitmask = 0;
-
-	uint16 idx = rnd->getRandomNumber(poolSize - 1);
-	while (bitmask & (1u << idx))
-		idx = (idx + 1) % poolSize;
-	bitmask |= (1u << idx);
-	return idx;
-}
-
 ZoombiniInteractiveFerry::ZoombiniInteractiveFerry(MohawkEngine_Zoombini *vm) : ZoombiniInteractive(vm, ZoombiniPageType::kFerry) {
 }
 
@@ -201,7 +186,7 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 		if (_visitCounter == 1) {
 			boatScrb = 1803;
 		} else {
-			uint16 idx = getNonRepeatRandom(_vm->_rnd, 4, _boatRandomState);
+			uint16 idx = _vm->_rnd->getNonRepeatRandom(4, _boatRandomState);
 			boatScrb = kBoatScrbPool[idx];
 		}
 		_boatAnimFeature = loadScrbFeature(
@@ -584,7 +569,7 @@ void ZoombiniInteractiveFerry::handleRejectWalkSetup() {
 	bool retry;
 	do {
 		retry = false;
-		dest = getNonRepeatRandom(_vm->_rnd, 10, _rejectWalkRandomState);
+		dest = _vm->_rnd->getNonRepeatRandom(10, _rejectWalkRandomState);
 
 		// IDA: destinations 7-9 require checking if certain back-row slots are available
 		// (zmb_sortedRunnerIds[19], [17], [15] etc. for rows 11-19 odd indices)
@@ -707,7 +692,7 @@ void ZoombiniInteractiveFerry::onEveryFrame() {
 	else if (_currentFrameTime > _nextFidgetTime) {
 		// Select random fidget SCRB
 		// IDA: word_4A0D08[e2GetPoolValue_nonRepeatRandom(0, 5, &dword_4A0D14)]
-		uint16 idx = getNonRepeatRandom(_vm->_rnd, 5, _fidgetRandomState);
+		uint16 idx = _vm->_rnd->getNonRepeatRandom(5, _fidgetRandomState);
 		_pendingFrogmanScrb = kFidgetScrbPool[idx];
 
 		// Reset fidget timer: 5400-10800 ms
@@ -785,7 +770,7 @@ ZmbEventHandleResult ZoombiniInteractiveFerry::onLButtonDown(const Common::Point
 	// Play move SFX: pick from kMoveReactionPool if in dock area
 	// IDA: click_testZoneRadius(posLoc) check
 	if (!_pendingFrogmanScrb && kDockRect.contains(_savedDragOrigin.x, _savedDragOrigin.y)) {
-		uint16 idx = getNonRepeatRandom(_vm->_rnd, 3, _moveReactionRandomState);
+		uint16 idx = _vm->_rnd->getNonRepeatRandom(3, _moveReactionRandomState);
 		_pendingFrogmanScrb = kMoveReactionPool[idx];
 	}
 
@@ -836,7 +821,7 @@ void ZoombiniInteractiveFerry::endDrag(const Common::Point &mousePos) {
 				_successThreshold += _vm->_rnd->getRandomNumberSigned(3, 5);
 
 				if (_hasReactedOnce) {
-					uint16 idx = getNonRepeatRandom(_vm->_rnd, 2, _goodReactionRandomState);
+					uint16 idx = _vm->_rnd->getNonRepeatRandom(2, _goodReactionRandomState);
 					_pendingFrogmanScrb = kGoodReactionPool[idx];
 				} else {
 					_hasReactedOnce = true;
@@ -878,7 +863,7 @@ void ZoombiniInteractiveFerry::endDrag(const Common::Point &mousePos) {
 				_pendingFrogmanScrb = 1815;
 				_consecutiveFailures = 5; // prevent further harsh rejects
 			} else {
-				uint16 idx = getNonRepeatRandom(_vm->_rnd, 11, _badReactionRandomState);
+				uint16 idx = _vm->_rnd->getNonRepeatRandom(11, _badReactionRandomState);
 				_pendingFrogmanScrb = kBadReactionPool[idx];
 			}
 
@@ -902,7 +887,7 @@ void ZoombiniInteractiveFerry::endDrag(const Common::Point &mousePos) {
 
 		// IDA: if !word_4AB128 && click_testZoneRadius(posLoc)
 		if (!_pendingFrogmanScrb && kDockRect.contains(snoidPos.x, snoidPos.y)) {
-			uint16 idx = getNonRepeatRandom(_vm->_rnd, 3, _moveReactionRandomState);
+			uint16 idx = _vm->_rnd->getNonRepeatRandom(3, _moveReactionRandomState);
 			_pendingFrogmanScrb = kMoveReactionPool[idx];
 		}
 	}

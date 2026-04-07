@@ -41,16 +41,6 @@ public:
 
 	virtual ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos);
 
-	enum VirtualFeatureId {
-		kVirtualFeatureDrawImage = 1,
-		kVirtualFeatureDrawShape,
-		kVirtualFeatureDrawShapes,
-		kVirtualFeatureDrawFeature,
-		kVirtualFeaturePlotPoint,
-		kVirtualFeaturePlotLine,
-		kVirtualFeaturePlotRect,
-	};
-
 protected:
 	ZoombiniDebugCommand _cmd;
 	bool _updateScreen = true;

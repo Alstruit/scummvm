@@ -49,6 +49,7 @@ public:
 protected:
 	void onGoButtonActivated() override;
 	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
+	void onEveryFrame() override;
 
 private:
 	void loadZoombinisFromPack();
@@ -155,6 +156,20 @@ private:
 
 	/** Pending body arrangement shape (1-4, or 0 for none). IDA: word_4AB7C6 */
 	int16 _pendingBodyArrangement = 0;
+
+	// Celebration state (IDA: maze2_onHover_frameUpdate @ 0x42FF46)
+	/** Victory flag: set when all zoombinis reach the end. IDA: word_4B040C */
+	bool _celebrationTrigger = false;
+	/** Number of celebrations played. IDA: word_4B040A */
+	int16 _celebrationsPlayed = 0;
+	/** Target celebration count. IDA: word_4B0408 */
+	int16 _celebrationTarget = 0;
+	/** Non-repeat random pool bitmask. IDA: dword_4B0404 */
+	uint32 _celebrationPoolState = 0;
+	/** Frame counter of last celebration. IDA: dword_4B0400 */
+	uint32 _celebrationLastFrame = 0;
+	/** Number of loaded Zoombinis (pool size). IDA: word_4AF306 */
+	int16 _loadedZmbCount = 0;
 };
 
 } // End of namespace Mohawk

@@ -356,6 +356,7 @@ void MohawkMetaEngine::registerDefaultSettings(const Common::String &target) con
 #ifdef ENABLE_ZOOMBINI
 	if (gameId == "zoombini") {
 		ConfMan.registerDefault("brighten_palette", false);
+		ConfMan.registerDefault("original_prng", true);
 	}
 #endif
 

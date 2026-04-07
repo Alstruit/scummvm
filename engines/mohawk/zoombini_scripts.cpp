@@ -1043,10 +1043,18 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 		}
 
 		// IDA: falls through to LABEL_80 (idle tick) — run fidget check in same tick.
+		// ScummVM fix: the original's render callback (snoidScript_renderFrame_4562B2)
+		// dynamically computes sprite shapes from wAnimHotspotSetIdx + chZmbAnimShapeCommonImageIdx,
+		// so the direct _animState = kSnoidAnimIdle above works transparently.
+		// ScummVM pre-bakes shapes into _hsFrameMap[0] via setupIdleHotspots(), so we must
+		// explicitly rebuild idle hotspots here — otherwise the walk-frame shapes remain
+		// in _hsFrameMap[0] and the snoid appears stuck in the last walk frame.
 		if (_animState == kSnoidAnimIdle) {
-			if (_needsIdleRedraw) {
-				_needsIdleRedraw = false;
-			}
+			_needsIdleRedraw = true;
+			if (_useSmallShapeRegs)
+				setupSmallIdleHotspots();
+			else
+				setupIdleHotspots();
 		}
 		break;
 	}

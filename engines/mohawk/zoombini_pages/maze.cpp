@@ -245,6 +245,14 @@ void ZoombiniInteractiveMaze::loadFeatures() {
 
 	// IDA: sound_activeHandle = 20068 — maze narrator voice (F1 key replay)
 	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, 20068);
+
+	// Celebration state init (IDA: maze2_initAndSetup @ 0x42E47C)
+	_celebrationTrigger = false;
+	_celebrationsPlayed = 0;
+	// IDA: word_4B0408 set from word_4AF306 during completion handler
+	_celebrationTarget = 0;
+	_celebrationPoolState = 0;
+	_celebrationLastFrame = 0;
 }
 
 void ZoombiniInteractiveMaze::onGoButtonActivated() {
@@ -276,6 +284,8 @@ void ZoombiniInteractiveMaze::loadZoombinisFromPack() {
 		}
 		posIdx++;
 	}
+
+	_loadedZmbCount = posIdx;
 }
 
 void ZoombiniInteractiveMaze::loadRegsConfigByLevel() {
@@ -538,6 +548,46 @@ void ZoombiniInteractiveMaze::onFeatureAnimEvent(ZmbFeature *feature, int16 even
 			}
 		}
 		break;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// onEveryFrame: Per-frame celebration scheduling.
+// IDA: maze2_onHover_frameUpdate @ 0x42FF46
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveMaze::onEveryFrame() {
+	if (_loadedZmbCount <= 0)
+		return;
+
+	if (_celebrationTrigger && _celebrationsPlayed < _celebrationTarget) {
+		if (getCurrentFrameCounter() - _celebrationLastFrame > 30) {
+			bool triggered = false;
+			_celebrationLastFrame = getCurrentFrameCounter();
+
+			for (int16 i = 0; i < _loadedZmbCount && !triggered; i++) {
+				uint16 poolIdx = _vm->_rnd->getNonRepeatRandom(_loadedZmbCount, _celebrationPoolState);
+				uint16 snoidId = 10000 + poolIdx;
+				ZmbSnoid *snoid = getSnoid(snoidId);
+
+				if (snoid && snoid->isRenderActivated()) {
+					// IDA: snoidScript_initAndPlay(0, 0, byte_239 + 15090, core)
+					uint16 scrsId = snoid->_trait._foot + 15090;
+					Common::SeekableReadStream *scrsStream =
+						_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+							ZmbResource(ZmbArchiveKind::kPage, scrsId));
+					if (scrsStream) {
+						snoid->startScrsPlayback(scrsStream, false, true);
+						_celebrationsPlayed++;
+						triggered = true;
+					}
+				}
+			}
+		}
+	} else if (_celebrationsPlayed >= _celebrationTarget && _celebrationTarget > 0) {
+		_celebrationPoolState = 0;
+		_celebrationLastFrame = 0;
+		_celebrationTrigger = false;
+		_celebrationsPlayed = 0;
 	}
 }
 

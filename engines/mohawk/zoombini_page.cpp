@@ -19,6 +19,8 @@
  *
  */
 
+#include "common/algorithm.h"
+
 #include "mohawk/cursors.h"
 #include "mohawk/resource.h"
 
@@ -77,6 +79,7 @@ void ZoombiniPage::onFrame() {
 	uint32 frameElapsed = _currentFrameTime - _lastFrameTime;
 	if (MohawkEngine_Zoombini::kAnimateFrameTimeMs <= frameElapsed || _doForceRedraw) {
 		do {
+			_forceRedrawPending |= _doForceRedraw;
 			_doForceRedraw = false;
 			onAnimFrame();
 		} while (_doForceRedraw);
@@ -193,28 +196,29 @@ ZmbFeature *ZoombiniPage::loadScrbFeature(ZmbResource imgResource, uint16 scrbId
 	return registerFeature(this, _scrbFeatures, imgResource, scrbId, frameInterval, pointRef, flags, true, nullptr, eventHooks);
 }
 
-ZmbFeature *ZoombiniPage::loadVirtualFeature(ZmbResource imgResource, uint16 virtFeatureId, const Common::Array<ZmbHotspot> &hotspots, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks) {
-	return registerFeature(this, _virtualFeatures, imgResource, virtFeatureId, frameInterval, Common::Point(0, 0), flags, false, &hotspots, eventHooks);
-}
-
-ZmbFeature *ZoombiniPage::loadVirtualFeature(uint16 virtFeatureId, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks) {
-	return registerFeature(this, _virtualFeatures, ZmbResource(ZmbArchiveKind::kPage, 0), virtFeatureId, frameInterval, Common::Point(0, 0), flags, false, nullptr, eventHooks);
+ZmbFeature *ZoombiniPage::loadScrbFeature(ZmbResource imgResource, uint16 scrbId, const Common::Array<ZmbHotspot> &hotspots, uint32 frameInterval, uint32 flags, const ZmbFeature::EventHooks &eventHooks) {
+	return registerFeature(this, _scrbFeatures, imgResource, scrbId, frameInterval, Common::Point(0, 0), flags, true, &hotspots, eventHooks);
 }
 
 ZmbFeature *ZoombiniPage::registerFeature(ZoombiniPage *page, ZmbFeatureList<ZmbFeature> &featureList, ZmbResource imgResource, uint16 scrbId, uint32 frameInterval, const Common::Point &pointRef, uint32 flags, bool isPhysicalScrb, const Common::Array<ZmbHotspot> *virtualHotspots, const ZmbFeature::EventHooks &eventHooks) {
-	if (featureList.find(scrbId)) {
-		error("Duplicated feature id %u", scrbId);
-		return nullptr;
-	}
+	// IDA: runner_registerAndAllocate (0x45F60C) — auto-generates a unique
+	// wFeatureRunnerIdx per runner; multiple runners may share the same wResId.
+	// We allow duplicate scrbId keys in the feature list to match that behavior.
 
 	ZmbFeature *feature = new ZmbFeature(page->_vm, scrbId, frameInterval, pointRef, flags, imgResource);
 	featureList.insert(scrbId, feature);
+	feature->setRegistrationIndex(page->_nextRegistrationIndex++);
 
-	if (isPhysicalScrb) {
+	// IDA: runner_registerAndAllocate (0x45F60C) — when wResId (scrbId) is
+	// non-zero the SCRB resource is loaded onto the runner.  When wResId == 0
+	// the runner is a callback-only runner (no SCRB data) that relies entirely
+	// on its preRender/postRender callbacks for drawing.
+	if (isPhysicalScrb && scrbId > 0) {
 		Common::SeekableReadStream *scrbStream = page->_vm->getResource(ID_SCRB, ZmbResource(imgResource._archiveKind, scrbId));
 		feature->parseStream(scrbStream);
 		scrbStream = nullptr;
-	} else if (virtualHotspots) {
+	}
+	if (virtualHotspots) {
 		feature->setVirtualHotspots(*virtualHotspots);
 	}
 
@@ -245,6 +249,7 @@ ZmbFeature *ZoombiniPage::loadSubFeature(ZmbFeature *parentFeature, ZmbResource 
 
 	// SubFeature inherits the frame interval and flags from the parent feature (with some adjustments)
 	ZmbFeature *subFeature = new ZmbFeature(_vm, scrbId, parentFeature->getFrameInterval(), flags, imgResource);
+	subFeature->setRegistrationIndex(_nextRegistrationIndex++);
 
 	Common::SeekableReadStream *scrbStream = _vm->getResource(ID_SCRB, ZmbResource(imgResource._archiveKind, scrbId));
 	subFeature->parseStream(scrbStream);
@@ -263,12 +268,15 @@ ZmbFeature *ZoombiniPage::createMainFeatureHead(uint32 flags) {
 	return head;
 }
 
-void ZoombiniPage::unloadScrbFeature(uint16 scrbId) {
-	deregisterFeature(_scrbFeatures, scrbId);
-}
-
-void ZoombiniPage::unloadVirtualFeature(uint16 virtFeatureId) {
-	deregisterFeature(_virtualFeatures, virtFeatureId);
+void ZoombiniPage::unloadScrbFeature(ZmbFeature *feature) {
+	// IDA gfx_renderFrame (0x45F070): when a feature is removed, its OLD
+	// clickRect was already in the external dirty accumulator from the
+	// previous frame's preRender.  We add the feature's sortRect as an
+	// external dirty rect so the area gets background-restored next frame.
+	const Common::Rect &oldRect = feature->getZSortRect();
+	if (!oldRect.isEmpty())
+		addExternalDirtyRect(oldRect);
+	deregisterFeature(_scrbFeatures, feature);
 }
 
 void ZoombiniPage::loadScrbOntoFeature(ZmbFeature *feature, uint16 newScrbId, bool scheduleRender) {
@@ -292,22 +300,23 @@ void ZoombiniPage::loadScrbOntoFeature(ZmbFeature *feature, uint16 newScrbId, bo
 }
 
 void ZoombiniPage::attachSubFeature(ZmbFeature *subFeature) {
-	uint16 id = subFeature->getId();
-
-	// Guard against duplicate registration (e.g. user clicks before animation finishes)
-	if (_subFeatures.find(id))
+	// Guard against duplicate registration (e.g. user clicks before animation finishes).
+	// The caller (zoombini_scripts.cpp) already checks isSubFeatureRunning(), but
+	// double-check here as a safety net.
+	if (subFeature->isSubFeatureRunning())
 		return;
 
-	// Insert without taking ownership - the parent feature still owns this pointer
-	_subFeatures.insert(id, subFeature);
+	// Insert without taking ownership - the parent feature still owns this pointer.
+	// Duplicate scrbId keys are allowed (the list always appends).
+	_subFeatures.insert(subFeature->getId(), subFeature);
 }
 
-void ZoombiniPage::deregisterFeature(ZmbFeatureList<ZmbFeature> &featureList, uint16 featureId) {
-	ZmbFeature *feature = featureList.erase(featureId);
+void ZoombiniPage::deregisterFeature(ZmbFeatureList<ZmbFeature> &featureList, ZmbFeature *feature) {
 	if (!feature) {
-		error("Cannot unload a not loaded feature id %u", featureId);
+		error("Cannot unload a null feature");
 		return;
 	}
+	featureList.eraseByPtr(feature, feature->getId());
 	delete feature;
 }
 
@@ -341,15 +350,17 @@ void ZoombiniPage::loadREGS(ZmbArchiveKind archiveKind, uint16 baseResId) {
  * they should have bare TYPE_SNOID (0x1) so the exact-match check routes them
  * to entityList for proper depth sorting by (bottom, left).
  */
-void ZoombiniPage::categorizeFeature(ZmbFeature *feature, Common::Array<ZmbFeature *> &loopAnimList, Common::Array<ZmbFeature *> &normalList, Common::Array<ZmbFeature *> &entityList, Common::Array<ZmbFeature *> &overlayList) {
+void ZoombiniPage::categorizeFeature(ZmbFeature *feature, Common::Array<ZmbFeature *> &loopAnimList, Common::Array<ZmbFeature *> &overlayList, Common::Array<ZmbFeature *> &normalList, Common::Array<ZmbFeature *> &entityList) {
 	// IDA runner_zsortPartitionAndSort 0x4608AF: check order matters.
 	// LOOP_ANIM is for SCRB features only. Snoids use bare TYPE_SNOID (0x1)
 	// → entityList (sorted by depth). See zmb_registerSnoidFeatureRunner 0x452A64.
 	if (feature->hasFlag(ZmbFeature::FLAG_00008000_LOOP_ANIM)) {
 		loopAnimList.push_back(feature);
 	} else if (feature->hasFlag(ZmbFeature::FLAG_04000000_OVERLAY)) {
-		// IDA 0x460902: pre-existing OVERLAY flag → overlayList (unsorted,
-		// rendered between loopAnim and sorted normal+entity features).
+		// IDA 0x460902: pre-existing OVERLAY flag → overlayList.
+		// The original engine adds these to the overlay linked list which
+		// preserves the previous frame's Z-sort order. In ScummVM we
+		// collect them here and reorder via _cachedOverlayOrder later.
 		overlayList.push_back(feature);
 	} else if (feature->getFlags() == ZmbFeature::FLAG_00000001_TYPE_SNOID || feature->getFlags() == ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY) {
 		// IDA 0x46092C: entity type → entityList.
@@ -358,8 +369,10 @@ void ZoombiniPage::categorizeFeature(ZmbFeature *feature, Common::Array<ZmbFeatu
 		// Snoids with additional flags (e.g., POS_DELTA 0x800001) go to normalList.
 		entityList.push_back(feature);
 	} else {
-		// Normal feature: force-set OVERLAY so it draws to the overlay screen,
-		// unless it is a TOPMOST button/dialog that belongs on the shape screen.
+		// IDA 0x46093E: set OVERLAY on non-TOPMOST normal features.
+		// On the next frame they will enter the OVERLAY branch above and
+		// be placed via _cachedOverlayOrder in their previous Z-sorted
+		// position, matching the original engine's linked-list behaviour.
 		if (!feature->hasFlag(ZmbFeature::FLAG_00001000_TOPMOST))
 			feature->addFlag(ZmbFeature::FLAG_04000000_OVERLAY);
 		normalList.push_back(feature);
@@ -372,35 +385,39 @@ void ZoombiniPage::categorizeFeature(ZmbFeature *feature, Common::Array<ZmbFeatu
  * IDA uses clickRect (set once from first render) for stable Z-ordering.
  * Falls back to sortRect if clickRect hasn't been set yet (first frame).
  *
- * Features with FLAG_00001000_TOPMOST skip past all sorted entries and are appended at the tail of their group (render last within the group).
+ * Features with FLAG_00001000_TOPMOST are moved to the tail after sorting.
+ * IDA zsort_insertionSortByDepthAndX (0x4609F7): TOPMOST incoming always
+ * traverses to the end and appends, so they end up at the tail regardless
+ * of their sort key.
  */
 void ZoombiniPage::insertionSortFeatures(Common::Array<ZmbFeature *> &list) {
 	if (list.size() <= 1)
 		return;
 
 	// IDA zsort_insertionSortByDepthAndX (0x4609F7):
-	// Insertion sort ascending by (sortRect.bottom, sortRect.left).
-	// TOPMOST check is on the INCOMING node only (test byte ptr [edx+21h], 10h).
-	// When TOPMOST, skip comparison → traverse to tail → append at end.
-	// Non-TOPMOST incoming walks past ALL existing nodes (including TOPMOST ones)
-	// without barrier behavior — TOPMOST existing nodes are never checked.
+	// 1. Extract TOPMOST items — they are always appended at the tail.
+	// 2. Insertion-sort the remaining items ascending by (bottom, left).
+	// Non-TOPMOST incoming walks past ALL existing nodes (including TOPMOST ones
+	// in the IDA implementation) without barrier behavior.  Since we extracted
+	// TOPMOST items first, the sort only sees non-TOPMOST entries.
+	Common::Array<ZmbFeature *> topmostItems;
+	uint32 writeIdx = 0;
+	for (uint32 i = 0; i < list.size(); i++) {
+		if (list[i]->hasFlag(ZmbFeature::FLAG_00001000_TOPMOST)) {
+			topmostItems.push_back(list[i]);
+		} else {
+			list[writeIdx++] = list[i];
+		}
+	}
+	list.resize(writeIdx);
+
 	for (uint32 i = 1; i < list.size(); i++) {
 		ZmbFeature *key = list[i];
-
-		if (key->hasFlag(ZmbFeature::FLAG_00001000_TOPMOST)) {
-			// TOPMOST incoming: binary skips sort comparison and appends at tail.
-			// Since we process left-to-right and TOPMOST items never shift left,
-			// leaving it in place is correct — it's already at the rightmost
-			// position seen so far and will stay at the tail.
-			continue;
-		}
-
 		const Common::Rect &keyRect = key->getZSortRect();
 		int32 j = (int32)i - 1;
 		while (j >= 0) {
 			const Common::Rect &cRect = list[j]->getZSortRect();
 			// Shift right when existing has larger sort key.
-			// No TOPMOST barrier check on existing — binary walks past them.
 			if (cRect.bottom > keyRect.bottom ||
 				(cRect.bottom == keyRect.bottom && cRect.left > keyRect.left)) {
 				list[j + 1] = list[j];
@@ -411,6 +428,10 @@ void ZoombiniPage::insertionSortFeatures(Common::Array<ZmbFeature *> &list) {
 		}
 		list[j + 1] = key;
 	}
+
+	// Append TOPMOST items at the tail (IDA: always traverse to end).
+	for (ZmbFeature *f : topmostItems)
+		list.push_back(f);
 }
 
 /**
@@ -441,7 +462,14 @@ void ZoombiniPage::mergeSortedListInto(Common::Array<ZmbFeature *> &existingList
 		return;
 
 	// Find scan start: skip past LOOP_ANIM entries in existing list.
-	// IDA 0x460AE7: walks forward while [eax+21h] & 0x80 and [eax+4] != 0.
+	// IDA 0x460AE7: while ([eax+21h] & 0x80) skip — LOOP_ANIM only.
+	//
+	// The Z-sort interleaving between overlay items and entities is correct:
+	// overlay items with higher sort keys (e.g. bottom shapes at Y=480) draw
+	// AFTER entities with lower sort keys (snoids at Y≈375), making foreground
+	// foliage cover snoid feet — matching the original engine.  The render clip
+	// rect (dirty bounding box) confines all drawing to the dirty region, so
+	// non-dirty features' previous-frame pixels persist on the shape-screen.
 	uint32 scanStart = 0;
 	while (scanStart < existingList.size() &&
 	       existingList[scanStart]->hasFlag(ZmbFeature::FLAG_00008000_LOOP_ANIM) &&
@@ -532,51 +560,83 @@ void ZoombiniPage::mergeSortedListInto(Common::Array<ZmbFeature *> &existingList
  * with overlay entries (not kept strictly separate).
  */
 void ZoombiniPage::buildSortedRenderList(Common::Array<ZmbFeature *> &outList) {
-	Common::Array<ZmbFeature *> loopAnimList, normalList, entityList, overlayList;
+	Common::Array<ZmbFeature *> loopAnimList, overlayList, normalList, entityList;
 
 	// Step 1: Categorize features into render buckets.
 	// IDA check order: LOOP_ANIM → pre-existing OVERLAY → entity type → normalList.
-	// Original binary iterates a single linked list in registration order.
 	for (ZmbFeature *f : _scrbFeatures)
-		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
+		categorizeFeature(f, loopAnimList, overlayList, normalList, entityList);
 	for (ZmbFeature *f : _subFeatures)
-		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
-	for (ZmbFeature *f : _virtualFeatures)
-		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
+		categorizeFeature(f, loopAnimList, overlayList, normalList, entityList);
 	for (ZmbSnoid *s : _snoidMap)
-		categorizeFeature(s, loopAnimList, normalList, entityList, overlayList);
+		categorizeFeature(s, loopAnimList, overlayList, normalList, entityList);
 
-	// Step 2: Assemble combined list = loopAnim + overlay (unsorted).
+	// Step 2: Reorder overlayList according to cached order.
 	// IDA 0x4609A1–0x4609BC: overlay entries appended after loopAnim entries.
+	// The original engine's linked list preserves the previous Z-sort order;
+	// we reproduce this by reordering overlayList per _cachedOverlayOrder.
+	// Features not in the cache (newly created with pre-set OVERLAY, or
+	// features that just got OVERLAY set last frame) are appended at the end.
+	if (!_cachedOverlayOrder.empty() && !overlayList.empty()) {
+		Common::Array<ZmbFeature *> orderedOverlay;
+		// First: features from cache that are still in overlayList (preserves sort order).
+		for (ZmbFeature *f : _cachedOverlayOrder) {
+			if (Common::find(overlayList.begin(), overlayList.end(), f) != overlayList.end())
+				orderedOverlay.push_back(f);
+		}
+		// Then: any overlay features not in the cache (new this frame).
+		for (ZmbFeature *f : overlayList) {
+			if (Common::find(_cachedOverlayOrder.begin(), _cachedOverlayOrder.end(), f) == _cachedOverlayOrder.end())
+				orderedOverlay.push_back(f);
+		}
+		overlayList = orderedOverlay;
+	}
+
+	// Step 3: Assemble combined list = loopAnim + overlay.
 	outList.clear();
 	for (ZmbFeature *feature : loopAnimList)
 		outList.push_back(feature);
 	for (ZmbFeature *feature : overlayList)
 		outList.push_back(feature);
 
-	// Step 3: Sort normalList, merge into combined.
+	// Step 4: Sort normalList (newly categorized features), merge into combined.
 	// IDA 0x4609BE–0x4609D2: insertionSort(normalList) → merge(sorted, combined)
 	insertionSortFeatures(normalList);
 	mergeSortedListInto(outList, normalList);
 
-	// Step 4: Sort entityList, merge into combined.
+	// Step 5: Sort entityList, merge into combined.
 	// IDA 0x4609D7–0x4609EB: insertionSort(entityList) → merge(sorted, combined)
 	insertionSortFeatures(entityList);
 	mergeSortedListInto(outList, entityList);
+
+	// Step 6: Cache the overlay order for next frame.
+	// Collect all non-LOOP_ANIM, non-entity features in their current
+	// sorted positions. On the next frame, these features will have
+	// OVERLAY set and will be placed from this cache.
+	_cachedOverlayOrder.clear();
+	for (ZmbFeature *f : outList) {
+		if (f->hasFlag(ZmbFeature::FLAG_04000000_OVERLAY))
+			_cachedOverlayOrder.push_back(f);
+	}
 }
 
 void ZoombiniPage::buildSortedEventList(Common::Array<ZmbFeature *> &outList) {
-	Common::Array<ZmbFeature *> loopAnimList, normalList, entityList, overlayList;
+	// Event dispatch needs ALL features (including OVERLAY) for correct
+	// hit-testing.  We skip the OVERLAY cache here and build the list
+	// from scratch, treating OVERLAY features as normal.
+	Common::Array<ZmbFeature *> loopAnimList, normalList, entityList;
 
-	for (ZmbFeature *f : _scrbFeatures)
-		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
-	for (ZmbFeature *f : _virtualFeatures)
-		categorizeFeature(f, loopAnimList, normalList, entityList, overlayList);
+	for (ZmbFeature *f : _scrbFeatures) {
+		if (f->hasFlag(ZmbFeature::FLAG_00008000_LOOP_ANIM))
+			loopAnimList.push_back(f);
+		else if (f->getFlags() == ZmbFeature::FLAG_00000001_TYPE_SNOID || f->getFlags() == ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY)
+			entityList.push_back(f);
+		else
+			normalList.push_back(f);
+	}
 
 	outList.clear();
 	for (ZmbFeature *feature : loopAnimList)
-		outList.push_back(feature);
-	for (ZmbFeature *feature : overlayList)
 		outList.push_back(feature);
 
 	insertionSortFeatures(normalList);
@@ -586,72 +646,180 @@ void ZoombiniPage::buildSortedEventList(Common::Array<ZmbFeature *> &outList) {
 	mergeSortedListInto(outList, entityList);
 }
 
-void ZoombiniPage::renderFeatures() {
-	// IDA gfx_renderFrame (0x45F070) — two-pass architecture:
-	//
-	// Pass 1 (preRender): Animation logic for ALL features in registration order.
-	//   Binary iterates zmb_pRunnerListHead calling pPreRenderFunc (0x45F2C6).
-	//   Handles frame advancement, end-of-cycle, flag checks, sound dispatch.
-	//   Runs BEFORE Z-sort so sort rects from custom preRender callbacks
-	//   (e.g., scroll state machines) are up-to-date.
-	//
-	// Pass 2 (postRender): Shape blitting in Z-sorted order.
-	//   Binary calls zsort_partitionAndSortFeatureRunners (0x45F2F1),
-	//   blits background, then iterates calling pPostRenderFunc (0x45F35F).
+void ZoombiniPage::addDirtyRect(const Common::Rect &rect) {
+	if (rect.isEmpty())
+		return;
+	Common::Rect clipped = rect;
+	clipped.clip(Common::Rect(0, 0, 640, 480));
+	if (clipped.isEmpty())
+		return;
+	_dirtyRects.push_back(clipped);
+	if (_hasDirtyBounds) {
+		_dirtyBounds.extend(clipped);
+	} else {
+		_dirtyBounds = clipped;
+		_hasDirtyBounds = true;
+	}
+}
 
-	// Pass 1: Pre-render all features — animation logic
+void ZoombiniPage::addExternalDirtyRect(const Common::Rect &rect) {
+	if (rect.isEmpty())
+		return;
+	if (_hasExternalDirtyBounds) {
+		_externalDirtyBounds.extend(rect);
+	} else {
+		_externalDirtyBounds = rect;
+		_hasExternalDirtyBounds = true;
+	}
+}
+
+void ZoombiniPage::renderFeatures() {
+	// IDA gfx_renderFrame (0x45F070) — dirty-rect rendering architecture:
+	//
+	// The original engine maintains a persistent shapeScreen (composite buffer)
+	// that is NOT cleared each frame.  Only "dirty" regions — areas where features
+	// changed — get background restoration and redraw.  Non-dirty pixels persist
+	// from the previous frame's composite.
+	//
+	// Pipeline:
+	//   1. Merge external dirty accumulator into main dirty region (IDA 0x45F2A3)
+	//   2. PreRender: animation logic + merge OLD clickRects into dirty (IDA 0x45F2C6)
+	//   3. Z-sort features (IDA 0x45F2F1)
+	//   4. Restore background ONLY in dirty region (IDA 0x45F352)
+	//   5. Set render clip to dirty region rects (IDA 0x45F35B)
+	//   6. For each Z-sorted feature: merge NEW clickRect if dirty, expand clip,
+	//      draw (IDA 0x45F35F)
+	//   7. Release render clip region (IDA 0x45F3D3)
+	//
+	// The original engine uses Windows GDI clip regions (union of rectangles) set
+	// on the port's HDC via port_selectActiveRegion.  Each draw call is automatically
+	// clipped to the precise union of dirty rects — NOT their bounding box.
+	// We replicate this by maintaining a list of individual dirty rects and clipping
+	// each draw operation to each rect's intersection.
+
+	// Step 1: Reset dirty region (IDA 0x45F443: dirty_resetRgnRBoundingRect)
+	_dirtyRects.clear();
+	_dirtyBounds = Common::Rect();
+	_hasDirtyBounds = false;
+
+	// Step 2: Merge external dirty accumulator (IDA 0x45F2A3: dirty_mergeRgnRIntoTarget)
+	if (_hasExternalDirtyBounds) {
+		addDirtyRect(_externalDirtyBounds);
+		_externalDirtyBounds = Common::Rect();
+		_hasExternalDirtyBounds = false;
+	}
+
+	// Step 3: Force redraw → entire screen is dirty (initial frame, page change, etc.)
+	if (_forceRedrawPending) {
+		addDirtyRect(Common::Rect(0, 0, 640, 480));
+		_forceRedrawPending = false;
+	}
+
+	// Pass 1: Pre-render all features — animation logic (IDA 0x45F2C6)
+	// Sets _needsRedraw on animating features and merges their OLD clickRects
+	// into the dirty region.
 	for (ZmbFeature *f : _scrbFeatures)
 		f->onPreRender(this);
 	for (ZmbFeature *f : _subFeatures)
 		f->onPreRender(this);
-	for (ZmbFeature *f : _virtualFeatures)
-		f->onPreRender(this);
 	for (ZmbSnoid *s : _snoidMap)
 		s->onPreRender(this);
 
-	// IDA gfx_renderFrame 0x45F352: copy background port → blitter port.
-	// Binary blits persistent background into composite buffer before shapes.
-	_vm->_gfx->copyBackToShapeScreen();
-
-	// Z-sort: partition and sort feature runners
+	// Z-sort: partition and sort feature runners (IDA 0x45F2F1)
 	Common::Array<ZmbFeature *> renderList;
 	buildSortedRenderList(renderList);
 
-	// Pass 2: Post-render — blit shapes in Z-sorted order
-	for (ZmbFeature *feature : renderList)
+	// Step 4: Restore background in dirty region only (IDA 0x45F352)
+	// In the original, gfx_blitPortToPort copies backScreen → shapeScreen
+	// through the port's active clip region (set to the dirty region).
+	// We restore background per individual dirty rect to match.
+	for (const Common::Rect &dirtyRect : _dirtyRects) {
+		if (!dirtyRect.isEmpty())
+			_vm->_gfx->copyBackToShapeScreen(dirtyRect);
+	}
+
+	// IDA 0x45F35B–0x45F35E: port_selectActiveRegion(g_wDirtyRgnId)
+	// Set render clip to the list of dirty rects.  All drawing is confined
+	// to the precise union of these rects — non-dirty features' previous-frame
+	// pixels persist on the shape-screen.
+	if (_hasDirtyBounds)
+		_vm->_gfx->setRenderClipRects(_dirtyRects);
+
+	// Pass 2: Post-render — draw shapes in Z-sorted order (IDA 0x45F35F)
+	//
+	// Original timing: preRender's LABEL_70 (0x4620F5) computes the NEW clickRect
+	// from hotspot metadata + REGS shape sizes, and the post-render loop merges it
+	// into dirty BEFORE drawing.  The clip always covers the feature's new area.
+	//
+	// In ScummVM, the new sortRect isn't available until blitShapes runs.  We merge
+	// the OLD sortRect to expand the clip before drawing, then merge the NEW sortRect
+	// after drawing to expand the clip for subsequent higher-Z features.  For
+	// stationary features the old rect == new rect, so this is exact.  For moving
+	// features there may be a one-frame partial lag on the leading edge, which is
+	// acceptable.
+	//
+	// CRITICAL: features MUST draw through the clip.  Clearing the clip would let
+	// dirty features paint outside the dirty region onto the persistent shapeScreen,
+	// causing dialog remnants and Z-ordering corruption.
+	for (ZmbFeature *feature : renderList) {
+		if (feature->needsRedraw()) {
+			// IDA 0x45F361–0x45F3BC: merge clickRect into dirty, expand clip.
+			const Common::Rect &oldRect = feature->getZSortRect();
+			if (!oldRect.isEmpty()) {
+				addDirtyRect(oldRect);
+				_vm->_gfx->addRenderClipRect(oldRect);
+			}
+		}
+
 		feature->onPostRender(this);
 
-	_doForceRedraw = false;
+		if (feature->needsRedraw()) {
+			// After blitShapes, sortRect holds the NEW logical bounding box.
+			// Merge into dirty + expand clip for subsequent higher-Z features.
+			const Common::Rect &newRect = feature->getZSortRect();
+			if (!newRect.isEmpty()) {
+				addDirtyRect(newRect);
+				_vm->_gfx->addRenderClipRect(newRect);
+			}
+		}
+
+		// IDA 0x45F3CB: chGetDrawnRect = 0
+		feature->setNeedsRedraw(false);
+	}
+
+	// IDA 0x45F3D3: port_selectActiveRegion(0) — release clip region.
+	_vm->_gfx->clearRenderClipRect();
 }
 
 void ZoombiniPage::checkCloseFeatures() {
-	ZmbFeatureList<ZmbFeature> *deleteLists[2] = {
+	ZmbFeatureList<ZmbFeature> *deleteLists[1] = {
 		&_scrbFeatures,
-		&_virtualFeatures,
 	};
 
 	for (uint32 i = 0; i < ARRAYSIZE(deleteLists); i++) {
 		ZmbFeatureList<ZmbFeature> *listPtr = deleteLists[i];
 
-		Common::Array<uint16> deleteIds;
+		Common::Array<ZmbFeature *> deletePtrs;
 		for (ZmbFeature *f : *listPtr) {
 			if (f->isCloseScheduled())
-				deleteIds.push_back(f->getId());
+				deletePtrs.push_back(f);
 		}
-		for (uint16 deleteId : deleteIds)
-			deregisterFeature(*listPtr, deleteId);
+		for (ZmbFeature *f : deletePtrs) {
+			const Common::Rect &oldRect = f->getZSortRect();
+			if (!oldRect.isEmpty())
+				addExternalDirtyRect(oldRect);
+			deregisterFeature(*listPtr, f);
+		}
 	}
 
 	// Detach sub-features: erase from _subFeatures but do NOT delete - the parent feature owns the pointer
-	Common::Array<uint16> detachIds;
+	Common::Array<ZmbFeature *> detachPtrs;
 	for (ZmbFeature *f : _subFeatures) {
 		if (f->isDetachScheduled())
-			detachIds.push_back(f->getId());
+			detachPtrs.push_back(f);
 	}
-	for (uint16 detachId : detachIds) {
-		ZmbFeature *subFeature = _subFeatures.erase(detachId);
-		if (!subFeature)
-			continue;
+	for (ZmbFeature *subFeature : detachPtrs) {
+		_subFeatures.eraseByPtr(subFeature, subFeature->getId());
 		subFeature->clearDetach();
 		subFeature->setSubFeatureRunning(false);
 	}
@@ -694,12 +862,20 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 	// Without paired slots, it reduces to dNextRenderFrame <= currentTime.
 	// When timing is not ready, the original returns here — no end-of-cycle,
 	// no dirty rect merge, no sound dispatch, no flag checks.
-	// IDA 0x461BB7–0x461BF3: dirty rect merge (chGetDrawnRect = 1).
-	// The original merges the previous frame's clickRect / wRectRgnB / RgnR
-	// into the per-feature dirty region for partial screen refresh.  ScummVM
-	// does full Z-sorted redraws, so the dirty rect merge is a no-op.
 	if (!feature->isFrameTimingReady())
 		return;
+
+	// IDA 0x461BB7–0x461BF3: dirty rect merge (chGetDrawnRect = 1).
+	// Merge the feature's CURRENT (about-to-be-replaced) clickRect into the
+	// dirty region so that the area it occupied is repainted this frame.
+	// FLAG_00004000_NO_DIRTY_MERGE: skip the merge (used by features whose
+	// old and new rects are identical, e.g., in-place animations).
+	if (!feature->hasFlag(ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE)) {
+		const Common::Rect &oldRect = feature->getZSortRect();
+		if (!oldRect.isEmpty())
+			addDirtyRect(oldRect);
+	}
+	feature->setNeedsRedraw(true);
 
 	if (feature->isAnimateActivated()) {
 		// 2. End-of-cycle handling (IDA 0x461C05–0x461D06)
@@ -1047,11 +1223,11 @@ void ZoombiniPage::clear() {
 	clearSubFeatures();
 	clearScrbFeatures();
 	clearMainFeatureHeads();
-	clearVirtualFeatures();
 	clearSnoids();
 	clearRegs();
 	clearNode();
 	clearTerrainBitmap();
+	_cachedOverlayOrder.clear();
 }
 
 void ZoombiniPage::clearScrbFeatures() {
@@ -1077,12 +1253,6 @@ void ZoombiniPage::clearSubFeatures() {
 	_subFeatures.clear();
 }
 
-void ZoombiniPage::clearVirtualFeatures() {
-	for (ZmbFeature *f : _virtualFeatures) {
-		delete f;
-	}
-	_virtualFeatures.clear();
-}
 
 void ZoombiniPage::clearSnoids() {
 	for (ZmbSnoid *s : _snoidMap) {
@@ -1103,6 +1273,7 @@ ZmbSnoid *ZoombiniPage::loadSnoid(ZmbResource imgResource, uint16 scrsId, const 
 
 	ZmbSnoid *snoid = new ZmbSnoid(_vm, scrsId, flags);
 	_snoidMap.insert(scrsId, snoid);
+	snoid->setRegistrationIndex(_nextRegistrationIndex++);
 
 	snoid->setPointLoc(point);
 	snoid->setResource(imgResource);
@@ -1125,6 +1296,7 @@ ZmbSnoid *ZoombiniPage::loadSnoidFromPack(uint16 snoidId, const Common::Point &p
 
 	ZmbSnoid *snoid = new ZmbSnoid(_vm, snoidId, flags);
 	_snoidMap.insert(snoidId, snoid);
+	snoid->setRegistrationIndex(_nextRegistrationIndex++);
 
 	snoid->setPointLoc(point);
 	// IDA: animDestPos = posLoc; pos2 = posLoc; posSpawnXY = posLoc;
@@ -1154,6 +1326,7 @@ ZmbSnoid *ZoombiniPage::loadSnoidFromScrb(ZmbResource imgResource, uint16 snoidI
 
 	ZmbSnoid *snoid = new ZmbSnoid(_vm, snoidId, flags);
 	_snoidMap.insert(snoidId, snoid);
+	snoid->setRegistrationIndex(_nextRegistrationIndex++);
 
 	snoid->setPointLoc(point);
 	snoid->setSortRect(Common::Rect(point.x, point.y, point.x + 1, point.y + 1));

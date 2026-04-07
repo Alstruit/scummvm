@@ -701,6 +701,10 @@ public:
 	void deactivateAnimate();
 	void setSelectRenderFrameFunc(OnSelectRenderFrameFunc func);
 
+	// IDA: chGetDrawnRect — dirty-rect tracking for the render pipeline.
+	bool needsRedraw() const { return _needsRedraw; }
+	void setNeedsRedraw(bool v) { _needsRedraw = v; }
+
 	/**
 	 * IDA one-shot callback state.  After the end-of-cycle -1 callback fires
 	 * once (matching onHotspotShapeOrFrameFunc = 0 in the original), this flag
@@ -746,6 +750,9 @@ public:
 	void removeFlag(Flag flag) { _flags &= ~flag; }
 	const Common::Rect &getSortRect() const { return _sortRect; }
 	void setSortRect(const Common::Rect &rect) { _sortRect = rect; }
+
+	uint32 getRegistrationIndex() const { return _registrationIndex; }
+	void setRegistrationIndex(uint32 idx) { _registrationIndex = idx; }
 
 	/**
 	 * Get the rect used for Z-sorting. IDA uses clickRect (set once from first render).
@@ -864,6 +871,7 @@ private:
 	 */
 	uint32 _frameInterval = 0;
 	uint32 _flags = 0;
+	uint32 _registrationIndex = 0;
 	ZmbResource _imgResource;
 	/**
 	 * (FLAG_00800000_POS_DELTA or FLAG_00000001_TYPE_SNOID only)
@@ -910,6 +918,13 @@ private:
 	bool _isCloseScheduled = false;
 	bool _isAnimateActivated = false;
 	bool _isRenderActivated = true;
+	/**
+	 * IDA: chGetDrawnRect.  Set during preRenderFeature() when the feature's
+	 * animation advances (timing gate passes).  Cleared after the render loop
+	 * in renderFeatures().  When set, the feature's clickRect is merged into
+	 * the dirty region and its shapes are redrawn.
+	 */
+	bool _needsRedraw = false;
 	/**
 	 * IDA one-shot callback: onHotspotShapeOrFrameFunc (runner offset 0x10) is
 	 * cleared to 0 after the end-of-cycle -1 callback fires

@@ -149,7 +149,7 @@ void ZoombiniInteractiveNet::loadFeatures() {
 		ZmbFeature::EventHooks attrSlotHooks;
 		attrSlotHooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveNet::attrSlots_preRender));
 		attrSlotHooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractiveNet::attrSlots_render));
-		loadVirtualFeature(100, 0, ZmbFeature::FLAG_00001000_TOPMOST, attrSlotHooks);
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0, ZmbFeature::FLAG_00001000_TOPMOST, attrSlotHooks);
 	}
 
 	// Load Zoombinis at 16 pedestal positions
@@ -180,6 +180,14 @@ void ZoombiniInteractiveNet::loadFeatures() {
 
 	// IDA: sound_activeHandle = 20064 — net narrator voice (F1 key replay)
 	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, 20064);
+
+	// Celebration state init
+	_idleAnimTrigger = false;
+	_idleAnimCount = 0;
+	_idleAnimMax = 0;
+	_idleAnimPoolState = 0;
+	_idleAnimLastFrame = 0;
+	_roundCompletedFlag = false;
 }
 
 void ZoombiniInteractiveNet::onGoButtonActivated() {
@@ -216,6 +224,8 @@ void ZoombiniInteractiveNet::loadZoombinisFromPack() {
 		}
 		posIdx++;
 	}
+
+	_loadedZmbCount = posIdx;
 }
 
 void ZoombiniInteractiveNet::registerColumnRunners() {
@@ -494,6 +504,57 @@ void ZoombiniInteractiveNet::processScrbAnimEvent(ZmbFeature *feature, int16 eve
 
 	default:
 		break;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// onEveryFrame: Per-frame idle animation scheduling.
+// IDA: net_onFrameTick @ 0x43728B
+// ---------------------------------------------------------------------------
+void ZoombiniInteractiveNet::onEveryFrame() {
+	if (_loadedZmbCount <= 0)
+		return;
+
+	if (_idleAnimTrigger && _idleAnimCount < _idleAnimMax) {
+		if (getCurrentFrameCounter() - _idleAnimLastFrame > 30) {
+			bool triggered = false;
+			int16 attempts = 0;
+			_idleAnimLastFrame = getCurrentFrameCounter();
+
+			do {
+				uint16 poolIdx = _vm->_rnd->getNonRepeatRandom(_loadedZmbCount, _idleAnimPoolState);
+				uint16 snoidId = 10000 + poolIdx;
+
+				// IDA: Skip snoids in active column slots
+				// (net_columnSlotRunners[0..2] exclusion)
+				// TODO: Add column slot exclusion when puzzle logic is implemented.
+
+				ZmbSnoid *snoid = getSnoid(snoidId);
+				if (snoid && snoid->isRenderActivated() &&
+					snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+					// IDA: byte_295 check — skip if snoid has active flag and round not complete
+					// TODO: Add byte_295 check when runner flags are tracked.
+
+					// IDA: snoidScript_initAndPlay(0, 0, byte_239 - 1 + 13046, core)
+					uint16 scrsId = snoid->_trait._foot - 1 + 13046;
+					Common::SeekableReadStream *scrsStream =
+						_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+							ZmbResource(ZmbArchiveKind::kPage, scrsId));
+					if (scrsStream) {
+						snoid->startScrsPlayback(scrsStream, false, true);
+						_idleAnimCount++;
+						triggered = true;
+					}
+				} else if (++attempts > 20) {
+					triggered = true;
+				}
+			} while (!triggered);
+		}
+	} else if (_idleAnimCount >= _idleAnimMax && _idleAnimMax > 0) {
+		_idleAnimPoolState = 0;
+		_idleAnimLastFrame = 0;
+		_idleAnimTrigger = false;
+		_idleAnimCount = 0;
 	}
 }
 

@@ -135,6 +135,49 @@ void ZoombiniGraphics::copyBackToShapeScreen() {
 	_shapeScreen->copyRectToSurface(*_backScreen, 0, 0, _screenRect);
 }
 
+void ZoombiniGraphics::copyBackToShapeScreen(const Common::Rect &clipRect) {
+	// Dirty-rect variant: only restore background within the given clip rect.
+	// IDA gfx_renderFrame 0x45F352: the original clips this blit to the dirty
+	// region via port_selectActiveRegion (0x45F311).
+	Common::Rect rect = clipRect;
+	rect.clip(_screenRect);
+	if (rect.isEmpty())
+		return;
+	_shapeScreen->copyRectToSurface(*_backScreen, rect.left, rect.top, rect);
+}
+
+void ZoombiniGraphics::setRenderClipRects(const Common::Array<Common::Rect> &rects) {
+	_renderClipRects = rects;
+	if (rects.empty()) {
+		_hasRenderClipRect = false;
+		return;
+	}
+	_renderClipBounds = rects[0];
+	for (uint32 i = 1; i < rects.size(); i++)
+		_renderClipBounds.extend(rects[i]);
+	_renderClipBounds.clip(_screenRect);
+	_hasRenderClipRect = !_renderClipBounds.isEmpty();
+}
+
+void ZoombiniGraphics::addRenderClipRect(const Common::Rect &rect) {
+	Common::Rect clipped = rect;
+	clipped.clip(_screenRect);
+	if (clipped.isEmpty())
+		return;
+	_renderClipRects.push_back(clipped);
+	if (_hasRenderClipRect) {
+		_renderClipBounds.extend(clipped);
+	} else {
+		_renderClipBounds = clipped;
+		_hasRenderClipRect = true;
+	}
+}
+
+void ZoombiniGraphics::clearRenderClipRect() {
+	_renderClipRects.clear();
+	_hasRenderClipRect = false;
+}
+
 void ZoombiniGraphics::clearScreen(ScreenKind screenKind) {
 	uint32 blackColor = kTransparentKey;
 	Graphics::Surface *screen = _vm->_gfx->getScreen(screenKind);
@@ -348,14 +391,59 @@ Common::Rect ZoombiniGraphics::drawImageSectionToScreen(Graphics::Surface *scree
 	if (screen->h < clipDstRect.top + clipSrcRect.height())
 		clipSrcRect.bottom -= (clipDstRect.top + clipSrcRect.height() - screen->h);
 
+	// IDA runner_preRenderStandard (0x4619A1) at LABEL_70:
+	// The original computes clickRect from hotspot positions + REGS shape sizes
+	// during preRender, INDEPENDENT of the dirty-rect clip.  The drawn pixels
+	// are clipped through port_selectActiveRegion, but clickRect is always the
+	// full bounding box of the current frame's shapes.
+	//
+	// We emulate this by capturing the screen-clipped destination rect as the
+	// "logical rect" BEFORE applying the render clip rect.  blitShapes() uses
+	// the returned rect for sortRect/clickRect, making it independent of the
+	// current dirty region — just like the original's metadata-based clickRect.
+	Common::Rect logicalRect(clipDstRect.left, clipDstRect.top,
+							 clipDstRect.left + clipSrcRect.width(),
+							 clipDstRect.top + clipSrcRect.height());
+
+	// IDA: port_selectActiveRegion (0x48F40C) — confine drawing to dirty region.
+	// The original engine uses GDI clip regions (union of rectangles) set on the
+	// port's HDC.  We replicate this by iterating individual dirty rects and
+	// drawing only the intersection of the sprite with each dirty rect.
+	// Non-dirty pixels persist on the shape-screen from previous frames.
+	if (_hasRenderClipRect) {
+		// Quick bounding-box reject: if the sprite doesn't touch the dirty
+		// region's bounding box at all, skip drawing entirely.
+		if (!clipDstRect.intersects(_renderClipBounds))
+			return logicalRect;
+
+		// Draw the sprite once for each intersecting dirty rect.
+		for (const Common::Rect &dirtyRect : _renderClipRects) {
+			Common::Rect subDst = clipDstRect;
+			subDst.clip(dirtyRect);
+			if (subDst.isEmpty())
+				continue;
+
+			Common::Rect subSrc = clipSrcRect;
+			subSrc.left  += subDst.left   - clipDstRect.left;
+			subSrc.top   += subDst.top    - clipDstRect.top;
+			subSrc.right -= clipDstRect.right  - subDst.right;
+			subSrc.bottom -= clipDstRect.bottom - subDst.bottom;
+
+			if (clearBeforeRender)
+				screen->fillRect(subDst, kTransparentKey);
+			screen->copyRectToSurfaceWithKey(*srcSurface, subDst.left, subDst.top, subSrc, kTransparentKey);
+		}
+		_isScreenDirty = true;
+		return logicalRect;
+	}
+
 	if (clearBeforeRender)
 		screen->fillRect(clipDstRect, kTransparentKey);
 
 	screen->copyRectToSurfaceWithKey(*srcSurface, clipDstRect.left, clipDstRect.top, clipSrcRect, kTransparentKey);
 	_isScreenDirty = true;
 
-	return Common::Rect(clipDstRect.left, clipDstRect.top,
-						clipDstRect.left + clipSrcRect.width(), clipDstRect.top + clipSrcRect.height());
+	return logicalRect;
 }
 
 void ZoombiniGraphics::drawLine(ScreenKind screenKind, const Common::Point &start, const Common::Point &end, uint32 color) {
@@ -409,7 +497,7 @@ void ZoombiniGraphics::fillArea(ScreenKind screenKind, uint32 color) {
 }
 
 void ZoombiniGraphics::fillArea(Graphics::Surface *screen, ZmbDrawRecord *record, uint32 color) {
-	screen->fillRect(record->_drawnRect, color);
+	fillArea(screen, record->_drawnRect, color);
 }
 
 void ZoombiniGraphics::fillArea(Graphics::Surface *screen, ZmbResource imgResource, const ZmbHotspot *hotspot, uint32 color) {
@@ -421,7 +509,17 @@ void ZoombiniGraphics::fillArea(Graphics::Surface *screen, ZmbResource imgResour
 }
 
 void ZoombiniGraphics::fillArea(Graphics::Surface *screen, const Common::Rect &rect, uint32 color) {
-	screen->fillRect(rect, color);
+	if (_hasRenderClipRect) {
+		for (const Common::Rect &dirtyRect : _renderClipRects) {
+			Common::Rect clipped = rect;
+			clipped.clip(dirtyRect);
+			if (!clipped.isEmpty())
+				screen->fillRect(clipped, color);
+		}
+		return;
+	}
+	if (!rect.isEmpty())
+		screen->fillRect(rect, color);
 }
 
 void ZoombiniGraphics::fillArea(Graphics::Surface *screen, uint32 color) {
@@ -579,6 +677,12 @@ Common::Point ZoombiniGraphics::getTextLinesBounds(const Graphics::Font *font, b
 }
 
 void ZoombiniGraphics::drawTextLines(ScreenKind screenKind, const Graphics::Font *font, const Common::Array<Common::U32String> &lines, const Common::Rect &destRect, uint32 palette, Graphics::TextAlign hAlign, uint32 fillBackgroundColor) {
+	// IDA drawTextCore_48D104: text drawing goes through the port's active clip
+	// region, just like shape blitting.  Skip entirely if destRect is outside
+	// the render clip region's bounding box.
+	if (_hasRenderClipRect && !destRect.intersects(_renderClipBounds))
+		return;
+
 	// Use font->getFontHeight() for line advancement, matching GDI DrawTextA with DT_EXTERNALLEADING.
 	const int lineHeight = font->getFontHeight();
 	Common::Rect drawRect = destRect;

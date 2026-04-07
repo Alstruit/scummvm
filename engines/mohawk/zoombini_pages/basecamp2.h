@@ -191,12 +191,9 @@ protected:
 	};
 
 	// -----------------------------------------------------------------------
-	// Virtual feature IDs (arbitrary unique IDs used by loadVirtualFeature)
+	// Feature IDs
 	// -----------------------------------------------------------------------
-	enum VirtualFeatureId : uint16 {
-		kVirtualFeature_Storage = 40000,
-		kVirtualFeature_Buttons = 40001,
-		kVirtualFeature_GoButton = 40002,
+	enum FeatureId : uint16 {
 		kSnoidPackBase = 60000,
 	};
 
@@ -340,7 +337,7 @@ protected:
 	// -----------------------------------------------------------------------
 
 	/** Runner index of the virtual storage feature (word_4AACD8). */
-	uint16 _storageRunnerIdx = 0;
+	ZmbFeature *_storageFeature = nullptr;
 
 	/** Runner index of the transport animation SCRB (word_4AAD04). */
 	uint16 _transportAnimRunnerIdx = 0;

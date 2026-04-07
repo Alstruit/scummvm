@@ -37,6 +37,8 @@ public:
 	void loadFeatures() override;
 
 protected:
+	void onEveryFrame() override;
+
 	// Callback methods for virtual town Zoombini render feature
 	ZmbRenderResult townZoombini_render(ZmbFeature *feature);
 	void townZoombini_postRender(ZmbFeature *feature);
@@ -77,8 +79,6 @@ protected:
 		kResSound20088_Voice = 20088,
 		kResSoundBGM29999 = 29999,
 		kResSoundBGM20000 = 20000,
-
-		kVirtualFeatureTownZoombini = 9000,
 	};
 
 	// -----------------------------------------------------------------------
@@ -194,6 +194,17 @@ protected:
 	uint8 _statueMinuteDial = 0;
 	/** Frame counter of last dial update. IDA: town_statueUpdateState */
 	uint32 _statueUpdateTimer = 0;
+
+	// --- Idle animation state (IDA: town_onHoverPerFrame @ 0x458B40) ---
+
+	/** Idle animation budget: number of celebrations remaining. IDA: word_4B7954 */
+	int16 _idleAnimBudget = 0;
+	/** Frame counter of last idle anim trigger. IDA: dword_4B7958 */
+	uint32 _idleAnimLastFrame = 0;
+	/** Idle anim interval in frames. IDA: dword_4B795C (init 120) */
+	uint32 _idleAnimInterval = 0;
+	/** Non-repeat random pool state for idle anim selection. IDA: dword_4B7960 */
+	uint32 _idleAnimPoolState = 0;
 };
 
 } // End of namespace Mohawk

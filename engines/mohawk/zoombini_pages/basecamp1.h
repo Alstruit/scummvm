@@ -247,10 +247,7 @@ protected:
 		kShape9000_ArrowRightMax_04 = 4,
 	};
 
-	enum VirtualFeatureId : uint16 {
-		kVirtualFeature2000_Storage = 40000,
-		kVirtualFeatureBasecamp1_ScrollButtons = 40001,
-		kVirtualFeatureBasecamp1_03 = 40002,
+	enum FeatureId : uint16 {
 		kSnoidPackBase = 60000,
 	};
 

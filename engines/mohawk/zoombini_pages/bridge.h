@@ -185,10 +185,6 @@ protected:
 		kResSound999_ClickSFX = 999,
 		kResSoundBGM29999 = 29999,
 		kResSoundBGM20000 = 20000,
-
-		// Virtual feature IDs
-		kVirtualFeatureBridgeVisuals = 9000,
-		kVirtualFeatureBridgeButtons = 9001,
 	};
 
 	// Snoid position table for 16 Zoombinis on the left bank.
@@ -211,8 +207,8 @@ protected:
 	// IDA: unk_4A07A8
 	static const Common::Rect kDragConstraint;
 
-	// Drop zone radius for bridge segment hit-test. IDA: wClickZoneRadius_4B6D3E
-	static const int16 kDropZoneRadius = 50;
+	// Drop zone radius for bridge segment hit-test. IDA: wClickZoneRadius_4B6D3E = 55
+	static const int16 kDropZoneRadius = 55;
 
 	// --- Puzzle State ---
 
@@ -237,8 +233,8 @@ protected:
 	/** For level 1: second attribute value. IDA: byte_4AAE97 */
 	uint8 _reqSecondAttrValue = 0;
 
-	/** Which slot the troll chose (1 or 2). IDA: word_4AAE8E */
-	int16 _trollSlot = 0;
+	/** Random lane swap flag (0 or 1). IDA: bridge_bRandomLaneSwap (word_4AAE8E) */
+	int16 _bRandomLaneSwap = 0;
 
 	/** Whether any Zoombini has successfully crossed (enables Go button). IDA: word_4AAE12 */
 	int16 _anyZmbCrossed = 0;
@@ -303,8 +299,8 @@ protected:
 	/** Snoid script event from bridge animation. IDA: word_4AAE7A */
 	int16 _pendingLaneEvent = 0;
 
-	/** New arrival flag. IDA: word_4AAEAC */
-	int16 _newArrivalReady = 0;
+	/** New arrival flag / retry allowed. IDA: word_4AAEAC (bridge_bRetryAllowed) */
+	int16 _bRetryAllowed = 0;
 
 	/** Whether a new troll anim needs rendering. IDA: word_4AAE6E */
 	int16 _trollAnimPending = 0;
@@ -321,11 +317,17 @@ protected:
 	/** Celebration timer (frame counter). IDA: dword_4AAEB8 (bridge_celebrationLastTime) */
 	uint32 _celebrationTimer = 0;
 
-	/** Celebration interval (60 or 120 frames). IDA: dword_4AAEBC (bridge_celebrationInterval) */
-	uint32 _celebrationInterval = 60;
+	/** Celebration interval (120 or 60 frames). IDA: dword_4AAEBC (bridge_celebrationInterval) */
+	uint32 _celebrationInterval = 120;
 
 	/** Celebration pool cursor. IDA: dword_4AAEC0 (bridge_celebrationPoolState) */
 	uint32 _celebrationPoolCursor = 0;
+
+	/** Previous exclude count (level 0 retry avoidance). IDA: bridge_prevExcludeCount (0x41665D) */
+	uint32 _prevExcludeCount = 0;
+
+	/** Previous exclude pattern (level 0 retry avoidance). IDA: bridge_prevExcludePattern (0x416668) */
+	uint32 _prevExcludePattern = 0;
 
 	/** Re-entrance guard. IDA: word_4A07FC */
 	bool _processingFrame = false;

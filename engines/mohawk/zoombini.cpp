@@ -539,8 +539,15 @@ void MohawkEngine_Zoombini::closeActiveDialog() {
 	assert(dialogPage != nullptr);
 	delete dialogPage;
 
-	if (_dialogPageStack.empty())
+	if (_dialogPageStack.empty()) {
 		_mixer->pauseAll(false);
+		// IDA gfx_renderFrame (0x45F070): the original resets dirty state
+		// when dialogs close (dlg_wPendingCloseKind).  Force a full redraw
+		// of the underlying page so that any dialog-painted pixels on the
+		// persistent shapeScreen are overwritten.
+		if (_activePage)
+			_activePage->scheduleForceRedraw();
+	}
 }
 
 ZmbArchiveKind MohawkEngine_Zoombini::setActiveResourceKind(ZmbArchiveKind kind) {
