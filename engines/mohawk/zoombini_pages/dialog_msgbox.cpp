@@ -130,10 +130,10 @@ void ZoombiniDialogMsgBox::loadFeatures() {
 	for (auto it = _longButtonStateMap.begin(); it != _longButtonStateMap.end(); it++)
 		it->second.reset();
 	ZmbFeature::EventHooks hooksLongButtons;
-	hooksLongButtons.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniDialogMsgBox::longButtons_onPreRenderShape));
-	hooksLongButtons.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogMsgBox::longButtons_onPostRender));
-	hooksLongButtons.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogMsgBox::longButtons_onLButtonDown));
-	hooksLongButtons.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogMsgBox::longButtons_onKeyDown));
+	hooksLongButtons.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniDialogMsgBox::longButtons_onPreRenderShape));
+	hooksLongButtons.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogMsgBox::longButtons_onPostRender));
+	hooksLongButtons.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogMsgBox::longButtons_onLButtonDown));
+	hooksLongButtons.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogMsgBox::longButtons_onKeyDown));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0001_Dialog), kResScrb0011_DialogMsgBox, 15,
 					ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
 					hooksLongButtons);
@@ -165,7 +165,7 @@ void ZoombiniDialogMsgBox::longButtons_onPostRender(ZmbFeature *feature) {
 
 	// [Post-Animation Events]
 	genericButton_action(feature, _longButtonStateMap, 
-		reinterpret_cast<ZoombiniPage::OnButtonActionFunc>(&ZoombiniDialogMsgBox::longButtons_onButtonAction));
+		static_cast<ZoombiniPage::OnButtonActionFunc>(&ZoombiniDialogMsgBox::longButtons_onButtonAction));
 
 	{ // [Text Render] Dialog Body
 		ZoombiniGraphics::TextConf bodyConf;

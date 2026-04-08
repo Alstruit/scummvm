@@ -239,9 +239,9 @@ void ZoombiniInteractive::loadGoMapButtonsFeature(uint16 bitmapResId) {
 	// IDA: bc1_initAndSetupPuzzle and other pages register a wResId=0 runner
 	// (overlay03) with preRender/postRender for proceed/map/help button drawing.
 	ZmbFeature::EventHooks hooksGoMapButtons;
-	hooksGoMapButtons.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractive::goMapButtons_preRenderShape));
-	hooksGoMapButtons.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractive::goMapButtons_onPostRender));
-	hooksGoMapButtons.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractive::goMapButtons_onLButtonDown));
+	hooksGoMapButtons.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractive::goMapButtons_preRenderShape));
+	hooksGoMapButtons.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractive::goMapButtons_onPostRender));
+	hooksGoMapButtons.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractive::goMapButtons_onLButtonDown));
 
 	Common::Array<ZmbHotspot> hotspots;
 	// Use the enabled shapes as the initial hotspot shape.
@@ -339,9 +339,9 @@ void ZoombiniInteractive::loadHelpButtonFeature() {
 	// [*] Callback-only runner (tBMP c:0001) - Help Button
 	// IDA: Same overlay03 wResId=0 runner handles Help alongside Go/Map.
 	ZmbFeature::EventHooks hooksHelpMapButton;
-	hooksHelpMapButton.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractive::helpButton_preRenderShape));
-	hooksHelpMapButton.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractive::helpButton_onPostRender));
-	hooksHelpMapButton.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractive::helpButton_onLButtonDown));
+	hooksHelpMapButton.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractive::helpButton_preRenderShape));
+	hooksHelpMapButton.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractive::helpButton_onPostRender));
+	hooksHelpMapButton.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractive::helpButton_onLButtonDown));
 
 	Common::Array<ZmbHotspot> hotspots;
 	hotspots.push_back(ZmbHotspot(kHotspotHelpButtonNormal, kShape0001_24_HelpButtonNormal, 0, _helpButtonRect));
@@ -368,7 +368,7 @@ void ZoombiniInteractive::goMapButtons_preRenderShape(ZmbFeature *feature, ZmbHo
 }
 
 void ZoombiniInteractive::goMapButtons_onPostRender(ZmbFeature *feature) {
-	genericButton_action(feature, _goMapButtonStateMap, reinterpret_cast<OnButtonActionFunc>(&ZoombiniInteractive::goMapButtons_onButtonAction));
+	genericButton_action(feature, _goMapButtonStateMap, static_cast<OnButtonActionFunc>(&ZoombiniInteractive::goMapButtons_onButtonAction));
 }
 
 ZmbEventHandleResult ZoombiniInteractive::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
@@ -824,7 +824,7 @@ void ZoombiniInteractive::goMapButtons_onButtonAction(ZmbFeature *feature, uint3
 }
 
 ZmbEventHandleResult ZoombiniInteractive::goMapButtons_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
-	return genericButton_onLButtonDown(feature, absPos, _goMapButtonStateMap, _threeButtonRectMap, reinterpret_cast<OnButtonActionFunc>(&ZoombiniInteractive::goMapButtons_onButtonAction));
+	return genericButton_onLButtonDown(feature, absPos, _goMapButtonStateMap, _threeButtonRectMap, static_cast<OnButtonActionFunc>(&ZoombiniInteractive::goMapButtons_onButtonAction));
 }
 
 void ZoombiniInteractive::helpButton_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
@@ -832,7 +832,7 @@ void ZoombiniInteractive::helpButton_preRenderShape(ZmbFeature *feature, ZmbHots
 }
 
 void ZoombiniInteractive::helpButton_onPostRender(ZmbFeature *feature) {
-	genericButton_action(feature, _helpButtonStateMap, reinterpret_cast<OnButtonActionFunc>(&ZoombiniInteractive::helpButton_onPostAnimation));
+	genericButton_action(feature, _helpButtonStateMap, static_cast<OnButtonActionFunc>(&ZoombiniInteractive::helpButton_onPostAnimation));
 }
 
 void ZoombiniInteractive::helpButton_onPostAnimation(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs) {
@@ -874,8 +874,8 @@ void ZoombiniInteractive::showNotiBox(const Common::U32String &ustr, bool isNoti
 	// Only register NotiBox feature if not yet registered.
 	if (!_notiBoxFeature) {
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractive::notiBox_preRenderShape));
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractive::notiBox_onPostRender));
+		hooks.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractive::notiBox_preRenderShape));
+		hooks.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractive::notiBox_onPostRender));
 
 		Common::Array<ZmbHotspot> hotspots;
 		hotspots.push_back(ZmbHotspot(kHotspotNotiBoxShort, kShape3001_01_NotiBoxShort, 0, _notiBoxShortRect));

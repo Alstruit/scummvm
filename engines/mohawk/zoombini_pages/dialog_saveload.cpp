@@ -85,9 +85,9 @@ void ZoombiniDialogSaveLoad::loadFeatures() {
 
 	// Load SCRBs
 	ZmbFeature::EventHooks hooksDialogFrame;
-	hooksDialogFrame.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogSaveLoad::dialogFrame_onPostRender));
-	hooksDialogFrame.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogSaveLoad::dialogFrame_onLButtonDown));
-	hooksDialogFrame.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogSaveLoad::dialogFrame_onKeyDown));
+	hooksDialogFrame.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogSaveLoad::dialogFrame_onPostRender));
+	hooksDialogFrame.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogSaveLoad::dialogFrame_onLButtonDown));
+	hooksDialogFrame.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogSaveLoad::dialogFrame_onKeyDown));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0001_Dialog), frameScrb, 0,
 					ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
 					hooksDialogFrame);
@@ -95,12 +95,12 @@ void ZoombiniDialogSaveLoad::loadFeatures() {
 	for (auto it = _scrollButtonStateMap.begin(); it != _scrollButtonStateMap.end(); it++)
 		it->second.reset();
 	ZmbFeature::EventHooks hooksScrollButtons;
-	hooksScrollButtons.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onPreRenderShape));
-	hooksScrollButtons.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onPostRender));
-	hooksScrollButtons.setWheelUpFunc(reinterpret_cast<ZmbFeature::OnWheelUpFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onWheelUp));
-	hooksScrollButtons.setWheelDownFunc(reinterpret_cast<ZmbFeature::OnWheelDownFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onWheelDown));
-	hooksScrollButtons.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onLButtonDown));
-	hooksScrollButtons.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onKeyDown));
+	hooksScrollButtons.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onPreRenderShape));
+	hooksScrollButtons.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onPostRender));
+	hooksScrollButtons.setWheelUpFunc(static_cast<ZmbFeature::OnWheelUpFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onWheelUp));
+	hooksScrollButtons.setWheelDownFunc(static_cast<ZmbFeature::OnWheelDownFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onWheelDown));
+	hooksScrollButtons.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onLButtonDown));
+	hooksScrollButtons.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onKeyDown));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0001_Dialog), scrollButtonsScrb, 11,
 					ZmbFeature::FLAG_04000000_OVERLAY,
 					hooksScrollButtons);
@@ -108,10 +108,10 @@ void ZoombiniDialogSaveLoad::loadFeatures() {
 	for (auto it = _longButtonStateMap.begin(); it != _longButtonStateMap.end(); it++)
 		it->second.reset();
 	ZmbFeature::EventHooks hooksLongButtons;
-	hooksLongButtons.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniDialogSaveLoad::longButtons_onPreRenderShape));
-	hooksLongButtons.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogSaveLoad::longButtons_onPostRender));
-	hooksLongButtons.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogSaveLoad::longButtons_onLButtonDown));
-	hooksLongButtons.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogSaveLoad::longButtons_onKeyDown));
+	hooksLongButtons.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniDialogSaveLoad::longButtons_onPreRenderShape));
+	hooksLongButtons.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogSaveLoad::longButtons_onPostRender));
+	hooksLongButtons.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogSaveLoad::longButtons_onLButtonDown));
+	hooksLongButtons.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogSaveLoad::longButtons_onKeyDown));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0001_Dialog), longButtonsScrb, 13,
 					ZmbFeature::FLAG_04000000_OVERLAY,
 					hooksLongButtons);
@@ -366,7 +366,7 @@ void ZoombiniDialogSaveLoad::scrollButtons_onPreRenderShape(ZmbFeature *feature,
 void ZoombiniDialogSaveLoad::scrollButtons_onPostRender(ZmbFeature *feature) {
 	// [Post-Animation Events]
 	genericButton_action(feature, _scrollButtonStateMap,
-								reinterpret_cast<ZoombiniPage::OnButtonActionFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onButtonAction));
+								static_cast<ZoombiniPage::OnButtonActionFunc>(&ZoombiniDialogSaveLoad::scrollButtons_onButtonAction));
 }
 
 void ZoombiniDialogSaveLoad::scrollButtons_onButtonAction(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs) {
@@ -443,7 +443,7 @@ void ZoombiniDialogSaveLoad::longButtons_onPreRenderShape(ZmbFeature *feature, Z
 void ZoombiniDialogSaveLoad::longButtons_onPostRender(ZmbFeature *feature) {
 	// [Post-Animation Events]
 	genericButton_action(feature, _longButtonStateMap,
-								reinterpret_cast<ZoombiniPage::OnButtonActionFunc>(&ZoombiniDialogSaveLoad::longButtons_onButtonAction));
+								static_cast<ZoombiniPage::OnButtonActionFunc>(&ZoombiniDialogSaveLoad::longButtons_onButtonAction));
 
 	// [Text Render] Long Button Descriptions
 	genericButton_textRender(feature, _longButtonStateMap, Graphics::kTextAlignCenter);

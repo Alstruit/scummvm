@@ -78,9 +78,9 @@ void ZoombiniDialogOptions::loadFeatures() {
 	for (auto it = _toggleButtonStateMap.begin(); it != _toggleButtonStateMap.end(); it++)
 		it->second.reset();
 	ZmbFeature::EventHooks hooks0002;
-	hooks0002.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniDialogOptions::redToggleButtons_onPreRenderShape));
-	hooks0002.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogOptions::redToggleButtons_onPostRender));
-	hooks0002.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogOptions::redToggleButtons_onLButtonDown));
+	hooks0002.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniDialogOptions::redToggleButtons_onPreRenderShape));
+	hooks0002.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogOptions::redToggleButtons_onPostRender));
+	hooks0002.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogOptions::redToggleButtons_onLButtonDown));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0001_Dialog), kResScrb0002_DialogOptionsSmallButtons, 1,
 		ZmbFeature::FLAG_04000000_OVERLAY,
 		hooks0002);
@@ -88,10 +88,10 @@ void ZoombiniDialogOptions::loadFeatures() {
 	for (auto it = _longButtonStateMap.begin(); it != _longButtonStateMap.end(); it++)
 		it->second.reset();
 	ZmbFeature::EventHooks hooks0003;
-	hooks0003.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniDialogOptions::longButtons_onPreRenderShape));
-	hooks0003.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogOptions::longButtons_onPostRender));
-	hooks0003.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogOptions::longButtons_onLButtonDown));
-	hooks0003.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogOptions::longButtons_onKeyDown));
+	hooks0003.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniDialogOptions::longButtons_onPreRenderShape));
+	hooks0003.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogOptions::longButtons_onPostRender));
+	hooks0003.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogOptions::longButtons_onLButtonDown));
+	hooks0003.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogOptions::longButtons_onKeyDown));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0001_Dialog), kResScrb0003_DialogOptionsBigButtons, 9,
 		ZmbFeature::FLAG_04000000_OVERLAY,
 		hooks0003);
@@ -156,17 +156,17 @@ void ZoombiniDialogOptions::redToggleButtons_onPostRender(ZmbFeature *feature) {
 	ZoombiniGraphics::TextConf tc;
 	tc._textPalette = ZoombiniGraphics::kColor2D_Black;
 	genericButton_textRender(feature, _redButtonStateMap, 
-		reinterpret_cast<ButtonGetRectFunc>(&ZoombiniDialogOptions::redButtons_textRect), 
+		static_cast<ButtonGetRectFunc>(&ZoombiniDialogOptions::redButtons_textRect), 
 		tc);
 	genericToggleButton_textRender(feature, _toggleButtonStateMap, 
-		reinterpret_cast<ToggleButtonGetRectFunc>(&ZoombiniDialogOptions::toggleButtons_textRect), 
+		static_cast<ToggleButtonGetRectFunc>(&ZoombiniDialogOptions::toggleButtons_textRect), 
 		tc);
 
 	// [Post-Animation Events]
 	genericButton_action(feature, _redButtonStateMap, 
-		reinterpret_cast<OnButtonActionFunc>(&ZoombiniDialogOptions::redButtons_onButtonAction));
+		static_cast<OnButtonActionFunc>(&ZoombiniDialogOptions::redButtons_onButtonAction));
 	genericToggleButton_postAnimation(feature, _toggleButtonStateMap,
-		reinterpret_cast<OnToggleButtonPostAnimationFunc>(&ZoombiniDialogOptions::toggleButtons_onButtonAction));
+		static_cast<OnToggleButtonPostAnimationFunc>(&ZoombiniDialogOptions::toggleButtons_onButtonAction));
 }
 
 Common::Rect ZoombiniDialogOptions::redButtons_textRect(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs, const Common::Rect &drawnRect) {
@@ -265,7 +265,7 @@ void ZoombiniDialogOptions::longButtons_onPostRender(ZmbFeature *feature) {
 	
 	// [Post-Animation Events]
 	genericButton_action(feature, _longButtonStateMap, 
-		reinterpret_cast<OnButtonActionFunc>(&ZoombiniDialogOptions::longButtons_onButtonAction));
+		static_cast<OnButtonActionFunc>(&ZoombiniDialogOptions::longButtons_onButtonAction));
 }
 
 void ZoombiniDialogOptions::longButtons_onButtonAction(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs) {

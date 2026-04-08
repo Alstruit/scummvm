@@ -58,10 +58,10 @@ void ZoombiniDialogHelp::loadFeatures() {
 	for (auto it = _helpDialogButtonStateMap.begin(); it != _helpDialogButtonStateMap.end(); it++)
 		it->second.reset();
 	ZmbFeature::EventHooks hooks0017;
-	hooks0017.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniDialogHelp::helpDialog_onPreRenderShape));
-	hooks0017.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogHelp::helpDialog_onPostRender));
-	hooks0017.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogHelp::helpDialog_onMouseLButtonDown));
-	hooks0017.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogHelp::helpDialog_onKeyDown));
+	hooks0017.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniDialogHelp::helpDialog_onPreRenderShape));
+	hooks0017.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniDialogHelp::helpDialog_onPostRender));
+	hooks0017.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogHelp::helpDialog_onMouseLButtonDown));
+	hooks0017.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogHelp::helpDialog_onKeyDown));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0001_Dialog), kResScrb0017_DialogHelp, 0,
 		ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
 		hooks0017);
@@ -78,7 +78,7 @@ void ZoombiniDialogHelp::helpDialog_onPostRender(ZmbFeature *feature) {
 
 	// [Post-Animation Events]
 	genericButton_action(feature, _helpDialogButtonStateMap, 
-		reinterpret_cast<ZoombiniPage::OnButtonActionFunc>(&ZoombiniDialogHelp::helpDialog_onPostAnimation));
+		static_cast<ZoombiniPage::OnButtonActionFunc>(&ZoombiniDialogHelp::helpDialog_onPostAnimation));
 
 	{ // [Text Render] Dialog Title
 		ZoombiniGraphics::TextConf titleConf;
@@ -96,7 +96,7 @@ void ZoombiniDialogHelp::helpDialog_onPostRender(ZmbFeature *feature) {
 	tc._hAlign = Graphics::kTextAlignCenter;
 	tc._vAlign = Graphics::kTextAlignCenter;
 	genericButton_textRender(feature, _helpDialogButtonStateMap,
-		reinterpret_cast<ZoombiniPage::ButtonGetRectFunc>(&ZoombiniDialogHelp::helpDialog_getButtonTextRect), tc);
+		static_cast<ZoombiniPage::ButtonGetRectFunc>(&ZoombiniDialogHelp::helpDialog_getButtonTextRect), tc);
 
 	// [Text Render] String Header
 	Common::U32String helpHead = _vm->_text->getPageName(_forPageType);
@@ -172,7 +172,7 @@ const Common::Rect &ZoombiniDialogHelp::helpDialog_getBodyRect() const {
 
 ZmbEventHandleResult ZoombiniDialogHelp::helpDialog_onMouseLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
 	return genericButton_onLButtonDown(feature, absPos, _helpDialogButtonStateMap,
-		reinterpret_cast<ZoombiniPage::ButtonGetRectFunc>(&ZoombiniDialogHelp::helpDialog_getButtonTextRect));
+		static_cast<ZoombiniPage::ButtonGetRectFunc>(&ZoombiniDialogHelp::helpDialog_getButtonTextRect));
 }
 
 Common::Rect ZoombiniDialogHelp::helpDialog_getButtonClickRect(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs, const Common::Rect &buttonRect) {

@@ -107,7 +107,7 @@ protected:
 	 */
 	int16 storeArrivingZoombinis();
 
-	uint32 easterEggMushroom_selectRenderFrame(ZmbFeature *feature);
+	int32 easterEggMushroom_selectRenderFrame(ZmbFeature *feature);
 	ZmbEventHandleResult easterEggMushroom_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 
 	void onGoButtonActivated() override;

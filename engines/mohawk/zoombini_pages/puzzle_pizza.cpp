@@ -200,7 +200,7 @@ void ZoombiniPuzzlePizza::loadFeatures() {
 	// IDA: answer display DRAW_ON_REG — SCRB 7063, interval=7
 	{
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzlePizza::answerDisplay_preRenderShape));
+		hooks.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzlePizza::answerDisplay_preRenderShape));
 		_drawOnRegFeature = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 7000), 7063, 7,
 			kAnswerDisplayPosition,
@@ -2608,7 +2608,7 @@ void ZoombiniPuzzlePizza::registerToppingRunner() {
 	uint16 featureId = _nextDynamicFeatureId++;
 	ZmbFeature::EventHooks hooks;
 	hooks.setPreRenderShapeFunc(
-		reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(
+		static_cast<ZmbFeature::OnPreRenderShapeFunc>(
 			&ZoombiniPuzzlePizza::toppingRunner_preRenderShape));
 
 	ZmbFeature *newFeature = loadScrbFeature(

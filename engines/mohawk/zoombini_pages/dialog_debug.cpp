@@ -48,7 +48,7 @@ void ZoombiniDialogDebug::loadFeatures() {
 	switch (_cmd._type) {
 	case ZoombiniDebugCommand::kDrawCursor: { // [*] Virtual Feature - drawCursor
 		ZmbFeature::EventHooks hooksDrawCursor;
-		hooksDrawCursor.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::drawCursor_render));
+		hooksDrawCursor.setRenderFunc(static_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::drawCursor_render));
 
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 					   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
@@ -57,8 +57,8 @@ void ZoombiniDialogDebug::loadFeatures() {
 	}
 	case ZoombiniDebugCommand::kDrawImage: { // [*] Callback-only runner - drawImage
 		ZmbFeature::EventHooks hooksDrawImage;
-		hooksDrawImage.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::drawImage_render));
-		hooksDrawImage.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::common_onKeyDown));
+		hooksDrawImage.setRenderFunc(static_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::drawImage_render));
+		hooksDrawImage.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::common_onKeyDown));
 
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 					   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
@@ -67,8 +67,8 @@ void ZoombiniDialogDebug::loadFeatures() {
 	}
 	case ZoombiniDebugCommand::kDrawShape: { // [*] Callback-only runner - drawShape
 		ZmbFeature::EventHooks hooksDrawShape;
-		hooksDrawShape.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::drawShape_render));
-		hooksDrawShape.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::common_onKeyDown));
+		hooksDrawShape.setRenderFunc(static_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::drawShape_render));
+		hooksDrawShape.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::common_onKeyDown));
 
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 					   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
@@ -77,8 +77,8 @@ void ZoombiniDialogDebug::loadFeatures() {
 	}
 	case ZoombiniDebugCommand::kDrawShapes: { // [*] Callback-only runner - drawShapes
 		ZmbFeature::EventHooks hooksDrawShapes;
-		hooksDrawShapes.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::drawShapes_render));
-		hooksDrawShapes.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::drawShapes_onKeyDown));
+		hooksDrawShapes.setRenderFunc(static_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::drawShapes_render));
+		hooksDrawShapes.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::drawShapes_onKeyDown));
 
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 					   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
@@ -90,8 +90,8 @@ void ZoombiniDialogDebug::loadFeatures() {
 	}
 	case ZoombiniDebugCommand::kDrawFeature: { // [*] Virtual Feature - drawFeature
 		ZmbFeature::EventHooks hooksDrawFeature;
-		hooksDrawFeature.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::drawFeature_render));
-		hooksDrawFeature.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::drawFeature_onKeyDown));
+		hooksDrawFeature.setRenderFunc(static_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::drawFeature_render));
+		hooksDrawFeature.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::drawFeature_onKeyDown));
 		loadScrbFeature(_cmd._resource, _cmd._subId, 0, 
 					   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
 						   hooksDrawFeature);
@@ -99,8 +99,8 @@ void ZoombiniDialogDebug::loadFeatures() {
 	}
 	case ZoombiniDebugCommand::kPlotPoint: { // [*] Virtual Feature - plotPoint
 		ZmbFeature::EventHooks hooksPlotPoint;
-		hooksPlotPoint.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::plotPoint_render));
-		hooksPlotPoint.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::common_onKeyDown));
+		hooksPlotPoint.setRenderFunc(static_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::plotPoint_render));
+		hooksPlotPoint.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::common_onKeyDown));
 
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 					   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
@@ -109,8 +109,8 @@ void ZoombiniDialogDebug::loadFeatures() {
 	}
 	case ZoombiniDebugCommand::kPlotLine: { // [*] Callback-only runner - plotLine
 		ZmbFeature::EventHooks hooksPlotLine;
-		hooksPlotLine.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::plotLine_render));
-		hooksPlotLine.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::common_onKeyDown));
+		hooksPlotLine.setRenderFunc(static_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::plotLine_render));
+		hooksPlotLine.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::common_onKeyDown));
 
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 					   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
@@ -119,8 +119,8 @@ void ZoombiniDialogDebug::loadFeatures() {
 	}
 	case ZoombiniDebugCommand::kPlotRect: { // [*] Callback-only runner - plotRect
 		ZmbFeature::EventHooks hooksPlotRect;
-		hooksPlotRect.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::plotRect_render));
-		hooksPlotRect.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::common_onKeyDown));
+		hooksPlotRect.setRenderFunc(static_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogDebug::plotRect_render));
+		hooksPlotRect.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogDebug::common_onKeyDown));
 
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 					   ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,

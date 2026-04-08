@@ -142,7 +142,7 @@ void ZoombiniShelterTown::loadFeatures() {
 
 	{ // [*] SCRB 1002: Overlay with REGS + pre-render shape callback
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::overlay_preRenderShape));
+		hooks.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::overlay_preRenderShape));
 		_overlayFeatures[1] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), kResScrb1002_Overlay, 0,
 						ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 						ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY |
@@ -152,7 +152,7 @@ void ZoombiniShelterTown::loadFeatures() {
 
 	{ // [*] SCRB 1003: Overlay with REGS + pre-render shape callback
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::overlay_preRenderShape));
+		hooks.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::overlay_preRenderShape));
 		_overlayFeatures[2] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), kResScrb1003_Overlay, 0,
 						ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 						ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY |
@@ -162,7 +162,7 @@ void ZoombiniShelterTown::loadFeatures() {
 
 	{ // [*] SCRB 1001: Memorial markers with saved-route gating
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::memorialMarkers_preRenderShape));
+		hooks.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::memorialMarkers_preRenderShape));
 		_overlayFeatures[3] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), kResScrb1001_Overlay, 0,
 						ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 						ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY |
@@ -331,7 +331,7 @@ void ZoombiniShelterTown::loadFeatures() {
 	// TYPE_TOWN_ENTITY|LOOP_ANIM, with onPreRenderShapeFunc = town_preRenderMemorialStatue
 	{
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::memorialStatue_preRenderShape));
+		hooks.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::memorialStatue_preRenderShape));
 		_memorialStatueFeature = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 6000), kResScrb6000_Zodiac, 6,
 			ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY | ZmbFeature::FLAG_00008000_LOOP_ANIM,

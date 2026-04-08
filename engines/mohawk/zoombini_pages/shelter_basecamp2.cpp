@@ -88,8 +88,8 @@ void ZoombiniShelterBasecampTwo::loadFeatures() {
 
 	{ // [*] Virtual Feature: Storage area (no SCRB; preRender=scroll SM, postRender=draw grid)
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniShelterBasecampTwo::storage_preRender));
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterBasecampTwo::storage_postRender));
+		hooks.setPreRenderFunc(static_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniShelterBasecampTwo::storage_preRender));
+		hooks.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterBasecampTwo::storage_postRender));
 		ZmbFeature *vf = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 6,
 											ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM,
 											hooks);
@@ -99,7 +99,7 @@ void ZoombiniShelterBasecampTwo::loadFeatures() {
 
 	{ // [*] Virtual Feature: Scroll-button panel (postRender draws scroll arrows via SHPL 9000)
 		ZmbFeature::EventHooks hooks;
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterBasecampTwo::buttons_postRender));
+		hooks.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterBasecampTwo::buttons_postRender));
 		_scrollButtonFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 											   ZmbFeature::FLAG_00001000_TOPMOST | ZmbFeature::FLAG_00008000_LOOP_ANIM,
 											   hooks);
@@ -107,9 +107,9 @@ void ZoombiniShelterBasecampTwo::loadFeatures() {
 
 	{ // [*] Virtual Feature: Go/Map/Save buttons
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniShelterBasecampTwo::goButton_preRender));
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterBasecampTwo::goButton_postRender));
-		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniShelterBasecampTwo::goButton_onLButtonDown));
+		hooks.setPreRenderFunc(static_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniShelterBasecampTwo::goButton_preRender));
+		hooks.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterBasecampTwo::goButton_postRender));
+		hooks.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniShelterBasecampTwo::goButton_onLButtonDown));
 		ZmbFeature *vf = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 											ZmbFeature::FLAG_00001000_TOPMOST,
 											hooks);

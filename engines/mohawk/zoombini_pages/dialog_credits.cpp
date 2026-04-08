@@ -130,10 +130,10 @@ void ZoombiniDialogCredits::loadFeatures() {
 	// Keep ScummVM's elapsed-frame scroll math instead of the original fixed-tick gate,
 	// but render it from the original single credits runner so the frame shapes stay on top.
 	ZmbFeature::EventHooks hooksBackground;
-	hooksBackground.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogCredits::creditScreen_render));
-	hooksBackground.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogCredits::creditScreen_onMouseLButtonDown));
-	hooksBackground.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogCredits::creditScreen_onKeyDown));
-	hooksBackground.setKeyUpFunc(reinterpret_cast<ZmbFeature::OnKeyUpFunc>(&ZoombiniDialogCredits::creditScreen_onKeyUp));
+	hooksBackground.setRenderFunc(static_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogCredits::creditScreen_render));
+	hooksBackground.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogCredits::creditScreen_onMouseLButtonDown));
+	hooksBackground.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogCredits::creditScreen_onKeyDown));
+	hooksBackground.setKeyUpFunc(static_cast<ZmbFeature::OnKeyUpFunc>(&ZoombiniDialogCredits::creditScreen_onKeyUp));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0020_Credits), kResScrb0020_DialogCredits, 0,
 					ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
 					hooksBackground);

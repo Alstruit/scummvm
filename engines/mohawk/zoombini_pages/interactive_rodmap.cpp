@@ -69,32 +69,32 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 
 	// [*] SCRB 1000: Page Icon
 	ZmbFeature::EventHooks hooks1000;
-	hooks1000.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::patchPageShape1000_preRenderShape));
-	hooks1000.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveRodMap::runPage1000_onLButtonDown));
+	hooks1000.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::patchPageShape1000_preRenderShape));
+	hooks1000.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveRodMap::runPage1000_onLButtonDown));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1000), kResScrbPageIcon1000, 6,
 					ZmbFeature::FLAG_08000000_REGION_TRACK | ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_00008000_LOOP_ANIM,
 					hooks1000);
 	// [*] SCRB 1001: Route Shapes
 	// + Draw Route Name Text
 	ZmbFeature::EventHooks hooks1001;
-	hooks1001.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::patchRouteShape1001_preRenderShape));
+	hooks1001.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::patchRouteShape1001_preRenderShape));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1000), kResScrbRoute1001, 6,
 					ZmbFeature::FLAG_08000000_REGION_TRACK | ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_00008000_LOOP_ANIM,
 					hooks1001);
 
 	// [*] SCRB 1005: Only appears after hovering one of the puzzle
 	ZmbFeature::EventHooks hooks1005;
-	hooks1005.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveRodMap::drawAfterPageIconHover1005_preRender));
-	hooks1005.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractiveRodMap::renderAfterPageIconHover1005));
-	hooks1005.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::textPageName1005_postRender));
+	hooks1005.setPreRenderFunc(static_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveRodMap::drawAfterPageIconHover1005_preRender));
+	hooks1005.setRenderFunc(static_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractiveRodMap::renderAfterPageIconHover1005));
+	hooks1005.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::textPageName1005_postRender));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1000), kResScrbPageNameHover1005, 6,
 					ZmbFeature::FLAG_00100000_PLAY_ONCE,
 					hooks1005);
 	// [*] SCRB 1006: Option Button
 	ZmbFeature::EventHooks hooks1006;
-	hooks1006.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::optionButton1006_preRenderShape));
-	hooks1006.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::optionButton1006_postRender));
-	hooks1006.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveRodMap::optionButton1006_onLButtonDown));
+	hooks1006.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::optionButton1006_preRenderShape));
+	hooks1006.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::optionButton1006_postRender));
+	hooks1006.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveRodMap::optionButton1006_onLButtonDown));
 	_optionButtonFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1000), kResScrbMenuButton1006, 3,
 					ZmbFeature::FLAG_00001000_TOPMOST,
 					hooks1006);
@@ -102,10 +102,10 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 	// [*] SCRB 1004: Level Legend
 	// Only clickable in practice mode
 	ZmbFeature::EventHooks hooks1004;
-	hooks1004.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::patchSelectedLevelShape1004_preRenderShape));
-	hooks1004.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::textLegend1004_postRender));
-	hooks1004.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveRodMap::legendLevel1004_onLButtonDown));
-	hooks1004.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniInteractiveRodMap::legendLevel1004_onKeyDown));
+	hooks1004.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::patchSelectedLevelShape1004_preRenderShape));
+	hooks1004.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::textLegend1004_postRender));
+	hooks1004.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveRodMap::legendLevel1004_onLButtonDown));
+	hooks1004.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniInteractiveRodMap::legendLevel1004_onKeyDown));
 	int modeFrameVal = _vm->_state->inPracticeMode() ? 6 : 0;
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1000), kResScrbLevelLegend1004, modeFrameVal,
 					ZmbFeature::FLAG_00100000_PLAY_ONCE,
@@ -113,7 +113,7 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 
 	// [*] SCRB 1002: Status (shape & text) / Mode Select Combobox (text only)
 	ZmbFeature::EventHooks hooks1002;
-	hooks1002.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::textJourneyStat1002_postRender));
+	hooks1002.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::textJourneyStat1002_postRender));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1000), kResScrbStatusRect1002, 0,
 					ZmbFeature::FLAG_00100000_PLAY_ONCE,
 					hooks1002);
@@ -126,8 +126,8 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 	// AGENTS/Z1-MEMORY/InteractivePages/rodmap-navigation.md §"SCRB 1003 Z-Ordering Note",
 	// FLAG_00001000_TOPMOST forces 1003 to the tail of the sorted render list.
 	ZmbFeature::EventHooks hooks1003;
-	hooks1003.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::drawComboBox1003_preRenderShape));
-	hooks1003.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveRodMap::selectMode1003_onLButtonDown));
+	hooks1003.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::drawComboBox1003_preRenderShape));
+	hooks1003.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveRodMap::selectMode1003_onLButtonDown));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1000), kResScrbModeCombobox1003, 0,
 					ZmbFeature::FLAG_00001000_TOPMOST | ZmbFeature::FLAG_00100000_PLAY_ONCE,
 					hooks1003);
@@ -138,7 +138,7 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 	// In the original engine route names are drawn once to the background port.
 	// We approximate this with a scrbId=0 runner whose postRender draws labels.
 	ZmbFeature::EventHooks hooksRouteNames;
-	hooksRouteNames.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::textRouteNames_postRender));
+	hooksRouteNames.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::textRouteNames_postRender));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0, ZmbFeature::FLAG_00100000_PLAY_ONCE, hooksRouteNames);
 
 	// IDA rodmap_setupScreen @ 0x42A99A/0x42A9A9: snd_playOrLoadResSND('SND', 998)

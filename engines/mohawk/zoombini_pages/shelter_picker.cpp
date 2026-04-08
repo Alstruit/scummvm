@@ -282,9 +282,9 @@ void ZoombiniShelterPicker::loadFeatures() {
 		// IDA: picker_init registers a single wResId=0 runner with custom
 		// picker_onPreRenderUI / picker_onPostRenderUI callbacks.
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterPicker::pickerMatrix_onPreRenderShape));
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterPicker::pickerMatrix_onPostRender));
-		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniShelterPicker::pickerMatrix_onLButtonDown));
+		hooks.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterPicker::pickerMatrix_onPreRenderShape));
+		hooks.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterPicker::pickerMatrix_onPostRender));
+		hooks.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniShelterPicker::pickerMatrix_onLButtonDown));
 
 		Common::Array<ZmbHotspot> hotspots;
 		// Normal hotspots (indices 0..19)
@@ -306,11 +306,11 @@ void ZoombiniShelterPicker::loadFeatures() {
 
 	{ // [*] Callback-only runner (tBMP 4200) - Picker Buttons
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterPicker::pickerButtons_onPreRenderShape));
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterPicker::pickerButtons_onPostRender));
-		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniShelterPicker::pickerButtons_onLButtonDown));
-		hooks.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniShelterPicker::pickerButtons_onKeyDown));
-		hooks.setKeyUpFunc(reinterpret_cast<ZmbFeature::OnKeyUpFunc>(&ZoombiniShelterPicker::pickerButtons_onKeyUp));
+		hooks.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterPicker::pickerButtons_onPreRenderShape));
+		hooks.setPostRenderFunc(static_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterPicker::pickerButtons_onPostRender));
+		hooks.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniShelterPicker::pickerButtons_onLButtonDown));
+		hooks.setKeyDownFunc(static_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniShelterPicker::pickerButtons_onKeyDown));
+		hooks.setKeyUpFunc(static_cast<ZmbFeature::OnKeyUpFunc>(&ZoombiniShelterPicker::pickerButtons_onKeyUp));
 
 		Common::Array<ZmbHotspot> hotspots;
 		hotspots.push_back(ZmbHotspot(kHotspotGenerateButtonNormal, kShape4200_02_GenerateButtonNormal, 0, _generateButtonRect));
@@ -327,8 +327,8 @@ void ZoombiniShelterPicker::loadFeatures() {
 
 	{ // [*] Callback-only runner (tBMP 4300) - Zoombini Preview
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterPicker::zoombiniPreview_onPreRenderShape));
-		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniShelterPicker::zoombiniPreview_onLButtonDown));
+		hooks.setPreRenderShapeFunc(static_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterPicker::zoombiniPreview_onPreRenderShape));
+		hooks.setLButtonDownFunc(static_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniShelterPicker::zoombiniPreview_onLButtonDown));
 
 		// TODO: Use proper ZmbFeature for Zoombinis later
 		const int16 previewTraitOffsetX = _previewZoombiniRect.left + 39;
@@ -353,7 +353,7 @@ void ZoombiniShelterPicker::loadFeatures() {
 	// [*] Callback-only runner - open loadDialog if required
 	if (_mode == kPickerMode_LoadGame) {
 		ZmbFeature::EventHooks hooks;
-		hooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniShelterPicker::oneTimeLoadDialog_onRenderShape));
+		hooks.setRenderFunc(static_cast<ZmbFeature::OnRenderFunc>(&ZoombiniShelterPicker::oneTimeLoadDialog_onRenderShape));
 
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 						ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
@@ -432,7 +432,7 @@ ZmbEventHandleResult ZoombiniShelterPicker::pickerMatrix_onLButtonDown(ZmbFeatur
 		}
 	}
 
-	return genericStickyButton_onLButtonDown(feature, absPos, _matrixButtonStateMap, _matrixButtonRectMap, reinterpret_cast<OnStickyButtonActionFunc>(&ZoombiniShelterPicker::pickerMatrix_onButtonAction));
+	return genericStickyButton_onLButtonDown(feature, absPos, _matrixButtonStateMap, _matrixButtonRectMap, static_cast<OnStickyButtonActionFunc>(&ZoombiniShelterPicker::pickerMatrix_onButtonAction));
 }
 
 void ZoombiniShelterPicker::pickerButtons_onPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
@@ -463,7 +463,7 @@ void ZoombiniShelterPicker::pickerButtons_onPostRender(ZmbFeature *feature) {
 		_vm->_gfx->drawText(screenKind, _previewSnoid._name, nameTextRect, tc);
 	}
 
-	genericButton_action(feature, _pickerButtonStateMap, reinterpret_cast<OnButtonActionFunc>(&ZoombiniShelterPicker::pickerButtons_onButtonAction));
+	genericButton_action(feature, _pickerButtonStateMap, static_cast<OnButtonActionFunc>(&ZoombiniShelterPicker::pickerButtons_onButtonAction));
 }
 
 void ZoombiniShelterPicker::updatePendingGoTransition() {
