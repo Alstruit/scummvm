@@ -28,17 +28,18 @@ namespace Mohawk {
 
 /**
  * Bridge puzzle page (ZoombiniPageType::kBridge).
+ * Route 1, Puzzle 1
  *
  * The bridge has two lanes. A troll stands at one end and demands Zoombinis
  * with certain attribute(s) to cross. The player must drag each Zoombini
- * to the correct lane (lane 1 = match, lane 2 = no match).
+ * to the correct lane.
  *
  * IDA entry: puzzleBridge_414D6E
  */
-class ZoombiniInteractiveBridge : public ZoombiniPuzzle {
+class ZoombiniPuzzleBridge : public ZoombiniPuzzle {
 public:
-	ZoombiniInteractiveBridge(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractiveBridge() override;
+	ZoombiniPuzzleBridge(MohawkEngine_Zoombini *vm);
+	~ZoombiniPuzzleBridge() override;
 
 	void open() override;
 	void setBackgroundMusic() override;

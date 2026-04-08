@@ -30,7 +30,7 @@
 namespace Mohawk {
 
 // IDA: pedestal positions from 0x4A4368 (20 POINTS)
-const Common::Point ZoombiniInteractiveSmoke::kSnoidPositions[20] = {
+const Common::Point ZoombiniPuzzleSmoke::kSnoidPositions[20] = {
 	Common::Point(214, 128), Common::Point(175, 126), Common::Point(135, 127), Common::Point( 94, 126),
 	Common::Point( 53, 128), Common::Point(237, 176), Common::Point(196, 177), Common::Point(150, 178),
 	Common::Point(110, 176), Common::Point( 69, 178), Common::Point(234,  36), Common::Point(195,  37),
@@ -39,47 +39,47 @@ const Common::Point ZoombiniInteractiveSmoke::kSnoidPositions[20] = {
 };
 
 // IDA: DRAW_ON_REG position at stru_4A400C+0x00
-const Common::Point ZoombiniInteractiveSmoke::kDrawOnRegPosition = Common::Point(43, 258);
+const Common::Point ZoombiniPuzzleSmoke::kDrawOnRegPosition = Common::Point(43, 258);
 
 // IDA: stru_4A400C+0x18 (8 cliff runner positions)
-const Common::Point ZoombiniInteractiveSmoke::kCliffRunnerPositions[8] = {
+const Common::Point ZoombiniPuzzleSmoke::kCliffRunnerPositions[8] = {
 	Common::Point(459, 26), Common::Point(535, 25), Common::Point(429, 80), Common::Point(500, 84),
 	Common::Point(619, 76), Common::Point(423, 168), Common::Point(525, 167), Common::Point(605, 163),
 };
 
 // IDA: stru_4A400C+0x40 (8 grid runner positions — rows 0-7, row 8 is kCliffDropSnapPosition)
-const Common::Point ZoombiniInteractiveSmoke::kGridRunnerPositions[8] = {
+const Common::Point ZoombiniPuzzleSmoke::kGridRunnerPositions[8] = {
 	Common::Point(441, 66), Common::Point(531, 70), Common::Point(605, 67), Common::Point(421, 160),
 	Common::Point(483, 153), Common::Point(612, 153), Common::Point(548, 255), Common::Point(616, 253),
 };
 
 // IDA: stru_4A400C+0x70 (2 exit runner positions)
-const Common::Point ZoombiniInteractiveSmoke::kExitRunnerPositions[2] = {
+const Common::Point ZoombiniPuzzleSmoke::kExitRunnerPositions[2] = {
 	Common::Point(124, 255), Common::Point(548, 255),
 };
 
 // IDA: dword_4A4184 (2 bottom runner default positions)
-const Common::Point ZoombiniInteractiveSmoke::kBottomRunnerPositions[2] = {
+const Common::Point ZoombiniPuzzleSmoke::kBottomRunnerPositions[2] = {
 	Common::Point(317, 254), Common::Point(354, 254),
 };
 
 // IDA: dword_4A4008 — off-screen hide position
-const Common::Point ZoombiniInteractiveSmoke::kHidePosition = Common::Point(-8, 258);
+const Common::Point ZoombiniPuzzleSmoke::kHidePosition = Common::Point(-8, 258);
 
 // IDA: dword_4A4004 — rejection position
-const Common::Point ZoombiniInteractiveSmoke::kRejectPosition = Common::Point(530, 384);
+const Common::Point ZoombiniPuzzleSmoke::kRejectPosition = Common::Point(530, 384);
 
 // IDA: stru_4A400C+0x74 — cliff drop snap position
-const Common::Point ZoombiniInteractiveSmoke::kCliffDropSnapPosition = Common::Point(548, 255);
+const Common::Point ZoombiniPuzzleSmoke::kCliffDropSnapPosition = Common::Point(548, 255);
 
 // IDA: stru_4A400C+0x80 — L1-2 cliff drop rectangle
-const Common::Rect ZoombiniInteractiveSmoke::kCliffDropRect = Common::Rect(525, 211, 582, 300);
+const Common::Rect ZoombiniPuzzleSmoke::kCliffDropRect = Common::Rect(525, 211, 582, 300);
 
 // IDA: word_4A435C — cliff column X snap positions (5 columns)
-const int16 ZoombiniInteractiveSmoke::kColumnSnapX[5] = { 38, 81, 126, 176, 221 };
+const int16 ZoombiniPuzzleSmoke::kColumnSnapX[5] = { 38, 81, 126, 176, 221 };
 
 // IDA: unk_4A40DC — L3-4 drag zone rects group A (3 slots × 3 rects)
-const Common::Rect ZoombiniInteractiveSmoke::kDragRectsA[9] = {
+const Common::Rect ZoombiniPuzzleSmoke::kDragRectsA[9] = {
 	// slot 0
 	Common::Rect(185, 230, 245, 293), Common::Rect(0, 0, 0, 0), Common::Rect(0, 0, 0, 0),
 	// slot 1
@@ -89,7 +89,7 @@ const Common::Rect ZoombiniInteractiveSmoke::kDragRectsA[9] = {
 };
 
 // IDA: unk_4A4124 — L3-4 drag zone rects group B (3 slots × 3 rects)
-const Common::Rect ZoombiniInteractiveSmoke::kDragRectsB[9] = {
+const Common::Rect ZoombiniPuzzleSmoke::kDragRectsB[9] = {
 	// slot 0
 	Common::Rect(426, 230, 486, 293), Common::Rect(0, 0, 0, 0), Common::Rect(0, 0, 0, 0),
 	// slot 1
@@ -99,46 +99,46 @@ const Common::Rect ZoombiniInteractiveSmoke::kDragRectsB[9] = {
 };
 
 // IDA: dword_4A418C — display pair normal A (12 frames, x=317)
-const Common::Point ZoombiniInteractiveSmoke::kDisplayPairNormalA[12] = {
+const Common::Point ZoombiniPuzzleSmoke::kDisplayPairNormalA[12] = {
 	Common::Point(317, 263), Common::Point(317, 248), Common::Point(317, 236), Common::Point(317, 210),
 	Common::Point(317, 201), Common::Point(317, 192), Common::Point(317, 201), Common::Point(317, 210),
 	Common::Point(317, 236), Common::Point(317, 248), Common::Point(317, 263), Common::Point(317, 254),
 };
 
 // IDA: dword_4A41C4 — display pair normal B (12 frames, x=354)
-const Common::Point ZoombiniInteractiveSmoke::kDisplayPairNormalB[12] = {
+const Common::Point ZoombiniPuzzleSmoke::kDisplayPairNormalB[12] = {
 	Common::Point(354, 263), Common::Point(354, 248), Common::Point(354, 236), Common::Point(354, 210),
 	Common::Point(354, 201), Common::Point(354, 192), Common::Point(354, 201), Common::Point(354, 210),
 	Common::Point(354, 236), Common::Point(354, 248), Common::Point(354, 263), Common::Point(354, 254),
 };
 
 // IDA: dword_4A41FC — display pair swapped A (12 frames, x=317)
-const Common::Point ZoombiniInteractiveSmoke::kDisplayPairSwappedA[12] = {
+const Common::Point ZoombiniPuzzleSmoke::kDisplayPairSwappedA[12] = {
 	Common::Point(317, 257), Common::Point(317, 261), Common::Point(317, 264), Common::Point(317, 267),
 	Common::Point(317, 270), Common::Point(317, 274), Common::Point(317, 277), Common::Point(317, 280),
 	Common::Point(317, 277), Common::Point(317, 270), Common::Point(317, 267), Common::Point(317, 264),
 };
 
 // IDA: dword_4A4240 — display pair swapped B (12 frames, x=354)
-const Common::Point ZoombiniInteractiveSmoke::kDisplayPairSwappedB[12] = {
+const Common::Point ZoombiniPuzzleSmoke::kDisplayPairSwappedB[12] = {
 	Common::Point(354, 257), Common::Point(354, 261), Common::Point(354, 264), Common::Point(354, 267),
 	Common::Point(354, 270), Common::Point(354, 274), Common::Point(354, 277), Common::Point(354, 280),
 	Common::Point(354, 277), Common::Point(354, 270), Common::Point(354, 267), Common::Point(354, 264),
 };
 
-ZoombiniInteractiveSmoke::ZoombiniInteractiveSmoke(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kSmoke) {
+ZoombiniPuzzleSmoke::ZoombiniPuzzleSmoke(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kSmoke) {
 }
 
-ZoombiniInteractiveSmoke::~ZoombiniInteractiveSmoke() {
+ZoombiniPuzzleSmoke::~ZoombiniPuzzleSmoke() {
 }
 
-void ZoombiniInteractiveSmoke::open() {
+void ZoombiniPuzzleSmoke::open() {
 	if (!_vm->isGameVariant(GF_ZMB_TLC))
 		openArchive(ZMB_MHK_MIDIMPC);
 	openArchive(ZMB_MHK_SMOKE);
 }
 
-void ZoombiniInteractiveSmoke::setBackgroundMusic() {
+void ZoombiniPuzzleSmoke::setBackgroundMusic() {
 	// IDA: scrb_enqueueSoundResource(30030 + routeDiffLevel)
 	if (!_vm->isGameVariant(GF_ZMB_TLC)) {
 		int16 routeLevel = _vm->_state->readActivePageRouteLevel();
@@ -146,12 +146,12 @@ void ZoombiniInteractiveSmoke::setBackgroundMusic() {
 	}
 }
 
-void ZoombiniInteractiveSmoke::setBackgroundBitmap() {
+void ZoombiniPuzzleSmoke::setBackgroundBitmap() {
 	_vm->_gfx->setPalette(5000);
 	_vm->_gfx->drawBackground(5000);
 }
 
-SmokeRunnerState *ZoombiniInteractiveSmoke::findRunnerState(ZmbFeature *feature) {
+ZmbSmokeRunnerState *ZoombiniPuzzleSmoke::findRunnerState(ZmbFeature *feature) {
 	for (int16 i = 0; i < _cliffRunnerCount; i++) {
 		if (_cliffRunners[i] == feature)
 			return &_cliffRunnerStates[i];
@@ -175,7 +175,7 @@ SmokeRunnerState *ZoombiniInteractiveSmoke::findRunnerState(ZmbFeature *feature)
 	return nullptr;
 }
 
-void ZoombiniInteractiveSmoke::loadFeatures() {
+void ZoombiniPuzzleSmoke::loadFeatures() {
 	// IDA: smoke_init (0x44983c)
 
 	// --- State initialization (matches IDA init sequence exactly) ---
@@ -470,7 +470,7 @@ void ZoombiniInteractiveSmoke::loadFeatures() {
 	_puzzleActive = true;
 }
 
-void ZoombiniInteractiveSmoke::onGoButtonActivated() {
+void ZoombiniPuzzleSmoke::onGoButtonActivated() {
 	// IDA: smoke_onClickHandler case 2
 	// Route 4: Smoke -> Maze (via Xfer)
 	// NOTE: Original uses SND_0 (no departure SFX).
@@ -478,7 +478,7 @@ void ZoombiniInteractiveSmoke::onGoButtonActivated() {
 	_pendingGoDepart = true;
 }
 
-void ZoombiniInteractiveSmoke::loadZoombinisFromPack() {
+void ZoombiniPuzzleSmoke::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;
 
@@ -512,7 +512,7 @@ void ZoombiniInteractiveSmoke::loadZoombinisFromPack() {
 // Helper methods
 // =========================================================================
 
-void ZoombiniInteractiveSmoke::playZmbScript(bool linkToHotspot, ZmbFeature *parentFeature, uint16 scrsId, ZmbSnoid *snoid) {
+void ZoombiniPuzzleSmoke::playZmbScript(bool linkToHotspot, ZmbFeature *parentFeature, uint16 scrsId, ZmbSnoid *snoid) {
 	// IDA: smoke_playZmbScript / snoidScript_initAndPlay
 	if (!snoid)
 		return;
@@ -524,7 +524,7 @@ void ZoombiniInteractiveSmoke::playZmbScript(bool linkToHotspot, ZmbFeature *par
 	}
 }
 
-void ZoombiniInteractiveSmoke::unloadTimerScrb() {
+void ZoombiniPuzzleSmoke::unloadTimerScrb() {
 	// IDA: smoke_unloadTimerScrb
 	if (_level12ExtraFeature) {
 		_level12ExtraFeature->addFlag(ZmbFeature::FLAG_01000000_DEFER_RENDER);
@@ -532,7 +532,7 @@ void ZoombiniInteractiveSmoke::unloadTimerScrb() {
 	}
 }
 
-void ZoombiniInteractiveSmoke::loadScrbOnAnswerRunner(uint16 scrbId) {
+void ZoombiniPuzzleSmoke::loadScrbOnAnswerRunner(uint16 scrbId) {
 	// IDA: smoke_loadSCRBOnAnswerRunner (0x44BA3D)
 	if (_answerZoneFeature) {
 		_answerZoneFeature->addFlag(
@@ -543,7 +543,7 @@ void ZoombiniInteractiveSmoke::loadScrbOnAnswerRunner(uint16 scrbId) {
 	}
 }
 
-void ZoombiniInteractiveSmoke::loadScrbOnWellRunner(uint16 scrbId) {
+void ZoombiniPuzzleSmoke::loadScrbOnWellRunner(uint16 scrbId) {
 	// IDA: smoke_loadSCRBOnWellRunner (0x44BAB9)
 	if (_answerZoneFeature) {
 		addExternalDirtyRect(_answerZoneFeature->getClickRect());
@@ -556,7 +556,7 @@ void ZoombiniInteractiveSmoke::loadScrbOnWellRunner(uint16 scrbId) {
 	}
 }
 
-void ZoombiniInteractiveSmoke::loadScoreDisplayScrbs() {
+void ZoombiniPuzzleSmoke::loadScoreDisplayScrbs() {
 	// IDA: smoke_loadScoreDisplayScrbs (0x44BB5D)
 	// Set flags to 0x05188000 = OVERLAY | DEFER_RENDER | PLAY_ONCE | DEFER_ANIM | LOOP_ANIM
 	if (_cliffLeftFeature) {
@@ -571,7 +571,7 @@ void ZoombiniInteractiveSmoke::loadScoreDisplayScrbs() {
 	}
 }
 
-void ZoombiniInteractiveSmoke::loadTimerScrb() {
+void ZoombiniPuzzleSmoke::loadTimerScrb() {
 	// IDA: smoke_loadTimerScrb (0x44BBAD)
 	if (_level12ExtraFeature) {
 		// Set flags to 0x04008000 = OVERLAY | LOOP_ANIM
@@ -587,9 +587,9 @@ void ZoombiniInteractiveSmoke::loadTimerScrb() {
 // Attribute management
 // =========================================================================
 
-void ZoombiniInteractiveSmoke::clearZmbAttrs(int16 idx) {
+void ZoombiniPuzzleSmoke::clearZmbAttrs(int16 idx) {
 	// IDA: smoke_clearZmbAttrs (0x44C5E5)
-	SmokeRunnerState *state = nullptr;
+	ZmbSmokeRunnerState *state = nullptr;
 
 	if (idx <= 1) {
 		if (idx >= 0 && idx < _exitRunnerCount && _exitRunners[idx])
@@ -608,7 +608,7 @@ void ZoombiniInteractiveSmoke::clearZmbAttrs(int16 idx) {
 	}
 }
 
-void ZoombiniInteractiveSmoke::clearRunnerSlot(int16 slotIdx) {
+void ZoombiniPuzzleSmoke::clearRunnerSlot(int16 slotIdx) {
 	// IDA: smoke_clearRunnerSlot (0x44C65C)
 	if (slotIdx >= 0 && slotIdx < 8) {
 		_attrDisplayTable[4 * slotIdx] = 0;
@@ -618,18 +618,18 @@ void ZoombiniInteractiveSmoke::clearRunnerSlot(int16 slotIdx) {
 	}
 }
 
-void ZoombiniInteractiveSmoke::clearAllRunnerSlots() {
+void ZoombiniPuzzleSmoke::clearAllRunnerSlots() {
 	// IDA: smoke_clearAllRunnerSlots (0x44C69A)
 	memset(_attrDisplayTable, 0, sizeof(_attrDisplayTable));
 }
 
-void ZoombiniInteractiveSmoke::clearDisplayRunners() {
+void ZoombiniPuzzleSmoke::clearDisplayRunners() {
 	// IDA: smoke_clearDisplayRunners (0x44C6D0)
 	for (int16 i = 0; i < 2; ++i) {
 		ZmbFeature *runner = _bottomRunners[i];
 		if (!runner)
 			continue;
-		SmokeRunnerState *state = findRunnerState(runner);
+		ZmbSmokeRunnerState *state = findRunnerState(runner);
 		if (!state)
 			continue;
 
@@ -643,7 +643,7 @@ void ZoombiniInteractiveSmoke::clearDisplayRunners() {
 	}
 }
 
-void ZoombiniInteractiveSmoke::assignZmbAttrsFromSrc(int16 srcIdx, ZmbSnoid *zmb) {
+void ZoombiniPuzzleSmoke::assignZmbAttrsFromSrc(int16 srcIdx, ZmbSnoid *zmb) {
 	// IDA: smoke_assignZmbAttrsFromSrc (0x44C048)
 	// Copies zmb's trait bytes into the runner's cachedAttrs.
 	// srcIdx: 0/1 -> _exitRunners, 7/8 -> _gridRunners
@@ -661,7 +661,7 @@ void ZoombiniInteractiveSmoke::assignZmbAttrsFromSrc(int16 srcIdx, ZmbSnoid *zmb
 
 	if (!srcRunner)
 		return;
-	SmokeRunnerState *srcState = findRunnerState(srcRunner);
+	ZmbSmokeRunnerState *srcState = findRunnerState(srcRunner);
 	if (!srcState)
 		return;
 
@@ -676,7 +676,7 @@ void ZoombiniInteractiveSmoke::assignZmbAttrsFromSrc(int16 srcIdx, ZmbSnoid *zmb
 	}
 }
 
-void ZoombiniInteractiveSmoke::cacheZmbAttrs(int16 srcIdx, ZmbSnoid *zmb) {
+void ZoombiniPuzzleSmoke::cacheZmbAttrs(int16 srcIdx, ZmbSnoid *zmb) {
 	// IDA: smoke_cacheZmbAttrs (0x44C124)
 	if (!zmb)
 		return;
@@ -687,13 +687,13 @@ void ZoombiniInteractiveSmoke::cacheZmbAttrs(int16 srcIdx, ZmbSnoid *zmb) {
 	_attrDisplayTable[4 * srcIdx + 3] = zmb->_trait._foot;
 }
 
-void ZoombiniInteractiveSmoke::loadZmbAttrsToCache() {
+void ZoombiniPuzzleSmoke::loadZmbAttrsToCache() {
 	// IDA: smoke_loadZmbAttrsToCache (0x44C181)
 	// Read attrs from display runners [1..3] into attrDisplayTable slots [1..3]
 	for (int16 i = 1; i < 4; ++i) {
 		ZmbFeature *feature = _displayRunnerArr[i];
 		if (feature) {
-			SmokeRunnerState *state = findRunnerState(feature);
+			ZmbSmokeRunnerState *state = findRunnerState(feature);
 			if (state) {
 				_attrDisplayTable[4 * i] = state->attrs[0];
 				_attrDisplayTable[4 * i + 1] = state->attrs[1];
@@ -709,13 +709,13 @@ void ZoombiniInteractiveSmoke::loadZmbAttrsToCache() {
 	}
 }
 
-void ZoombiniInteractiveSmoke::cacheAnswerRunnerAttrs() {
+void ZoombiniPuzzleSmoke::cacheAnswerRunnerAttrs() {
 	// IDA: smoke_cacheAnswerRunnerAttrs (0x44C218)
 	// Read attrs from display runners [4..6] into attrDisplayTable slots [4..6]
 	for (int16 i = 4; i < 7; ++i) {
 		ZmbFeature *feature = (i - 1 < 6) ? _displayRunnerArr[i - 1] : nullptr;
 		if (feature) {
-			SmokeRunnerState *state = findRunnerState(feature);
+			ZmbSmokeRunnerState *state = findRunnerState(feature);
 			if (state) {
 				_attrDisplayTable[4 * i] = state->attrs[0];
 				_attrDisplayTable[4 * i + 1] = state->attrs[1];
@@ -731,13 +731,13 @@ void ZoombiniInteractiveSmoke::cacheAnswerRunnerAttrs() {
 	}
 }
 
-void ZoombiniInteractiveSmoke::cycleZmbAttrDisplay() {
+void ZoombiniPuzzleSmoke::cycleZmbAttrDisplay() {
 	// IDA: smoke_cycleZmbAttrDisplay (0x44C2AB)
 	for (int16 i = 0; i < 3; ++i) {
 		ZmbFeature *feature = _displayRunnerArr[i];
 		if (!feature)
 			continue;
-		SmokeRunnerState *state = findRunnerState(feature);
+		ZmbSmokeRunnerState *state = findRunnerState(feature);
 		if (!state)
 			continue;
 
@@ -772,13 +772,13 @@ void ZoombiniInteractiveSmoke::cycleZmbAttrDisplay() {
 	}
 }
 
-void ZoombiniInteractiveSmoke::advanceAnswerRunnerFrames() {
+void ZoombiniPuzzleSmoke::advanceAnswerRunnerFrames() {
 	// IDA: smoke_advanceAnswerRunnerFrames (0x44C444)
 	for (int16 i = 5; i > 2; --i) {
 		ZmbFeature *feature = _displayRunnerArr[i];
 		if (!feature)
 			continue;
-		SmokeRunnerState *state = findRunnerState(feature);
+		ZmbSmokeRunnerState *state = findRunnerState(feature);
 		if (!state)
 			continue;
 
@@ -823,12 +823,12 @@ void ZoombiniInteractiveSmoke::advanceAnswerRunnerFrames() {
 // Compare / Match logic
 // =========================================================================
 
-int16 ZoombiniInteractiveSmoke::compareTwoOrderLines() {
+int16 ZoombiniPuzzleSmoke::compareTwoOrderLines() {
 	// IDA: pizza_compareTwoOrderLines (0x44C7D0)
 	// Compares attrs in bottom runners [0] and [1] using attrDisplayTable.
 	// Returns 0 if match, 2 if mismatch.
-	SmokeRunnerState *stateA = nullptr;
-	SmokeRunnerState *stateB = nullptr;
+	ZmbSmokeRunnerState *stateA = nullptr;
+	ZmbSmokeRunnerState *stateB = nullptr;
 
 	if (_bottomRunners[0]) {
 		_bottomRunners[0]->activateRender();
@@ -880,7 +880,7 @@ int16 ZoombiniInteractiveSmoke::compareTwoOrderLines() {
 	return 0;
 }
 
-void ZoombiniInteractiveSmoke::initMatchCompareRunners() {
+void ZoombiniPuzzleSmoke::initMatchCompareRunners() {
 	// IDA: smoke_initMatchCompareRunners (0x44C739)
 	_compareIdx = compareTwoOrderLines();
 	_bCompareSwapped = (_compareIdx != 0);
@@ -891,7 +891,7 @@ void ZoombiniInteractiveSmoke::initMatchCompareRunners() {
 		loadScrbOntoFeature(_compareBFeature, 11019, true);
 }
 
-void ZoombiniInteractiveSmoke::startNextCompareSequence() {
+void ZoombiniPuzzleSmoke::startNextCompareSequence() {
 	// IDA: smoke_startNextCompareSequence (0x44C91A)
 	_displayPairIdx = 0;
 
@@ -923,7 +923,7 @@ void ZoombiniInteractiveSmoke::startNextCompareSequence() {
 // Question / Selection
 // =========================================================================
 
-void ZoombiniInteractiveSmoke::selectQuestionZmb() {
+void ZoombiniPuzzleSmoke::selectQuestionZmb() {
 	// IDA: smoke_selectQuestionZmb (0x44D372)
 	int16 count = 0;
 	uint16 available[21] = {};
@@ -968,7 +968,7 @@ void ZoombiniInteractiveSmoke::selectQuestionZmb() {
 	_questionResult = count;
 }
 
-int16 ZoombiniInteractiveSmoke::copyPairToCompareBuffer() {
+int16 ZoombiniPuzzleSmoke::copyPairToCompareBuffer() {
 	// IDA: smoke_copyPairToCompareBuffer (0x44D459)
 	if (_currentZmbIdx >= _zmbCount)
 		return 0;
@@ -1005,7 +1005,7 @@ int16 ZoombiniInteractiveSmoke::copyPairToCompareBuffer() {
 // Runner initialization
 // =========================================================================
 
-void ZoombiniInteractiveSmoke::initQuestionRunners(int16 count) {
+void ZoombiniPuzzleSmoke::initQuestionRunners(int16 count) {
 	// IDA: smoke_initQuestionRunners (0x44D510)
 	if (count <= 0)
 		return;
@@ -1017,7 +1017,7 @@ void ZoombiniInteractiveSmoke::initQuestionRunners(int16 count) {
 		ZmbFeature *runner = _cliffRunners[i];
 		if (!runner)
 			continue;
-		SmokeRunnerState *state = findRunnerState(runner);
+		ZmbSmokeRunnerState *state = findRunnerState(runner);
 		if (!state)
 			continue;
 
@@ -1040,20 +1040,20 @@ void ZoombiniInteractiveSmoke::initQuestionRunners(int16 count) {
 	}
 }
 
-void ZoombiniInteractiveSmoke::assignAllRunnersAttrs() {
+void ZoombiniPuzzleSmoke::assignAllRunnersAttrs() {
 	// IDA: smoke_assignAllRunnersAttrs (0x44D651)
 	for (int16 i = 0; i < _level2RunnerCount; ++i) {
 		ZmbFeature *runner = _level2Runners[i];
 		if (!runner)
 			continue;
-		SmokeRunnerState *state = findRunnerState(runner);
+		ZmbSmokeRunnerState *state = findRunnerState(runner);
 		if (!state)
 			continue;
 		assignRunnerAttrsForLevel(i, *state);
 	}
 }
 
-void ZoombiniInteractiveSmoke::assignRunnerAttrsForLevel(int16 levelIdx, SmokeRunnerState &state) {
+void ZoombiniPuzzleSmoke::assignRunnerAttrsForLevel(int16 levelIdx, ZmbSmokeRunnerState &state) {
 	// IDA: smoke_assignRunnerAttrsForLevel (0x44D67C)
 	for (int16 j = 0; j < 4; ++j)
 		state.attrs[j] = _vm->_rnd->getRandomNumber(1, 5);
@@ -1061,20 +1061,20 @@ void ZoombiniInteractiveSmoke::assignRunnerAttrsForLevel(int16 levelIdx, SmokeRu
 	state.attrCyclePos = 4;
 }
 
-void ZoombiniInteractiveSmoke::initAllRunnerAttrs(int16 param) {
+void ZoombiniPuzzleSmoke::initAllRunnerAttrs(int16 param) {
 	// IDA: smoke_initAllRunnerAttrs — reinit grid runners for L3-4
 	for (int16 i = 1; i < _gridRunnerCount && i < 7; ++i) {
 		ZmbFeature *runner = _gridRunners[i];
 		if (!runner)
 			continue;
-		SmokeRunnerState *state = findRunnerState(runner);
+		ZmbSmokeRunnerState *state = findRunnerState(runner);
 		if (!state)
 			continue;
 		generateAttrGrid(i, *state);
 	}
 }
 
-void ZoombiniInteractiveSmoke::generateAttrGrid(int16 rowIndex, SmokeRunnerState &state) {
+void ZoombiniPuzzleSmoke::generateAttrGrid(int16 rowIndex, ZmbSmokeRunnerState &state) {
 	// IDA: smoke_generateAttrGrid (0x44E181)
 	// Generates attribute grid for L3-4 puzzle logic.
 	// Row 1 trigger initializes the entire grid; all rows write to state at end.
@@ -1258,7 +1258,7 @@ void ZoombiniInteractiveSmoke::generateAttrGrid(int16 rowIndex, SmokeRunnerState
 // Rejection animation
 // =========================================================================
 
-void ZoombiniInteractiveSmoke::playRejectedAnimation() {
+void ZoombiniPuzzleSmoke::playRejectedAnimation() {
 	// IDA: smoke_playZmbRejectedAnim (0x44CA52)
 	if (_rejectionFeature) {
 		loadScrbOntoFeature(_rejectionFeature, _placedZmbCount + 11036, true);
@@ -1277,7 +1277,7 @@ void ZoombiniInteractiveSmoke::playRejectedAnimation() {
 // Stack building / spawning
 // =========================================================================
 
-void ZoombiniInteractiveSmoke::buildRunnerStacks() {
+void ZoombiniPuzzleSmoke::buildRunnerStacks() {
 	// IDA: smoke_buildRunnerStacks (0x44DBE2)
 	clearAllRunnerSlots();
 
@@ -1308,7 +1308,7 @@ void ZoombiniInteractiveSmoke::buildRunnerStacks() {
 	}
 }
 
-void ZoombiniInteractiveSmoke::spawnStackRunners(int16 count, int16 runnerType) {
+void ZoombiniPuzzleSmoke::spawnStackRunners(int16 count, int16 runnerType) {
 	// IDA: smoke_spawnStackRunners (0x44DC7B)
 	if (count <= 0)
 		return;
@@ -1317,7 +1317,7 @@ void ZoombiniInteractiveSmoke::spawnStackRunners(int16 count, int16 runnerType) 
 
 	for (int16 i = 0; i < count; ++i) {
 		Common::Point pos;
-		SmokeRunnerState tempState = {};
+		ZmbSmokeRunnerState tempState = {};
 
 		switch (runnerType) {
 		case 1: // Cliff runners
@@ -1449,7 +1449,7 @@ void ZoombiniInteractiveSmoke::spawnStackRunners(int16 count, int16 runnerType) 
 // Reset
 // =========================================================================
 
-void ZoombiniInteractiveSmoke::resetAndReinitLevel() {
+void ZoombiniPuzzleSmoke::resetAndReinitLevel() {
 	// IDA: smoke_resetAndReinitLevel (0x44BBF0)
 	clearZmbAttrs(0);
 	if (_difficultyLevel <= 2)
@@ -1472,14 +1472,14 @@ void ZoombiniInteractiveSmoke::resetAndReinitLevel() {
 		break;
 	case 4:
 		if (_targetZmbRunner) {
-			SmokeRunnerState *targetState = findRunnerState(_targetZmbRunner);
+			ZmbSmokeRunnerState *targetState = findRunnerState(_targetZmbRunner);
 			if (targetState) {
 				targetState->attrs[0] = 0;
 				targetState->attrCyclePos = 2;
 			}
 		}
 		if (_sourceZmbRunner) {
-			SmokeRunnerState *srcState = findRunnerState(_sourceZmbRunner);
+			ZmbSmokeRunnerState *srcState = findRunnerState(_sourceZmbRunner);
 			if (srcState)
 				srcState->attrs[0] = 0;
 		}
@@ -1499,7 +1499,7 @@ void ZoombiniInteractiveSmoke::resetAndReinitLevel() {
 // Drag evaluation
 // =========================================================================
 
-int16 ZoombiniInteractiveSmoke::evaluateRunnerDrop(ZmbFeature *runner, const Common::Point &dropPos) {
+int16 ZoombiniPuzzleSmoke::evaluateRunnerDrop(ZmbFeature *runner, const Common::Point &dropPos) {
 	// IDA: smoke_dragZmbRunner (0x44F2B0) — converted from blocking to event-driven.
 	// Returns the slot index if dropped in a valid rect, -1 otherwise.
 
@@ -1532,12 +1532,12 @@ int16 ZoombiniInteractiveSmoke::evaluateRunnerDrop(ZmbFeature *runner, const Com
 // L4 frame transition handler
 // =========================================================================
 
-void ZoombiniInteractiveSmoke::handleFrameTransition(int16 eventCode) {
+void ZoombiniPuzzleSmoke::handleFrameTransition(int16 eventCode) {
 	// IDA: smoke_handleFrameTransition (0x44D281)
 	switch (eventCode) {
 	case 17:
 		if (_sourceZmbRunner) {
-			SmokeRunnerState *state = findRunnerState(_sourceZmbRunner);
+			ZmbSmokeRunnerState *state = findRunnerState(_sourceZmbRunner);
 			if (state) {
 				--_transitionPhase;
 				state->orientation = 4;
@@ -1549,7 +1549,7 @@ void ZoombiniInteractiveSmoke::handleFrameTransition(int16 eventCode) {
 	case 18:
 		if (_sourceZmbRunner) {
 			_sourceZmbRunner->setFrameInterval(0);
-			SmokeRunnerState *state = findRunnerState(_sourceZmbRunner);
+			ZmbSmokeRunnerState *state = findRunnerState(_sourceZmbRunner);
 			if (state) {
 				--_transitionPhase;
 				state->orientation = 5;
@@ -1580,7 +1580,7 @@ void ZoombiniInteractiveSmoke::handleFrameTransition(int16 eventCode) {
 // Animation dispatch
 // =========================================================================
 
-void ZoombiniInteractiveSmoke::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleSmoke::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	// L4 overlay transitions use handleFrameTransition
 	if (feature == _overlayAnimFeature && _difficultyLevel == 4 && _transitionPhase < 3) {
 		handleFrameTransition(eventCode);
@@ -1591,7 +1591,7 @@ void ZoombiniInteractiveSmoke::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 	processAnimDispatchEvent(feature, eventCode);
 }
 
-void ZoombiniInteractiveSmoke::processAnimDispatchEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleSmoke::processAnimDispatchEvent(ZmbFeature *feature, int16 eventCode) {
 	// IDA: smoke_scrbAnimDispatch (0x44CB72)
 
 	if (eventCode > 30) {
@@ -1679,7 +1679,7 @@ void ZoombiniInteractiveSmoke::processAnimDispatchEvent(ZmbFeature *feature, int
 							clearDisplayRunners();
 
 							if (_targetZmbRunner) {
-								SmokeRunnerState *targetState = findRunnerState(_targetZmbRunner);
+								ZmbSmokeRunnerState *targetState = findRunnerState(_targetZmbRunner);
 								if (targetState)
 									targetState->attrs[0] = 0;
 							}
@@ -1759,14 +1759,14 @@ void ZoombiniInteractiveSmoke::processAnimDispatchEvent(ZmbFeature *feature, int
 
 	case 16:
 		if (_bottomRunners[0]) {
-			SmokeRunnerState *state0 = findRunnerState(_bottomRunners[0]);
+			ZmbSmokeRunnerState *state0 = findRunnerState(_bottomRunners[0]);
 			if (state0) {
 				_bottomRunners[0]->setFrameInterval(0);
 				state0->attrCyclePos = 4;
 			}
 		}
 		if (_bottomRunners[1]) {
-			SmokeRunnerState *state1 = findRunnerState(_bottomRunners[1]);
+			ZmbSmokeRunnerState *state1 = findRunnerState(_bottomRunners[1]);
 			if (state1) {
 				_bottomRunners[1]->setFrameInterval(0);
 				state1->attrCyclePos = 4;
@@ -1815,7 +1815,7 @@ void ZoombiniInteractiveSmoke::processAnimDispatchEvent(ZmbFeature *feature, int
 // Per-frame update
 // =========================================================================
 
-void ZoombiniInteractiveSmoke::onEveryFrame() {
+void ZoombiniPuzzleSmoke::onEveryFrame() {
 	// IDA: smoke_onHover (0x44A62F)
 	if (_processingFrame || !_puzzleActive)
 		return;
@@ -2008,7 +2008,7 @@ void ZoombiniInteractiveSmoke::onEveryFrame() {
 // Click / Drag handlers
 // =========================================================================
 
-ZmbEventHandleResult ZoombiniInteractiveSmoke::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleSmoke::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
 	// IDA: smoke_onClickHandler (0x44AE29)
 
 	// Let base class handle Go/Map/Help
@@ -2127,7 +2127,7 @@ ZmbEventHandleResult ZoombiniInteractiveSmoke::onLButtonDown(const Common::Point
 	return ZmbEventHandleResult::kPassthrough;
 }
 
-ZmbEventHandleResult ZoombiniInteractiveSmoke::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleSmoke::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
 	// Handle end of non-snoid runner drag
 	if (_bRunnerDragActive && _draggedRunner) {
 		_bRunnerDragActive = false;
@@ -2138,7 +2138,7 @@ ZmbEventHandleResult ZoombiniInteractiveSmoke::onLButtonUp(const Common::Point &
 		if (_difficultyLevel >= 3) {
 			if (dropSlot >= 0 && dropSlot < 6) {
 				if (dropSlot < 3) {
-					SmokeRunnerState *state = findRunnerState(_draggedRunner);
+					ZmbSmokeRunnerState *state = findRunnerState(_draggedRunner);
 					if (state)
 						state->orientation = 0;
 					if (!_displayRunnerArr[dropSlot])
@@ -2147,7 +2147,7 @@ ZmbEventHandleResult ZoombiniInteractiveSmoke::onLButtonUp(const Common::Point &
 					loadZmbAttrsToCache();
 					cycleZmbAttrDisplay();
 				} else {
-					SmokeRunnerState *state = findRunnerState(_draggedRunner);
+					ZmbSmokeRunnerState *state = findRunnerState(_draggedRunner);
 					if (state)
 						state->orientation = 2;
 					if (!_displayRunnerArr[dropSlot])
@@ -2158,7 +2158,7 @@ ZmbEventHandleResult ZoombiniInteractiveSmoke::onLButtonUp(const Common::Point &
 				}
 			} else {
 				_draggedRunner->setPointLoc(_dragRunnerOrigPos);
-				SmokeRunnerState *state = findRunnerState(_draggedRunner);
+				ZmbSmokeRunnerState *state = findRunnerState(_draggedRunner);
 				if (state)
 					state->attrCyclePos = 4;
 			}
@@ -2170,7 +2170,7 @@ ZmbEventHandleResult ZoombiniInteractiveSmoke::onLButtonUp(const Common::Point &
 			// L1-2
 			if (dropSlot == 4) {
 				_draggedRunner->setPointLoc(kCliffDropSnapPosition);
-				SmokeRunnerState *state = findRunnerState(_draggedRunner);
+				ZmbSmokeRunnerState *state = findRunnerState(_draggedRunner);
 				if (state)
 					state->attrCyclePos = 4;
 				_bMatchReady = true;
@@ -2178,7 +2178,7 @@ ZmbEventHandleResult ZoombiniInteractiveSmoke::onLButtonUp(const Common::Point &
 				cacheZmbAttrs(7, nullptr);
 			} else {
 				_draggedRunner->setPointLoc(_dragRunnerOrigPos);
-				SmokeRunnerState *state = findRunnerState(_draggedRunner);
+				ZmbSmokeRunnerState *state = findRunnerState(_draggedRunner);
 				if (state)
 					state->attrCyclePos = 4;
 			}
@@ -2219,7 +2219,7 @@ ZmbEventHandleResult ZoombiniInteractiveSmoke::onLButtonUp(const Common::Point &
 	return ZmbEventHandleResult::kPassthrough;
 }
 
-ZmbEventHandleResult ZoombiniInteractiveSmoke::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleSmoke::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
 	if (_bRunnerDragActive && _draggedRunner) {
 		_draggedRunner->setPointLoc(absPos);
 		_draggedRunner->setNeedsRedraw(true);

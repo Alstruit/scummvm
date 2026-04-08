@@ -30,35 +30,35 @@
 namespace Mohawk {
 
 // IDA: pedestal positions at 0x4A3CF8 (16 POINTS)
-const Common::Point ZoombiniInteractiveSlides::kSnoidPositions[16] = {
+const Common::Point ZoombiniPuzzleSlides::kSnoidPositions[16] = {
 	Common::Point(482, 127), Common::Point(428, 128), Common::Point(375, 129), Common::Point(318, 127),
 	Common::Point(272, 129), Common::Point(226, 128), Common::Point(184, 127), Common::Point(140, 129),
 	Common::Point( 87, 128), Common::Point(110, 170), Common::Point(122, 246), Common::Point( 84, 212),
 	Common::Point(140, 327), Common::Point( 77, 293), Common::Point( 40, 157), Common::Point( 44, 232),
 };
 
-ZoombiniInteractiveSlides::ZoombiniInteractiveSlides(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kSlides) {
+ZoombiniPuzzleSlides::ZoombiniPuzzleSlides(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kSlides) {
 }
 
-ZoombiniInteractiveSlides::~ZoombiniInteractiveSlides() {
+ZoombiniPuzzleSlides::~ZoombiniPuzzleSlides() {
 }
 
-void ZoombiniInteractiveSlides::open() {
+void ZoombiniPuzzleSlides::open() {
 	openArchive(ZMB_MHK_SLIDES);
 }
 
-void ZoombiniInteractiveSlides::setBackgroundMusic() {
+void ZoombiniPuzzleSlides::setBackgroundMusic() {
 	// IDA: slides_puzzleInit (0x441f0c) has no music playback call on page load.
 	// sound_activeHandle = 20078 is stored at end of funcInit for F1 replay only.
 }
 
-void ZoombiniInteractiveSlides::setBackgroundBitmap() {
+void ZoombiniPuzzleSlides::setBackgroundBitmap() {
 	// IDA: gfx_drawBackgroundFromResId(5000)
 	_vm->_gfx->setPalette(5000);
 	_vm->_gfx->drawBackground(5000);
 }
 
-void ZoombiniInteractiveSlides::loadFeatures() {
+void ZoombiniPuzzleSlides::loadFeatures() {
 	// IDA: puzzleSlides_441F0C
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
 
@@ -160,7 +160,7 @@ void ZoombiniInteractiveSlides::loadFeatures() {
 	_matchCount = 0;
 }
 
-void ZoombiniInteractiveSlides::onGoButtonActivated() {
+void ZoombiniPuzzleSlides::onGoButtonActivated() {
 	// IDA: slides_onClickHandler case 2 -> puzzle_pendingTransitionTarget = 5 (BC2)
 	// Route 2: Slides -> Basecamp2 (via Xfer)
 	_departXferSrcSiPage = ZMB_SI_SLIDES_08;
@@ -171,7 +171,7 @@ void ZoombiniInteractiveSlides::onGoButtonActivated() {
 // onEveryFrame: Per-frame celebration scheduling.
 // IDA: slides_puzzleHoverUpdate @ 0x4427B7
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveSlides::onEveryFrame() {
+void ZoombiniPuzzleSlides::onEveryFrame() {
 	if (_loadedZmbCount <= 0)
 		return;
 
@@ -221,7 +221,7 @@ void ZoombiniInteractiveSlides::onEveryFrame() {
 // onFeatureAnimEvent: Snoid travel animation callback.
 // IDA: slides_snoidTravelCallback @ 0x4462BC
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveSlides::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleSlides::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	if (!feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 		return;
 
@@ -271,7 +271,7 @@ void ZoombiniInteractiveSlides::onFeatureAnimEvent(ZmbFeature *feature, int16 ev
 	}
 }
 
-void ZoombiniInteractiveSlides::loadZoombinisFromPack() {
+void ZoombiniPuzzleSlides::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;
 

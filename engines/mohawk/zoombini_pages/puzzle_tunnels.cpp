@@ -33,7 +33,7 @@ namespace Mohawk {
 // =========================================================================
 
 // IDA: pedestal positions at 0x4A7534 (16 POINTS)
-const Common::Point ZoombiniInteractiveTunnels::kSnoidPositions[16] = {
+const Common::Point ZoombiniPuzzleTunnels::kSnoidPositions[16] = {
 	Common::Point(399, 402), Common::Point(367, 398), Common::Point(337, 397), Common::Point(306, 400),
 	Common::Point(274, 400), Common::Point(240, 403), Common::Point(381, 424), Common::Point(351, 424),
 	Common::Point(322, 428), Common::Point(292, 422), Common::Point(261, 426), Common::Point(371, 458),
@@ -41,20 +41,20 @@ const Common::Point ZoombiniInteractiveTunnels::kSnoidPositions[16] = {
 };
 
 // IDA: tunnel entry positions at 0x4A7674 (4 POINTS)
-const Common::Point ZoombiniInteractiveTunnels::kTunnelEntryPositions[4] = {
+const Common::Point ZoombiniPuzzleTunnels::kTunnelEntryPositions[4] = {
 	Common::Point(98, 424), Common::Point(178, 415), Common::Point(453, 421), Common::Point(533, 430),
 };
 
 // IDA: door index mapping at 0x4A7684
-const int16 ZoombiniInteractiveTunnels::kDoorIndices[4] = { 1, 2, 0, 3 };
+const int16 ZoombiniPuzzleTunnels::kDoorIndices[4] = { 1, 2, 0, 3 };
 
 // IDA: SCRS replay positions at 0x4A76AA
-const Common::Point ZoombiniInteractiveTunnels::kScrsReplayPositions[4] = {
+const Common::Point ZoombiniPuzzleTunnels::kScrsReplayPositions[4] = {
 	Common::Point(145, 455), Common::Point(210, 434), Common::Point(430, 434), Common::Point(476, 455),
 };
 
 // IDA: Gate positions at 0x4A7574, 0x4A75B4, 0x4A75F4, 0x4A7634 (4 gates x 16 positions)
-const Common::Point ZoombiniInteractiveTunnels::kGatePositions[4][16] = {
+const Common::Point ZoombiniPuzzleTunnels::kGatePositions[4][16] = {
 	// Gate 0 (0x4A7574)
 	{
 		Common::Point(277, 62),  Common::Point(264, 63),  Common::Point(247, 64),  Common::Point(230, 66),
@@ -86,16 +86,16 @@ const Common::Point ZoombiniInteractiveTunnels::kGatePositions[4][16] = {
 };
 
 // IDA: hoverData to gate type mapping at stru_4A750C (kHoverDataToGateType)
-const int16 ZoombiniInteractiveTunnels::kHoverDataToGateType[8] = {
+const int16 ZoombiniPuzzleTunnels::kHoverDataToGateType[8] = {
 	0, 1, 0, 2, 2, 3, 1, 3
 };
 
 // IDA: spawn origin X positions at 0x4A76A2
-const int16 ZoombiniInteractiveTunnels::kSpawnOriginX[4] = { 141, 198, 426, 479 };
+const int16 ZoombiniPuzzleTunnels::kSpawnOriginX[4] = { 141, 198, 426, 479 };
 
 // IDA: preferred staging slots at 0x4A76BA/0x4A76BE
 // [0] = preferred slots for side=0 (left), [1] = preferred slots for side=1 (right)
-const int16 ZoombiniInteractiveTunnels::kPreferredSlots[2][2] = {
+const int16 ZoombiniPuzzleTunnels::kPreferredSlots[2][2] = {
 	{ 15, 10 },  // side 0 at 0x4A76BA
 	{ 11, 6 },   // side 1 at 0x4A76BE
 };
@@ -105,42 +105,42 @@ const int16 ZoombiniInteractiveTunnels::kPreferredSlots[2][2] = {
 // =========================================================================
 
 // IDA: Rejection pool for gate type 0 at 0x4A73B0 (SCRB 4000–4009)
-const int16 ZoombiniInteractiveTunnels::kWrongPool0[10] = {
+const int16 ZoombiniPuzzleTunnels::kWrongPool0[10] = {
 	4000, 4001, 4002, 4003, 4004, 4005, 4006, 4007, 4008, 4009
 };
 
 // IDA: Correct hint pool (small) at 0x4A73C8 (SCRB 4010–4020)
-const int16 ZoombiniInteractiveTunnels::kCorrectHintSmall[11] = {
+const int16 ZoombiniPuzzleTunnels::kCorrectHintSmall[11] = {
 	4010, 4011, 4012, 4013, 4014, 4015, 4016, 4017, 4018, 4019, 4020
 };
 
 // IDA: Rejection pool for gate type 2 at 0x4A73E4 (SCRB 4200–4207)
-const int16 ZoombiniInteractiveTunnels::kWrongPool1[8] = {
+const int16 ZoombiniPuzzleTunnels::kWrongPool1[8] = {
 	4200, 4201, 4202, 4203, 4204, 4205, 4206, 4207
 };
 
 // IDA: Correct hint pool (medium) for hoverData 3,4 at 0x4A73F8 (SCRB 4208–4215)
-const int16 ZoombiniInteractiveTunnels::kWrongPool2[8] = {
+const int16 ZoombiniPuzzleTunnels::kWrongPool2[8] = {
 	4208, 4209, 4210, 4211, 4212, 4213, 4214, 4215
 };
 
 // IDA: Rejection pool for gate type 3 at 0x4A740C (SCRB 4404,4403,4413–4416,4400)
-const int16 ZoombiniInteractiveTunnels::kWrongPool3[7] = {
+const int16 ZoombiniPuzzleTunnels::kWrongPool3[7] = {
 	4404, 4403, 4413, 4414, 4415, 4416, 4400
 };
 
 // IDA: Correct hint pool (large) at 0x4A7420 (SCRB 4417,4405–4407,4401,4418)
-const int16 ZoombiniInteractiveTunnels::kCorrectHintLarge[6] = {
+const int16 ZoombiniPuzzleTunnels::kCorrectHintLarge[6] = {
 	4417, 4405, 4406, 4407, 4401, 4418
 };
 
 // IDA: Rejection pool for gate type 1 at 0x4A7430 (SCRB 4600–4603)
-const int16 ZoombiniInteractiveTunnels::kRejectPoolGate1[4] = {
+const int16 ZoombiniPuzzleTunnels::kRejectPoolGate1[4] = {
 	4600, 4601, 4602, 4603
 };
 
 // IDA: Correct hint pool for hoverData 1,6 at 0x4A743C (SCRB 4604–4609)
-const int16 ZoombiniInteractiveTunnels::kWrongPool4[6] = {
+const int16 ZoombiniPuzzleTunnels::kWrongPool4[6] = {
 	4604, 4605, 4606, 4607, 4608, 4609
 };
 
@@ -148,31 +148,31 @@ const int16 ZoombiniInteractiveTunnels::kWrongPool4[6] = {
 // Constructor / Destructor
 // =========================================================================
 
-ZoombiniInteractiveTunnels::ZoombiniInteractiveTunnels(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kTunnels) {
+ZoombiniPuzzleTunnels::ZoombiniPuzzleTunnels(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kTunnels) {
 }
 
-ZoombiniInteractiveTunnels::~ZoombiniInteractiveTunnels() {
+ZoombiniPuzzleTunnels::~ZoombiniPuzzleTunnels() {
 }
 
 // =========================================================================
 // Page Lifecycle
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::open() {
+void ZoombiniPuzzleTunnels::open() {
 	openArchive(ZMB_MHK_TUNNELS);
 }
 
-void ZoombiniInteractiveTunnels::setBackgroundMusic() {
+void ZoombiniPuzzleTunnels::setBackgroundMusic() {
 	// IDA: puzzleTunnels_459DCB has no music playback on page load.
 }
 
-void ZoombiniInteractiveTunnels::setBackgroundBitmap() {
+void ZoombiniPuzzleTunnels::setBackgroundBitmap() {
 	// IDA: gfx_drawBackgroundFromResId(300)
 	_vm->_gfx->setPalette(300);
 	_vm->_gfx->drawBackground(300);
 }
 
-void ZoombiniInteractiveTunnels::loadFeatures() {
+void ZoombiniPuzzleTunnels::loadFeatures() {
 	// IDA: puzzleTunnels_459DCB
 
 	initPuzzleState();
@@ -338,7 +338,7 @@ void ZoombiniInteractiveTunnels::loadFeatures() {
 // Zoombini Loading
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::loadZoombinisFromPack() {
+void ZoombiniPuzzleTunnels::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;
 
@@ -369,7 +369,7 @@ void ZoombiniInteractiveTunnels::loadZoombinisFromPack() {
 // IDA: tunnels_initPuzzleState @ 0x459C5C
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::initPuzzleState() {
+void ZoombiniPuzzleTunnels::initPuzzleState() {
 	_puzzleActive = false;
 	_processingFrame = false;
 	_enteredCount = 0;
@@ -457,7 +457,7 @@ void ZoombiniInteractiveTunnels::initPuzzleState() {
 // Rule Generation
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::generateRules() {
+void ZoombiniPuzzleTunnels::generateRules() {
 	switch (_difficultyLevel) {
 	case 0:  setupLevel0_singleAttr(); break;
 	case 1:  setupLevel1_dualSingleAttr(); break;
@@ -471,7 +471,7 @@ void ZoombiniInteractiveTunnels::generateRules() {
 // setupLevel0_singleAttr
 // IDA: tunnels_setupLevel1_singleAttr @ 0x45C859
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveTunnels::setupLevel0_singleAttr() {
+void ZoombiniPuzzleTunnels::setupLevel0_singleAttr() {
 	Common::Array<ZmbTrait> traits;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
 		ZmbSnoid *snoid = *it;
@@ -552,7 +552,7 @@ void ZoombiniInteractiveTunnels::setupLevel0_singleAttr() {
 // setupLevel1_dualSingleAttr
 // IDA: tunnels_setupLevel2_dualSingleAttr @ 0x45CB51
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveTunnels::setupLevel1_dualSingleAttr() {
+void ZoombiniPuzzleTunnels::setupLevel1_dualSingleAttr() {
 	Common::Array<ZmbTrait> traits;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
 		ZmbSnoid *snoid = *it;
@@ -635,7 +635,7 @@ void ZoombiniInteractiveTunnels::setupLevel1_dualSingleAttr() {
 // setupLevel2_dualDoubleAttr
 // IDA: tunnels_setupLevel3_dualDoubleAttr @ 0x45CCCD
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveTunnels::setupLevel2_dualDoubleAttr() {
+void ZoombiniPuzzleTunnels::setupLevel2_dualDoubleAttr() {
 	// IDA: tunnels_attrDescriptors10 @ 0x4A76E4
 	static const uint32 kAttrDescriptors10[10] = {
 		0x12, 0x13, 0x14, 0x15, 0x23, 0x24, 0x25, 0x34, 0x35, 0x45
@@ -773,7 +773,7 @@ void ZoombiniInteractiveTunnels::setupLevel2_dualDoubleAttr() {
 // setupLevel3_crossCategoryAttr
 // IDA: tunnels_setupLevel4_crossCategoryAttr @ 0x45D608
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveTunnels::setupLevel3_crossCategoryAttr() {
+void ZoombiniPuzzleTunnels::setupLevel3_crossCategoryAttr() {
 	static const uint32 kAttrBaseTable6[6] = {
 		0x00000001, 0x00000001, 0x00000001,
 		0x00000100, 0x00000100,
@@ -915,7 +915,7 @@ void ZoombiniInteractiveTunnels::setupLevel3_crossCategoryAttr() {
 // guardAMatch: output for which side guard A matched (zone-dependent).
 // =========================================================================
 
-bool ZoombiniInteractiveTunnels::evaluateRule(ZmbSnoid *snoid, int16 dropZone, bool &guardAMatch) {
+bool ZoombiniPuzzleTunnels::evaluateRule(ZmbSnoid *snoid, int16 dropZone, bool &guardAMatch) {
 	guardAMatch = false;
 	if (!snoid || dropZone < 1 || dropZone > 4)
 		return true;
@@ -1007,7 +1007,7 @@ bool ZoombiniInteractiveTunnels::evaluateRule(ZmbSnoid *snoid, int16 dropZone, b
 // getDropZone
 // =========================================================================
 
-int16 ZoombiniInteractiveTunnels::getDropZone(const Common::Point &pos) {
+int16 ZoombiniPuzzleTunnels::getDropZone(const Common::Point &pos) {
 	for (int16 i = 0; i < 4; i++) {
 		int16 dx = pos.x - kTunnelEntryPositions[i].x;
 		int16 dy = pos.y - kTunnelEntryPositions[i].y;
@@ -1023,7 +1023,7 @@ int16 ZoombiniInteractiveTunnels::getDropZone(const Common::Point &pos) {
 // IDA: tunnels_funcOnHover case 4 @ 0x45A9CF
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::handleZoombiniPlacement(ZmbSnoid *snoid, int16 zone,
+void ZoombiniPuzzleTunnels::handleZoombiniPlacement(ZmbSnoid *snoid, int16 zone,
                                                           bool isRejection, bool guardAMatch, bool wasInSlot) {
 	if (!snoid || zone < 1 || zone > 4)
 		return;
@@ -1162,14 +1162,14 @@ void ZoombiniInteractiveTunnels::handleZoombiniPlacement(ZmbSnoid *snoid, int16 
 // Animation Queue Management
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::appendAnimQueueEntry(const AnimQueueEntry &entry) {
+void ZoombiniPuzzleTunnels::appendAnimQueueEntry(const AnimQueueEntry &entry) {
 	if (_animQueueCount >= 5)
 		return;
 	_animQueue[_animQueueCount] = entry;
 	_animQueueCount++;
 }
 
-void ZoombiniInteractiveTunnels::popAnimQueueEntry() {
+void ZoombiniPuzzleTunnels::popAnimQueueEntry() {
 	if (_animQueueCount <= 0)
 		return;
 
@@ -1185,7 +1185,7 @@ void ZoombiniInteractiveTunnels::popAnimQueueEntry() {
 // IDA: tunnels_advanceAnimSequenceStep @ 0x45BF8D
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::advanceAnimStep() {
+void ZoombiniPuzzleTunnels::advanceAnimStep() {
 	if (_animQueueCount <= 0)
 		return;
 
@@ -1252,7 +1252,7 @@ void ZoombiniInteractiveTunnels::advanceAnimStep() {
 // IDA: tunnels_selectLevelRunners @ 0x45C05E
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::selectLevelRunners(int16 mode) {
+void ZoombiniPuzzleTunnels::selectLevelRunners(int16 mode) {
 	int16 primaryRunner = 0;    // door feature index (v3 in IDA)
 	int16 primaryScrb = 0;     // SCRB ID (v1 in IDA)
 	int16 secondaryRunner = 0;  // secondary door feature index (v2 in IDA)
@@ -1388,7 +1388,7 @@ void ZoombiniInteractiveTunnels::selectLevelRunners(int16 mode) {
 // IDA: tunnels_assignSlotWithPush @ 0x45BA3D
 // =========================================================================
 
-int16 ZoombiniInteractiveTunnels::assignSlotWithPush(int16 side) {
+int16 ZoombiniPuzzleTunnels::assignSlotWithPush(int16 side) {
 	// Collect idle positions and find nearest runners per slot
 	// IDA: snoid_collectIdlePositions(500, 0, &dword_4A76C2)
 	for (int16 i = 0; i < 16; i++) {
@@ -1531,7 +1531,7 @@ int16 ZoombiniInteractiveTunnels::assignSlotWithPush(int16 side) {
 // IDA: tunnels_spawnPendingZmbs @ 0x45B3E5
 // =========================================================================
 
-int16 ZoombiniInteractiveTunnels::spawnPendingZoombinis() {
+int16 ZoombiniPuzzleTunnels::spawnPendingZoombinis() {
 	int16 spawned = 0;
 
 	for (int16 i = 0; i < 4 && _animQueueCount > 0; i++) {
@@ -1560,7 +1560,7 @@ int16 ZoombiniInteractiveTunnels::spawnPendingZoombinis() {
 // On soundIdx==-1 (end): set goButtonReady, maybe play ambient SND 20045-20048.
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::playAmbientSound() {
+void ZoombiniPuzzleTunnels::playAmbientSound() {
 	_goButtonReady = true;
 
 	// Probability check: rand(0,4) > difficultyLevel OR puzzleFlag <= 3
@@ -1578,7 +1578,7 @@ void ZoombiniInteractiveTunnels::playAmbientSound() {
 // IDA: tunnels_clearGateRenderFlag @ 0x45DD11
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::clearGateRenderFlag() {
+void ZoombiniPuzzleTunnels::clearGateRenderFlag() {
 	// Clear OVERLAY flag on appropriate door features for gate types 1 and 4
 	if (_animQueueCount > 0) {
 		int16 gateType = kHoverDataToGateType[_animQueue[0].zoneIdx > 0 ? _animQueue[0].zoneIdx - 1 : 0];
@@ -1598,7 +1598,7 @@ void ZoombiniInteractiveTunnels::clearGateRenderFlag() {
 // findIdlePackSnoid
 // =========================================================================
 
-ZmbSnoid *ZoombiniInteractiveTunnels::findIdlePackSnoid(uint16 snoidId) {
+ZmbSnoid *ZoombiniPuzzleTunnels::findIdlePackSnoid(uint16 snoidId) {
 	ZmbSnoid *snoid = getSnoid(snoidId);
 	if (snoid && snoid->getAnimState() == kSnoidAnimIdle)
 		return snoid;
@@ -1616,7 +1616,7 @@ ZmbSnoid *ZoombiniInteractiveTunnels::findIdlePackSnoid(uint16 snoidId) {
 // IDA: tunnels_scrbAnimCallback @ 0x45B56C
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::processSnoidAnimEvent(ZmbSnoid *snoid, int16 eventCode) {
+void ZoombiniPuzzleTunnels::processSnoidAnimEvent(ZmbSnoid *snoid, int16 eventCode) {
 	if (!snoid)
 		return;
 
@@ -1796,7 +1796,7 @@ void ZoombiniInteractiveTunnels::processSnoidAnimEvent(ZmbSnoid *snoid, int16 ev
 // processGateAnimEvent
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::processGateAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleTunnels::processGateAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	if (eventCode == kZmbAnimEventM1_End) {
 		// Gate animation complete
 		_animLocked = false;
@@ -1809,7 +1809,7 @@ void ZoombiniInteractiveTunnels::processGateAnimEvent(ZmbFeature *feature, int16
 // onFeatureAnimEvent
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleTunnels::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 		processSnoidAnimEvent(static_cast<ZmbSnoid *>(feature), eventCode);
 	} else {
@@ -1822,7 +1822,7 @@ void ZoombiniInteractiveTunnels::onFeatureAnimEvent(ZmbFeature *feature, int16 e
 // IDA: puzzleTunnels_onHover @ 0x45A460
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::onEveryFrame() {
+void ZoombiniPuzzleTunnels::onEveryFrame() {
 	if (_processingFrame || !_puzzleActive)
 		return;
 	_processingFrame = true;
@@ -2016,7 +2016,7 @@ postAnimQueue:
 // Button Handlers
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::onGoButtonActivated() {
+void ZoombiniPuzzleTunnels::onGoButtonActivated() {
 	// IDA: tunnels_onClickHandler case 2
 	_departXferSrcSiPage = ZMB_SI_TUNNELS_03;
 	startDepartWalkAnimation(Common::Point(670, 30));
@@ -2032,7 +2032,7 @@ void ZoombiniInteractiveTunnels::onGoButtonActivated() {
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
-ZmbEventHandleResult ZoombiniInteractiveTunnels::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleTunnels::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
 	// Sticky mouse: second click ends drag
 	if (isDragging() && _vm->_state->getEnableStickyMouse()) {
 		endDrag(absPos);
@@ -2062,7 +2062,7 @@ ZmbEventHandleResult ZoombiniInteractiveTunnels::onLButtonDown(const Common::Poi
 	return ZmbEventHandleResult::kPassthrough;
 }
 
-ZmbEventHandleResult ZoombiniInteractiveTunnels::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleTunnels::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
 	if (!isDragging())
 		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
 
@@ -2077,7 +2077,7 @@ ZmbEventHandleResult ZoombiniInteractiveTunnels::onLButtonUp(const Common::Point
 // endDrag
 // =========================================================================
 
-void ZoombiniInteractiveTunnels::endDrag(const Common::Point &dropPos) {
+void ZoombiniPuzzleTunnels::endDrag(const Common::Point &dropPos) {
 	ZmbSnoid *snoid = finishSnoidDrag();
 	if (!snoid)
 		return;

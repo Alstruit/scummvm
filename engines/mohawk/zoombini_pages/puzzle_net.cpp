@@ -29,7 +29,7 @@
 namespace Mohawk {
 
 // IDA: pedestal positions from 0x4A286C (16 POINTS)
-const Common::Point ZoombiniInteractiveNet::kSnoidPositions[16] = {
+const Common::Point ZoombiniPuzzleNet::kSnoidPositions[16] = {
 	Common::Point(233, 392), Common::Point(209, 378), Common::Point(196, 390), Common::Point(185, 365),
 	Common::Point(167, 380), Common::Point(160, 408), Common::Point(135, 397), Common::Point(121, 407),
 	Common::Point(115, 368), Common::Point(114, 342), Common::Point( 99, 375), Common::Point( 97, 394),
@@ -37,7 +37,7 @@ const Common::Point ZoombiniInteractiveNet::kSnoidPositions[16] = {
 };
 
 // IDA: word_4A2586 — low-difficulty slot positions (5x5 = 25 entries)
-const Common::Point ZoombiniInteractiveNet::kSlotPositionsLow[25] = {
+const Common::Point ZoombiniPuzzleNet::kSlotPositionsLow[25] = {
 	Common::Point(102, 117), Common::Point(204, 106), Common::Point(306,  94), Common::Point(409,  79), Common::Point(507,  69),
 	Common::Point(102, 157), Common::Point(204, 143), Common::Point(306, 129), Common::Point(407, 115), Common::Point(507, 104),
 	Common::Point(102, 195), Common::Point(204, 180), Common::Point(306, 166), Common::Point(407, 151), Common::Point(507, 140),
@@ -46,7 +46,7 @@ const Common::Point ZoombiniInteractiveNet::kSlotPositionsLow[25] = {
 };
 
 // IDA: word_4A25EA — high-difficulty slot positions (5x25 = 125 entries)
-const Common::Point ZoombiniInteractiveNet::kSlotPositionsHigh[125] = {
+const Common::Point ZoombiniPuzzleNet::kSlotPositionsHigh[125] = {
 	// Plane 0 (slots 0-24)
 	Common::Point( 74, 121), Common::Point( 94, 119), Common::Point(114, 116), Common::Point(135, 113), Common::Point(156, 111),
 	Common::Point(177, 109), Common::Point(197, 107), Common::Point(217, 104), Common::Point(237, 102), Common::Point(257,  99),
@@ -80,7 +80,7 @@ const Common::Point ZoombiniInteractiveNet::kSlotPositionsHigh[125] = {
 };
 
 // IDA: dword_4A27DE — exit positions (16 packed x,y pairs)
-const Common::Point ZoombiniInteractiveNet::kExitPositions[16] = {
+const Common::Point ZoombiniPuzzleNet::kExitPositions[16] = {
 	Common::Point( 16, 58), Common::Point( 17, 45), Common::Point( 15, 33), Common::Point( 16, 19),
 	Common::Point( 47, 59), Common::Point( 51, 48), Common::Point( 46, 30), Common::Point( 48, 20),
 	Common::Point( 77, 63), Common::Point( 74, 47), Common::Point( 76, 32), Common::Point( 77, 18),
@@ -88,37 +88,37 @@ const Common::Point ZoombiniInteractiveNet::kExitPositions[16] = {
 };
 
 // IDA: dword_4A28E8 — entry start positions (snoid event 4)
-const Common::Point ZoombiniInteractiveNet::kEntryStartPositions[3] = {
+const Common::Point ZoombiniPuzzleNet::kEntryStartPositions[3] = {
 	Common::Point(203, 42), Common::Point(242, 35), Common::Point(283, 28),
 };
 
 // IDA: dword_4A28F4 — entry exit positions (snoid event 30)
-const Common::Point ZoombiniInteractiveNet::kEntryExitPositions[3] = {
+const Common::Point ZoombiniPuzzleNet::kEntryExitPositions[3] = {
 	Common::Point(220, 41), Common::Point(259, 34), Common::Point(300, 27),
 };
 
 // IDA: unk_4A28D4 — column offset remapping table 1
-const int16 ZoombiniInteractiveNet::kColOffsets1[5] = {2, 3, 0, 1, 4};
+const int16 ZoombiniPuzzleNet::kColOffsets1[5] = {2, 3, 0, 1, 4};
 
 // IDA: unk_4A28DE — column offset remapping table 2
-const int16 ZoombiniInteractiveNet::kColOffsets2[5] = {4, 0, 2, 1, 3};
+const int16 ZoombiniPuzzleNet::kColOffsets2[5] = {4, 0, 2, 1, 3};
 
-ZoombiniInteractiveNet::ZoombiniInteractiveNet(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kNet) {
+ZoombiniPuzzleNet::ZoombiniPuzzleNet(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kNet) {
 }
 
-ZoombiniInteractiveNet::~ZoombiniInteractiveNet() {
+ZoombiniPuzzleNet::~ZoombiniPuzzleNet() {
 }
 
-void ZoombiniInteractiveNet::open() {
+void ZoombiniPuzzleNet::open() {
 	openArchive(ZMB_MHK_NET);
 }
 
-void ZoombiniInteractiveNet::setBackgroundMusic() {
+void ZoombiniPuzzleNet::setBackgroundMusic() {
 	// IDA: net_puzzleInit (0x4361d4) has no music playback call on page load.
 	// sound_activeHandle = 20064 is stored at end of funcInit for F1 replay only.
 }
 
-void ZoombiniInteractiveNet::setBackgroundBitmap() {
+void ZoombiniPuzzleNet::setBackgroundBitmap() {
 	// IDA: gfx_drawBackgroundFromResId((net_difficultyLevel >= 2) + 5000)
 	// Background differs based on difficulty: 5000 or 5001
 	uint16 bgId = (_difficultyLevel >= 2) ? 5001 : 5000;
@@ -126,7 +126,7 @@ void ZoombiniInteractiveNet::setBackgroundBitmap() {
 	_vm->_gfx->drawBackground(bgId);
 }
 
-void ZoombiniInteractiveNet::loadFeatures() {
+void ZoombiniPuzzleNet::loadFeatures() {
 	// IDA: puzzleNet_4361D4 (0x4361d4)
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
 
@@ -214,8 +214,8 @@ void ZoombiniInteractiveNet::loadFeatures() {
 	// IDA: runner_registerAndAllocate(0, 0, 0, 0, 0, net_invalidateVisualRects2, fleens_renderAllAttrSlots_436785, 0x1000)
 	{
 		ZmbFeature::EventHooks attrSlotHooks;
-		attrSlotHooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveNet::attrSlots_preRender));
-		attrSlotHooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractiveNet::attrSlots_render));
+		attrSlotHooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniPuzzleNet::attrSlots_preRender));
+		attrSlotHooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniPuzzleNet::attrSlots_render));
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0, ZmbFeature::FLAG_00001000_TOPMOST, attrSlotHooks);
 	}
 
@@ -312,7 +312,7 @@ void ZoombiniInteractiveNet::loadFeatures() {
 	_roundCompletedFlag = false;
 }
 
-void ZoombiniInteractiveNet::onGoButtonActivated() {
+void ZoombiniPuzzleNet::onGoButtonActivated() {
 	// IDA: net_onClickHandler case 2
 	// Stop BGM, play departure SFX, walk snoids to (600, -100), fade out when SFX finishes.
 	// IDA: scrb_enqueueSoundResource(0, 0) — stop background music
@@ -324,7 +324,7 @@ void ZoombiniInteractiveNet::onGoButtonActivated() {
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
-void ZoombiniInteractiveNet::loadZoombinisFromPack() {
+void ZoombiniPuzzleNet::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;
 
@@ -350,7 +350,7 @@ void ZoombiniInteractiveNet::loadZoombinisFromPack() {
 	_loadedZmbCount = posIdx;
 }
 
-void ZoombiniInteractiveNet::registerColumnRunners() {
+void ZoombiniPuzzleNet::registerColumnRunners() {
 	// IDA: net_registerAllSCRBRunners (0x437733)
 	// Registers all the SCRB features needed for column-based sorting puzzle.
 	
@@ -413,7 +413,7 @@ void ZoombiniInteractiveNet::registerColumnRunners() {
 		ZmbFeature::FLAG_04000000_OVERLAY);
 }
 
-bool ZoombiniInteractiveNet::attrSlots_preRender(ZmbFeature *feature) {
+bool ZoombiniPuzzleNet::attrSlots_preRender(ZmbFeature *feature) {
 	// IDA: net_invalidateVisualRects2 (0x4367A4)
 	// Toggles dirty flags based on puzzle state and marks rects for redraw.
 	//
@@ -442,7 +442,7 @@ bool ZoombiniInteractiveNet::attrSlots_preRender(ZmbFeature *feature) {
 	return true;
 }
 
-ZmbRenderResult ZoombiniInteractiveNet::attrSlots_render(ZmbFeature *feature) {
+ZmbRenderResult ZoombiniPuzzleNet::attrSlots_render(ZmbFeature *feature) {
 	// IDA: fleens_renderAllAttrSlots_436785 (0x436785)
 	// Renders the attribute slot button sprites.
 	//
@@ -470,7 +470,7 @@ ZmbRenderResult ZoombiniInteractiveNet::attrSlots_render(ZmbFeature *feature) {
 // Core puzzle logic functions
 // ---------------------------------------------------------------------------
 
-void ZoombiniInteractiveNet::computeColumnSizes() {
+void ZoombiniPuzzleNet::computeColumnSizes() {
 	// IDA: net_computeColumnSizes (0x4393C4)
 	// Distributes zoombinis into groups of 3,2,3,2... pattern.
 	// Overwrites _columnCount with the number of groups.
@@ -518,7 +518,7 @@ void ZoombiniInteractiveNet::computeColumnSizes() {
 	}
 }
 
-void ZoombiniInteractiveNet::generateAttrRules() {
+void ZoombiniPuzzleNet::generateAttrRules() {
 	// IDA: net_generateAttrRules (0x437A36)
 	// Generates the rule grids that define the puzzle solution.
 
@@ -681,7 +681,7 @@ void ZoombiniInteractiveNet::generateAttrRules() {
 		_attrPermutationIdx = 0;
 }
 
-int16 ZoombiniInteractiveNet::findSlotByAttrColumns() {
+int16 ZoombiniPuzzleNet::findSlotByAttrColumns() {
 	// IDA: net_findSlotByAttrColumns (0x438C47)
 	// Searches grids for the slot matching current column offsets.
 
@@ -743,7 +743,7 @@ int16 ZoombiniInteractiveNet::findSlotByAttrColumns() {
 	return -1;
 }
 
-void ZoombiniInteractiveNet::updateAttrColumnOffset(int16 value, int16 columnGroup) {
+void ZoombiniPuzzleNet::updateAttrColumnOffset(int16 value, int16 columnGroup) {
 	// IDA: net_updateAttrColumnOffset (0x438108)
 	// Updates column selector and triggers animations.
 
@@ -857,7 +857,7 @@ void ZoombiniInteractiveNet::updateAttrColumnOffset(int16 value, int16 columnGro
 	}
 }
 
-void ZoombiniInteractiveNet::assignNextZmbToColumn() {
+void ZoombiniPuzzleNet::assignNextZmbToColumn() {
 	// IDA: net_assignNextZmbToColumn (0x438017)
 	// Finds an empty column slot and assigns the next zoombini.
 
@@ -893,7 +893,7 @@ void ZoombiniInteractiveNet::assignNextZmbToColumn() {
 	_zmbReadyCount = 0;
 }
 
-void ZoombiniInteractiveNet::registerZmbAtSlot(int16 slotIndex) {
+void ZoombiniPuzzleNet::registerZmbAtSlot(int16 slotIndex) {
 	// IDA: net_registerZmbAtSlot (0x438A84)
 	// Positions and registers a zoombini display at the given net slot.
 
@@ -936,7 +936,7 @@ void ZoombiniInteractiveNet::registerZmbAtSlot(int16 slotIndex) {
 	_slotColumnAssign[slotIndex] = -1;
 }
 
-void ZoombiniInteractiveNet::spawnZmbAtSlot(int16 slotIndex) {
+void ZoombiniPuzzleNet::spawnZmbAtSlot(int16 slotIndex) {
 	// IDA: net_spawnZmbAtSlot (0x439489)
 	// Initiates the bounce animation to spawn a zoombini at a net slot.
 
@@ -981,7 +981,7 @@ void ZoombiniInteractiveNet::spawnZmbAtSlot(int16 slotIndex) {
 // Click handling
 // ---------------------------------------------------------------------------
 
-ZmbEventHandleResult ZoombiniInteractiveNet::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleNet::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
 	// IDA: net_onClick (0x43747F)
 	ZmbEventHandleResult result = ZoombiniInteractive::onLButtonDown(absPos, relPos);
 	if (result == ZmbEventHandleResult::kConsumed)
@@ -1041,7 +1041,7 @@ ZmbEventHandleResult ZoombiniInteractiveNet::onLButtonDown(const Common::Point &
 // Animation event dispatch
 // ---------------------------------------------------------------------------
 
-void ZoombiniInteractiveNet::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleNet::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 		processSnoidAnimEvent(feature, eventCode);
 	} else if (feature == _attrAnimScrbFeature || feature == _entryScrbFeature) {
@@ -1052,7 +1052,7 @@ void ZoombiniInteractiveNet::onFeatureAnimEvent(ZmbFeature *feature, int16 event
 	}
 }
 
-void ZoombiniInteractiveNet::processSnoidAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleNet::processSnoidAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	// IDA: net_zmbAnimCallback (0x438EA1) — snoid-specific events
 	ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
 
@@ -1171,7 +1171,7 @@ void ZoombiniInteractiveNet::processSnoidAnimEvent(ZmbFeature *feature, int16 ev
 	}
 }
 
-void ZoombiniInteractiveNet::processZmbScrbAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleNet::processZmbScrbAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	// IDA: net_zmbAnimCallback (0x438EA1) — events from SCRB features with zmb routing
 	// These events operate on global state (activeZmbSnoidId, columnSlotSnoidIds)
 	// rather than on the calling feature itself.
@@ -1260,7 +1260,7 @@ void ZoombiniInteractiveNet::processZmbScrbAnimEvent(ZmbFeature *feature, int16 
 	}
 }
 
-void ZoombiniInteractiveNet::processScrbAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleNet::processScrbAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	// IDA: net_scrbAnimCallback (0x43105B)
 	// Handles SCRB feature traversal events using ASCII char-based codes.
 	// The traversal system is complex (~30 functions) and handles grid-based
@@ -1306,7 +1306,7 @@ void ZoombiniInteractiveNet::processScrbAnimEvent(ZmbFeature *feature, int16 eve
 // onEveryFrame: Per-frame idle animation scheduling.
 // IDA: net_onFrameTick @ 0x43728B
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveNet::onEveryFrame() {
+void ZoombiniPuzzleNet::onEveryFrame() {
 	// IDA: net_onFrameTick (0x436861) — main per-frame state machine.
 
 	// Phase 1: Exit animation sequence (opening animation)

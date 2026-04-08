@@ -29,7 +29,7 @@
 namespace Mohawk {
 
 // IDA: pedestal positions from 0x4A0FE8 (16 POINTS)
-const Common::Point ZoombiniInteractiveFleens::kSnoidPositions[16] = {
+const Common::Point ZoombiniPuzzleFleens::kSnoidPositions[16] = {
 	Common::Point(238, 368), Common::Point(185, 417), Common::Point(155, 448), Common::Point(197, 396),
 	Common::Point(160, 357), Common::Point(164, 384), Common::Point(150, 416), Common::Point(116, 357),
 	Common::Point(130, 386), Common::Point(109, 418), Common::Point(117, 448), Common::Point( 74, 348),
@@ -37,30 +37,30 @@ const Common::Point ZoombiniInteractiveFleens::kSnoidPositions[16] = {
 };
 
 // IDA: raft DRAW_ON_REG position at 0x4A1028
-const Common::Point ZoombiniInteractiveFleens::kRaftPosition(438, 357);
+const Common::Point ZoombiniPuzzleFleens::kRaftPosition(438, 357);
 
-ZoombiniInteractiveFleens::ZoombiniInteractiveFleens(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kFleens) {
+ZoombiniPuzzleFleens::ZoombiniPuzzleFleens(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kFleens) {
 }
 
-ZoombiniInteractiveFleens::~ZoombiniInteractiveFleens() {
+ZoombiniPuzzleFleens::~ZoombiniPuzzleFleens() {
 }
 
-void ZoombiniInteractiveFleens::open() {
+void ZoombiniPuzzleFleens::open() {
 	openArchive(ZMB_MHK_FLEENS);
 }
 
-void ZoombiniInteractiveFleens::setBackgroundMusic() {
+void ZoombiniPuzzleFleens::setBackgroundMusic() {
 	// IDA: fleens_initAndSetupPuzzle (0x41c1e0) has no music playback call on page load.
 	// sound_activeHandle is stored at end of funcInit for F1 replay only.
 }
 
-void ZoombiniInteractiveFleens::setBackgroundBitmap() {
+void ZoombiniPuzzleFleens::setBackgroundBitmap() {
 	// IDA: gfx_drawBackgroundFromResId(300)
 	_vm->_gfx->setPalette(300);
 	_vm->_gfx->drawBackground(300);
 }
 
-void ZoombiniInteractiveFleens::loadFeatures() {
+void ZoombiniPuzzleFleens::loadFeatures() {
 	// IDA: fleens_initAndSetupPuzzle (0x41C3DC)
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
 
@@ -153,8 +153,8 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 	// Virtual feature for attribute slot rendering (TOPMOST)
 	{
 		ZmbFeature::EventHooks attrSlotHooks;
-		attrSlotHooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveFleens::attrSlots_preRender));
-		attrSlotHooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractiveFleens::attrSlots_render));
+		attrSlotHooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniPuzzleFleens::attrSlots_preRender));
+		attrSlotHooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniPuzzleFleens::attrSlots_render));
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0, ZmbFeature::FLAG_00001000_TOPMOST, attrSlotHooks);
 	}
 
@@ -256,7 +256,7 @@ void ZoombiniInteractiveFleens::loadFeatures() {
 	_totalZmbCount = _loadedZmbCount;
 }
 
-void ZoombiniInteractiveFleens::onGoButtonActivated() {
+void ZoombiniPuzzleFleens::onGoButtonActivated() {
 	// IDA: fleens_onClickHandler case 2
 	// Guard: must be ready and interaction allowed
 	if (!_bRaftReady || !_bInteractionAllowed)
@@ -273,7 +273,7 @@ void ZoombiniInteractiveFleens::onGoButtonActivated() {
 // onEveryFrame: Complete per-frame state machine.
 // IDA: fleens_onHoverPerFrame @ 0x41C81B
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFleens::onEveryFrame() {
+void ZoombiniPuzzleFleens::onEveryFrame() {
 	if (!_bPuzzleActive)
 		return;
 
@@ -381,7 +381,7 @@ void ZoombiniInteractiveFleens::onEveryFrame() {
 // Mouse handlers
 // IDA: fleens_onClickHandler @ 0x41CC8F
 // ---------------------------------------------------------------------------
-ZmbEventHandleResult ZoombiniInteractiveFleens::onLButtonDown(
+ZmbEventHandleResult ZoombiniPuzzleFleens::onLButtonDown(
 		const Common::Point &absPos, const Common::Point &relPos) {
 	// Let base class handle Go/Map/Help buttons first
 	ZmbEventHandleResult result = ZoombiniInteractive::onLButtonDown(absPos, relPos);
@@ -412,7 +412,7 @@ ZmbEventHandleResult ZoombiniInteractiveFleens::onLButtonDown(
 	return ZmbEventHandleResult::kConsumed;
 }
 
-ZmbEventHandleResult ZoombiniInteractiveFleens::onLButtonUp(
+ZmbEventHandleResult ZoombiniPuzzleFleens::onLButtonUp(
 		const Common::Point &absPos, const Common::Point &relPos) {
 	if (!isDragging())
 		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
@@ -421,7 +421,7 @@ ZmbEventHandleResult ZoombiniInteractiveFleens::onLButtonUp(
 	return ZmbEventHandleResult::kConsumed;
 }
 
-ZmbEventHandleResult ZoombiniInteractiveFleens::onMouseMove(
+ZmbEventHandleResult ZoombiniPuzzleFleens::onMouseMove(
 		const Common::Point &absPos, const Common::Point &relPos) {
 	return ZoombiniInteractive::onMouseMove(absPos, relPos);
 }
@@ -430,7 +430,7 @@ ZmbEventHandleResult ZoombiniInteractiveFleens::onMouseMove(
 // endDrag: Process drop target after releasing a dragged Zoombini.
 // IDA: fleens_onClickHandler case 4 drop logic
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFleens::endDrag(const Common::Point &mousePos) {
+void ZoombiniPuzzleFleens::endDrag(const Common::Point &mousePos) {
 	ZmbSnoid *snoid = finishSnoidDrag();
 	if (!snoid)
 		return;
@@ -483,7 +483,7 @@ void ZoombiniInteractiveFleens::endDrag(const Common::Point &mousePos) {
 // mapEventToScrsId: Map an event type to SCRS resource ID.
 // IDA: fleens_mapEventToScrsId @ 0x41E860
 // ---------------------------------------------------------------------------
-uint16 ZoombiniInteractiveFleens::mapEventToScrsId(int16 eventType, const ZmbSnoid *snoid) const {
+uint16 ZoombiniPuzzleFleens::mapEventToScrsId(int16 eventType, const ZmbSnoid *snoid) const {
 	uint8 foot = snoid->_trait._foot;
 
 	switch (eventType) {
@@ -520,7 +520,7 @@ uint16 ZoombiniInteractiveFleens::mapEventToScrsId(int16 eventType, const ZmbSno
 // processRaftDeparture: Process the departure queue.
 // IDA: fleens_processRaftDeparture @ 0x41EAF3
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFleens::processRaftDeparture() {
+void ZoombiniPuzzleFleens::processRaftDeparture() {
 	for (int16 i = 0; i < _departQueueCount; i++) {
 		ZmbSnoid *snoid = getSnoid(_departQueue[i]);
 		if (!snoid)
@@ -560,7 +560,7 @@ void ZoombiniInteractiveFleens::processRaftDeparture() {
 // startInitialRaftAnim: Play the initial raft arrival animation.
 // IDA: fleens_initAndSetupPuzzle tail (0x41C4CA-0x41C52C)
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFleens::startInitialRaftAnim() {
+void ZoombiniPuzzleFleens::startInitialRaftAnim() {
 	if (_loadedZmbCount <= 0)
 		return;
 
@@ -587,7 +587,7 @@ void ZoombiniInteractiveFleens::startInitialRaftAnim() {
 // startBoardingAnimation: Start a boarding animation for the pending snoid.
 // IDA: fleens_onHoverPerFrame boarding block
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFleens::startBoardingAnimation() {
+void ZoombiniPuzzleFleens::startBoardingAnimation() {
 	if (_pendingBoardSnoidId == 0)
 		return;
 
@@ -620,7 +620,7 @@ void ZoombiniInteractiveFleens::startBoardingAnimation() {
 // onRaftExitComplete: Handle raft exit completion.
 // IDA: fleens_onRaftExitComplete @ 0x41ED04
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFleens::onRaftExitComplete() {
+void ZoombiniPuzzleFleens::onRaftExitComplete() {
 	_bInteractionAllowed = true;
 	_bRaftAnimPlaying = false;
 	_bBoardingInProgress = false;
@@ -653,7 +653,7 @@ void ZoombiniInteractiveFleens::onRaftExitComplete() {
 // ---------------------------------------------------------------------------
 // isMismatchSnoid: Check if a snoid index is one of the mismatched ones.
 // ---------------------------------------------------------------------------
-bool ZoombiniInteractiveFleens::isMismatchSnoid(uint16 snoidIdx) const {
+bool ZoombiniPuzzleFleens::isMismatchSnoid(uint16 snoidIdx) const {
 	for (int i = 0; i < 3; i++) {
 		if (_mismatchIdx[i] != 0 && _mismatchIdx[i] == static_cast<int16>(snoidIdx))
 			return true;
@@ -665,7 +665,7 @@ bool ZoombiniInteractiveFleens::isMismatchSnoid(uint16 snoidIdx) const {
 // findAvailableRaftSeat: Find the next empty seat on the raft.
 // IDA: byte_4AB24A[] scan
 // ---------------------------------------------------------------------------
-int16 ZoombiniInteractiveFleens::findAvailableRaftSeat() const {
+int16 ZoombiniPuzzleFleens::findAvailableRaftSeat() const {
 	for (int16 i = 0; i < 16; i++) {
 		if (!_seatOccupied[i])
 			return i;
@@ -673,7 +673,7 @@ int16 ZoombiniInteractiveFleens::findAvailableRaftSeat() const {
 	return -1;
 }
 
-void ZoombiniInteractiveFleens::loadZoombinisFromPack() {
+void ZoombiniPuzzleFleens::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;
 
@@ -699,7 +699,7 @@ void ZoombiniInteractiveFleens::loadZoombinisFromPack() {
 	_loadedZmbCount = posIdx;
 }
 
-void ZoombiniInteractiveFleens::buildZmbTraitSetup() {
+void ZoombiniPuzzleFleens::buildZmbTraitSetup() {
 	// IDA: ferry_buildZmbRunners_41D9F4
 	// Selects "mismatch" zoombinis and generates mod-5 trait transformation offsets.
 	// The transformed traits determine which Zoombinis will be captured by Fleens.
@@ -776,7 +776,7 @@ void ZoombiniInteractiveFleens::buildZmbTraitSetup() {
 	}
 }
 
-bool ZoombiniInteractiveFleens::attrSlots_preRender(ZmbFeature *feature) {
+bool ZoombiniPuzzleFleens::attrSlots_preRender(ZmbFeature *feature) {
 	// IDA: fleens_renderAttrSlotSCRB_4366CB
 	// Toggle dirty flags when raft state changes
 	if (_bRaftReady && _bInteractionAllowed) {
@@ -795,7 +795,7 @@ bool ZoombiniInteractiveFleens::attrSlots_preRender(ZmbFeature *feature) {
 	return true; // Continue to render
 }
 
-ZmbRenderResult ZoombiniInteractiveFleens::attrSlots_render(ZmbFeature *feature) {
+ZmbRenderResult ZoombiniPuzzleFleens::attrSlots_render(ZmbFeature *feature) {
 	// IDA: fleens_renderAttrSlotSCRB_4366CB
 	// Just clear dirty flags for now - actual sprite rendering handled by SCRB features
 	_raftButtonDirty = false;
@@ -810,7 +810,7 @@ ZmbRenderResult ZoombiniInteractiveFleens::attrSlots_render(ZmbFeature *feature)
 //      fleens_raftMovementCallback (0x41E075) — sub-feature movement
 //      fleens_scriptEventHandler{A,B,C,D,E} — script completion handlers
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFleens::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleFleens::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	switch (eventCode) {
 	case kZmbAnimEventM1_End:
 		// End-of-animation. IDA: fleens_raftAnimStateMachine event -1

@@ -29,17 +29,17 @@ namespace Mohawk {
 
 /**
  * Hotel puzzle page (ZoombiniPageType::kHotel).
- *
- * Route 3, End puzzle: Zoombinis must be assigned to hotel rooms
- * based on attribute matching. Room assignments become more complex
- * at higher difficulty levels with different SCRB sets loaded.
+ * Route 3, Puzzle 2
+ * 
+ * Zoombinis must be assigned to hotel rooms based on attribute matching.
+ * Room assignments become more complex at higher difficulty levels with different SCRB sets loaded.
  *
  * IDA entry: hotel_initAndSetupPuzzle (0x41ede4)
  */
-class ZoombiniInteractiveHotel : public ZoombiniPuzzle {
+class ZoombiniPuzzleHotel : public ZoombiniPuzzle {
 public:
-	ZoombiniInteractiveHotel(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractiveHotel() override;
+	ZoombiniPuzzleHotel(MohawkEngine_Zoombini *vm);
+	~ZoombiniPuzzleHotel() override;
 
 	void open() override;
 	void setBackgroundMusic() override;

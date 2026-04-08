@@ -28,17 +28,18 @@ namespace Mohawk {
 
 /**
  * Ferry puzzle page (ZoombiniPageType::kFerry).
+ * Route 2, Puzzle 1
  *
- * Route 1, Puzzle 2: Zoombinis must board boats by matching attributes.
+ * Zoombinis must board boats by matching attributes.
  * Adjacent seated Zoombinis must share at least one trait.
  * The captain (frogman) enforces seating rules with reaction animations.
  *
  * IDA entry: ferry_funcInit (0x41a394)
  */
-class ZoombiniInteractiveFerry : public ZoombiniPuzzle {
+class ZoombiniPuzzleFerry : public ZoombiniPuzzle {
 public:
-	ZoombiniInteractiveFerry(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractiveFerry() override;
+	ZoombiniPuzzleFerry(MohawkEngine_Zoombini *vm);
+	~ZoombiniPuzzleFerry() override;
 
 	void open() override;
 	void setBackgroundMusic() override;

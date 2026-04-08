@@ -34,28 +34,28 @@ namespace Mohawk {
 
 // IDA: word_4A1738/40/48/50 — direction SCRB tables
 // Indexed by previous direction (0=up, 1=right, 2=down, 3=left)
-const uint16 ZoombiniInteractiveLilly::kDirScrbUp[4]    = {10001, 10010, 10015, 10008};
-const uint16 ZoombiniInteractiveLilly::kDirScrbRight[4] = {10005, 10002, 10011, 10016};
-const uint16 ZoombiniInteractiveLilly::kDirScrbDown[4]  = {10013, 10006, 10003, 10012};
-const uint16 ZoombiniInteractiveLilly::kDirScrbLeft[4]  = {10009, 10014, 10007, 10004};
+const uint16 ZoombiniPuzzleLilly::kDirScrbUp[4]    = {10001, 10010, 10015, 10008};
+const uint16 ZoombiniPuzzleLilly::kDirScrbRight[4] = {10005, 10002, 10011, 10016};
+const uint16 ZoombiniPuzzleLilly::kDirScrbDown[4]  = {10013, 10006, 10003, 10012};
+const uint16 ZoombiniPuzzleLilly::kDirScrbLeft[4]  = {10009, 10014, 10007, 10004};
 
 // IDA: word_4A171E — Y offset per column for cell positions
-const int16 ZoombiniInteractiveLilly::kColYOffset[13] = {
+const int16 ZoombiniPuzzleLilly::kColYOffset[13] = {
 	2, 2, 4, 4, 6, 6, 8, 8, 10, 10, 12, 12, 0
 };
 
 // IDA: word_4A16EC — preset swap pair column coordinates
-const int16 ZoombiniInteractiveLilly::kSwapPairCol[20] = {
+const int16 ZoombiniPuzzleLilly::kSwapPairCol[20] = {
 	4, 0, 3, 0, 8, 0, 10, 0, 0, 0, 4, 0, 6, 0, 3, 0, 5, 0, 0, 0
 };
 
 // IDA: word_4A1700 — preset swap pair row coordinates
-const int16 ZoombiniInteractiveLilly::kSwapPairRow[20] = {
+const int16 ZoombiniPuzzleLilly::kSwapPairRow[20] = {
 	4, 0, 6, 0, 3, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 4, 4, 6
 };
 
 // IDA: word_4A1832 — zoombini count → required grid row count
-const int16 ZoombiniInteractiveLilly::kZmbToRowCount[21] = {
+const int16 ZoombiniPuzzleLilly::kZmbToRowCount[21] = {
 	1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10
 };
 
@@ -63,7 +63,7 @@ const int16 ZoombiniInteractiveLilly::kZmbToRowCount[21] = {
 // Construction / Lifecycle
 // =================================================================
 
-ZoombiniInteractiveLilly::ZoombiniInteractiveLilly(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kLilly) {
+ZoombiniPuzzleLilly::ZoombiniPuzzleLilly(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kLilly) {
 	memset(_gridOccupancy, 0, sizeof(_gridOccupancy));
 	memset(_gridAttr1, 0, sizeof(_gridAttr1));
 	memset(_gridAttr2, 0, sizeof(_gridAttr2));
@@ -85,18 +85,18 @@ ZoombiniInteractiveLilly::ZoombiniInteractiveLilly(MohawkEngine_Zoombini *vm) : 
 		_runnerStates[i].clear();
 }
 
-ZoombiniInteractiveLilly::~ZoombiniInteractiveLilly() {
+ZoombiniPuzzleLilly::~ZoombiniPuzzleLilly() {
 }
 
-void ZoombiniInteractiveLilly::open() {
+void ZoombiniPuzzleLilly::open() {
 	openArchive(ZMB_MHK_LILLY);
 }
 
-void ZoombiniInteractiveLilly::setBackgroundMusic() {
+void ZoombiniPuzzleLilly::setBackgroundMusic() {
 	// IDA: lilly_puzzleInit (0x422de4) has no music playback call on page load.
 }
 
-void ZoombiniInteractiveLilly::setBackgroundBitmap() {
+void ZoombiniPuzzleLilly::setBackgroundBitmap() {
 	// IDA: gfx_drawBackgroundFromResId(5000)
 	_vm->_gfx->setPalette(5000);
 	_vm->_gfx->drawBackground(5000);
@@ -106,7 +106,7 @@ void ZoombiniInteractiveLilly::setBackgroundBitmap() {
 // loadFeatures — full puzzle initialization
 // =================================================================
 
-void ZoombiniInteractiveLilly::loadFeatures() {
+void ZoombiniPuzzleLilly::loadFeatures() {
 	// IDA: lilly_puzzleInit (0x422de4)
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel() + 1;
 
@@ -235,13 +235,13 @@ void ZoombiniInteractiveLilly::loadFeatures() {
 // Initialization helpers
 // =================================================================
 
-void ZoombiniInteractiveLilly::onGoButtonActivated() {
+void ZoombiniPuzzleLilly::onGoButtonActivated() {
 	// IDA: lilly_onClickHandler case 2
 	_departXferSrcSiPage = ZMB_SI_LILLY_07;
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
-void ZoombiniInteractiveLilly::loadZoombinisFromPack() {
+void ZoombiniPuzzleLilly::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	const Common::Point offscreenPos(680, 220);
 	uint16 posIdx = 0;
@@ -266,7 +266,7 @@ void ZoombiniInteractiveLilly::loadZoombinisFromPack() {
 	_totalZmbCount = posIdx;
 }
 
-void ZoombiniInteractiveLilly::setDifficultyParams() {
+void ZoombiniPuzzleLilly::setDifficultyParams() {
 	// IDA: lilly_setDifficultyParams (0x4264AC)
 	switch (_difficultyLevel) {
 	case 1:
@@ -289,7 +289,7 @@ void ZoombiniInteractiveLilly::setDifficultyParams() {
 	}
 }
 
-void ZoombiniInteractiveLilly::loadRegsCoordinateTables() {
+void ZoombiniPuzzleLilly::loadRegsCoordinateTables() {
 	// Load REGS 100 X/Y arrays for cell position computation
 	auto it100 = _regsMap.find(100);
 	if (it100 != _regsMap.end()) {
@@ -332,7 +332,7 @@ void ZoombiniInteractiveLilly::loadRegsCoordinateTables() {
 	}
 }
 
-void ZoombiniInteractiveLilly::initGridWithAttributes() {
+void ZoombiniPuzzleLilly::initGridWithAttributes() {
 	// IDA: fleens_initGridWithAttributes (0x427955)
 
 	// Select grid type based on difficulty
@@ -382,7 +382,7 @@ void ZoombiniInteractiveLilly::initGridWithAttributes() {
 	}
 }
 
-void ZoombiniInteractiveLilly::createZoombiniRunners() {
+void ZoombiniPuzzleLilly::createZoombiniRunners() {
 	// IDA: word_4AE3C2[] — per-zoombini runners at SCRB 10109+i
 	for (int16 i = 0; i < _totalZmbCount && i < kMaxRunners; i++) {
 		_zmbRunners[i] = loadScrbFeature(
@@ -412,7 +412,7 @@ void ZoombiniInteractiveLilly::createZoombiniRunners() {
 // IDA: lilly_mainFrameUpdate (0x423A0D)
 // =================================================================
 
-void ZoombiniInteractiveLilly::onEveryFrame() {
+void ZoombiniPuzzleLilly::onEveryFrame() {
 	if (!_bPuzzleActive)
 		return;
 
@@ -444,7 +444,7 @@ void ZoombiniInteractiveLilly::onEveryFrame() {
 
 // --- Queue processing ---
 
-void ZoombiniInteractiveLilly::processEnterQueue() {
+void ZoombiniPuzzleLilly::processEnterQueue() {
 	// IDA: mainFrameUpdate enter queue section
 	// Serialized: only one enter runner active at a time
 	if (_activeEnterRunner >= 0)
@@ -469,7 +469,7 @@ void ZoombiniInteractiveLilly::processEnterQueue() {
 	}
 }
 
-void ZoombiniInteractiveLilly::processExitQueue() {
+void ZoombiniPuzzleLilly::processExitQueue() {
 	// IDA: mainFrameUpdate exit queue section
 	if (_activeExitRunner >= 0)
 		return;
@@ -490,7 +490,7 @@ void ZoombiniInteractiveLilly::processExitQueue() {
 	}
 }
 
-void ZoombiniInteractiveLilly::processCompletedExitRunner() {
+void ZoombiniPuzzleLilly::processCompletedExitRunner() {
 	if (_completedExitRunner < 0)
 		return;
 
@@ -503,7 +503,7 @@ void ZoombiniInteractiveLilly::processCompletedExitRunner() {
 	}
 }
 
-void ZoombiniInteractiveLilly::processRotateQueue() {
+void ZoombiniPuzzleLilly::processRotateQueue() {
 	// IDA: Obstacle rotation animations
 	if (_rotateQueueSize <= 0)
 		return;
@@ -519,7 +519,7 @@ void ZoombiniInteractiveLilly::processRotateQueue() {
 	_rotateQueueSize = 0;
 }
 
-void ZoombiniInteractiveLilly::processCrossQueue() {
+void ZoombiniPuzzleLilly::processCrossQueue() {
 	// IDA: Cross-row transition animations
 	if (_activeCrossRunner >= 0)
 		return;
@@ -540,7 +540,7 @@ void ZoombiniInteractiveLilly::processCrossQueue() {
 	}
 }
 
-void ZoombiniInteractiveLilly::processCompletedCrossRunner() {
+void ZoombiniPuzzleLilly::processCompletedCrossRunner() {
 	if (_completedCrossRunner < 0)
 		return;
 
@@ -553,7 +553,7 @@ void ZoombiniInteractiveLilly::processCompletedCrossRunner() {
 	}
 }
 
-void ZoombiniInteractiveLilly::processDepartQueue() {
+void ZoombiniPuzzleLilly::processDepartQueue() {
 	// IDA: Depart queue — runners leaving their current position
 	if (_departQueueSize <= 0)
 		return;
@@ -562,7 +562,7 @@ void ZoombiniInteractiveLilly::processDepartQueue() {
 		int16 runnerIdx = _departQueue[i];
 		if (_zmbRunners[runnerIdx]) {
 			// IDA: Load SCRB 10141+dirByte (departure animation based on direction)
-			LillyRunnerState &rs = _runnerStates[runnerIdx];
+			ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 			uint16 departScrb = 10141 + rs.dirByte;
 			loadScrbOntoFeature(_zmbRunners[runnerIdx], departScrb);
 		}
@@ -570,7 +570,7 @@ void ZoombiniInteractiveLilly::processDepartQueue() {
 	_departQueueSize = 0;
 }
 
-void ZoombiniInteractiveLilly::processArriveQueue() {
+void ZoombiniPuzzleLilly::processArriveQueue() {
 	// IDA: Arrive queue — runners arriving at destination cell
 	if (_arriveQueueSize <= 0)
 		return;
@@ -579,7 +579,7 @@ void ZoombiniInteractiveLilly::processArriveQueue() {
 		int16 runnerIdx = _arriveQueue[i];
 		if (_zmbRunners[runnerIdx]) {
 			// IDA: Load SCRB 10019+dirByte (arrival animation)
-			LillyRunnerState &rs = _runnerStates[runnerIdx];
+			ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 			uint16 arriveScrb = 10019 + rs.dirByte;
 			loadScrbOntoFeature(_zmbRunners[runnerIdx], arriveScrb);
 		}
@@ -587,7 +587,7 @@ void ZoombiniInteractiveLilly::processArriveQueue() {
 	_arriveQueueSize = 0;
 }
 
-void ZoombiniInteractiveLilly::processMovePhase() {
+void ZoombiniPuzzleLilly::processMovePhase() {
 	// IDA: lilly_movePhaseFlag alternates 0/1 each frame
 
 	if (_movePhaseFlag == 0) {
@@ -603,7 +603,7 @@ void ZoombiniInteractiveLilly::processMovePhase() {
 		int16 newReadySize = 0;
 		for (int16 i = 0; i < _readyQueueSize; i++) {
 			int16 runnerIdx = _readyQueue[i];
-			LillyRunnerState &rs = _runnerStates[runnerIdx];
+			ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 
 			// Call advancePathOnGrid to get next SCRB
 			uint16 nextScrb = advancePathOnGrid(runnerIdx);
@@ -653,7 +653,7 @@ void ZoombiniInteractiveLilly::processMovePhase() {
 	}
 }
 
-void ZoombiniInteractiveLilly::processFreedRunners() {
+void ZoombiniPuzzleLilly::processFreedRunners() {
 	// IDA: Clean up freed runners at end of mainFrameUpdate
 	for (int16 i = 0; i < _freedRunnerCount; i++) {
 		int16 runnerIdx = _freedRunners[i];
@@ -670,11 +670,11 @@ void ZoombiniInteractiveLilly::processFreedRunners() {
 // IDA: maze_advanceRunnerStep (0x425C85)
 // =================================================================
 
-void ZoombiniInteractiveLilly::advanceRunnerStep(int16 runnerIdx) {
+void ZoombiniPuzzleLilly::advanceRunnerStep(int16 runnerIdx) {
 	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
 		return;
 
-	LillyRunnerState &rs = _runnerStates[runnerIdx];
+	ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 	if (rs.pathStepIdx == 0)
 		return;
 
@@ -697,13 +697,13 @@ void ZoombiniInteractiveLilly::advanceRunnerStep(int16 runnerIdx) {
 // Pathfinding
 // =================================================================
 
-uint16 ZoombiniInteractiveLilly::advancePathOnGrid(int16 runnerIdx) {
+uint16 ZoombiniPuzzleLilly::advancePathOnGrid(int16 runnerIdx) {
 	// IDA: fleens_advancePathStep (0x425F3D)
 	// Reads current position & direction, picks best neighbor, returns SCRB.
 	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
 		return 0;
 
-	LillyRunnerState &rs = _runnerStates[runnerIdx];
+	ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 	int16 curCol = rs.col;
 	int16 curRow = rs.row;
 	byte curDir = rs.direction;
@@ -804,13 +804,13 @@ uint16 ZoombiniInteractiveLilly::advancePathOnGrid(int16 runnerIdx) {
 	return dirTable[curDir];
 }
 
-void ZoombiniInteractiveLilly::computeShortestPath(byte targetRow, int16 runnerIdx) {
+void ZoombiniPuzzleLilly::computeShortestPath(byte targetRow, int16 runnerIdx) {
 	// IDA: maze_computeShortestPath (0x42990A)
 	// Dijkstra-style single-source shortest path on 12x12 grid
 	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
 		return;
 
-	LillyRunnerState &rs = _runnerStates[runnerIdx];
+	ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 
 	// Start from frontier position
 	// Iterate up to 200 steps
@@ -862,13 +862,13 @@ void ZoombiniInteractiveLilly::computeShortestPath(byte targetRow, int16 runnerI
 	}
 }
 
-void ZoombiniInteractiveLilly::traversePathBFS(byte targetRow, int16 runnerIdx) {
+void ZoombiniPuzzleLilly::traversePathBFS(byte targetRow, int16 runnerIdx) {
 	// IDA: lilly_traversePathBFS (0x429C2D)
 	// Greedy traversal from frontier toward start, zeroing cells
 	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
 		return;
 
-	LillyRunnerState &rs = _runnerStates[runnerIdx];
+	ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 
 	int16 curCol = rs.frontierCol;
 	int16 curRow = rs.frontierRow;
@@ -910,12 +910,12 @@ void ZoombiniInteractiveLilly::traversePathBFS(byte targetRow, int16 runnerIdx) 
 	}
 }
 
-void ZoombiniInteractiveLilly::initRunnerBFSPath(int16 runnerIdx) {
+void ZoombiniPuzzleLilly::initRunnerBFSPath(int16 runnerIdx) {
 	// IDA: maze_initRunnerBFSPath (0x429440)
 	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
 		return;
 
-	LillyRunnerState &rs = _runnerStates[runnerIdx];
+	ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 
 	// Clear visit grid
 	memset(rs.visitGrid, 0, sizeof(rs.visitGrid));
@@ -943,7 +943,7 @@ void ZoombiniInteractiveLilly::initRunnerBFSPath(int16 runnerIdx) {
 // IDA: lilly_onClickHandler (0x4245CC)
 // =================================================================
 
-ZmbEventHandleResult ZoombiniInteractiveLilly::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleLilly::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
 	// Let base class handle standard buttons (Go/Map/Help)
 	ZmbEventHandleResult result = ZoombiniInteractive::onLButtonDown(absPos, relPos);
 	if (result == ZmbEventHandleResult::kConsumed)
@@ -959,7 +959,7 @@ ZmbEventHandleResult ZoombiniInteractiveLilly::onLButtonDown(const Common::Point
 		if (!_zmbRunners[i] || !_zmbRunners[i]->isRenderActivated())
 			continue;
 
-		LillyRunnerState &rs = _runnerStates[i];
+		ZmbLillyRunnerState &rs = _runnerStates[i];
 		if (rs.placed)
 			continue;
 
@@ -980,7 +980,7 @@ ZmbEventHandleResult ZoombiniInteractiveLilly::onLButtonDown(const Common::Point
 				_bCellSelectActive = false;
 
 				// Finalize placement
-				LillyRunnerState &rs = _runnerStates[_selectingRunnerIdx];
+				ZmbLillyRunnerState &rs = _runnerStates[_selectingRunnerIdx];
 				rs.col = clickCol;
 				rs.row = clickRow;
 				rs.placed = true;
@@ -1019,7 +1019,7 @@ ZmbEventHandleResult ZoombiniInteractiveLilly::onLButtonDown(const Common::Point
 	return ZmbEventHandleResult::kPassthrough;
 }
 
-void ZoombiniInteractiveLilly::handleZoombiniClick(ZmbFeature *clickedRunner) {
+void ZoombiniPuzzleLilly::handleZoombiniClick(ZmbFeature *clickedRunner) {
 	// IDA: lilly_onClickHandler case 4 — interactive selection
 	// Find runner index
 	int16 runnerIdx = -1;
@@ -1033,7 +1033,7 @@ void ZoombiniInteractiveLilly::handleZoombiniClick(ZmbFeature *clickedRunner) {
 	if (runnerIdx < 0)
 		return;
 
-	LillyRunnerState &rs = _runnerStates[runnerIdx];
+	ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 	if (rs.placed)
 		return;
 
@@ -1087,7 +1087,7 @@ void ZoombiniInteractiveLilly::handleZoombiniClick(ZmbFeature *clickedRunner) {
 	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, 12000));
 }
 
-int16 ZoombiniInteractiveLilly::findCellAtPoint(const Common::Point &pos, int16 &outCol, int16 &outRow) const {
+int16 ZoombiniPuzzleLilly::findCellAtPoint(const Common::Point &pos, int16 &outCol, int16 &outRow) const {
 	// Hit-test all grid cells against the given point
 	for (int row = 0; row < 12; row++) {
 		for (int col = 0; col < _gridType; col++) {
@@ -1103,11 +1103,11 @@ int16 ZoombiniInteractiveLilly::findCellAtPoint(const Common::Point &pos, int16 
 	return -1;
 }
 
-bool ZoombiniInteractiveLilly::isCellValidForRunner(int16 col, int16 row, int16 runnerIdx) const {
+bool ZoombiniPuzzleLilly::isCellValidForRunner(int16 col, int16 row, int16 runnerIdx) const {
 	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
 		return false;
 
-	const LillyRunnerState &rs = _runnerStates[runnerIdx];
+	const ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 
 	// Cell must be unoccupied
 	if (_gridOccupancy[row][col] != 0)
@@ -1127,7 +1127,7 @@ bool ZoombiniInteractiveLilly::isCellValidForRunner(int16 col, int16 row, int16 
 // IDA: Event codes from SCRB animations
 // =================================================================
 
-void ZoombiniInteractiveLilly::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleLilly::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	if (!feature)
 		return;
 
@@ -1139,7 +1139,7 @@ void ZoombiniInteractiveLilly::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 
 		if (eventCode == kZmbAnimEventM1_End) {
 			// Animation completed
-			LillyRunnerState &rs = _runnerStates[runnerIdx];
+			ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 
 			// Remove from move queue if present
 			for (int16 i = 0; i < _moveQueueSize; i++) {
@@ -1246,7 +1246,7 @@ void ZoombiniInteractiveLilly::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 // Callbacks
 // =================================================================
 
-void ZoombiniInteractiveLilly::handleRunnerExitCallback(int16 exitCode, int16 runnerIdx) {
+void ZoombiniPuzzleLilly::handleRunnerExitCallback(int16 exitCode, int16 runnerIdx) {
 	// IDA: maze_runnerExitCallback (0x425CCA)
 	switch (exitCode) {
 	case 1:
@@ -1274,12 +1274,12 @@ void ZoombiniInteractiveLilly::handleRunnerExitCallback(int16 exitCode, int16 ru
 	}
 }
 
-void ZoombiniInteractiveLilly::handleRunnerArriveOrDepart(int16 eventCode, int16 runnerIdx) {
+void ZoombiniPuzzleLilly::handleRunnerArriveOrDepart(int16 eventCode, int16 runnerIdx) {
 	// IDA: maze_runnerArriveOrDepartCallback (0x424D3E)
 	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
 		return;
 
-	LillyRunnerState &rs = _runnerStates[runnerIdx];
+	ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 
 	if (eventCode == 70) {
 		// Arrive: snapshot position, push to move queue
@@ -1307,7 +1307,7 @@ void ZoombiniInteractiveLilly::handleRunnerArriveOrDepart(int16 eventCode, int16
 	}
 }
 
-void ZoombiniInteractiveLilly::handleScriptEvent(int16 eventId, ZmbFeature *eventFeature) {
+void ZoombiniPuzzleLilly::handleScriptEvent(int16 eventId, ZmbFeature *eventFeature) {
 	// IDA: maze_scriptEventHandler (0x425D55)
 	switch (eventId) {
 	case 3:
@@ -1366,7 +1366,7 @@ void ZoombiniInteractiveLilly::handleScriptEvent(int16 eventId, ZmbFeature *even
 // Helpers
 // =================================================================
 
-void ZoombiniInteractiveLilly::countMatchesAndPlaySound() {
+void ZoombiniPuzzleLilly::countMatchesAndPlaySound() {
 	// IDA: fleens_countAttrMatchAndEnqueueSound (0x429395)
 	int16 matchCount = 0;
 
@@ -1375,7 +1375,7 @@ void ZoombiniInteractiveLilly::countMatchesAndPlaySound() {
 		if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
 			continue;
 
-		LillyRunnerState &rs = _runnerStates[runnerIdx];
+		ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 		if (rs.placed && rs.direction == 4) {
 			// Runner completed path — count as match
 			matchCount++;
@@ -1392,7 +1392,7 @@ void ZoombiniInteractiveLilly::countMatchesAndPlaySound() {
 	}
 }
 
-void ZoombiniInteractiveLilly::setRunnerClickRect(int16 col, int16 row, ZmbFeature *feature) {
+void ZoombiniPuzzleLilly::setRunnerClickRect(int16 col, int16 row, ZmbFeature *feature) {
 	// IDA: maze_setRunnerClickRect (0x429196)
 	if (!feature)
 		return;
@@ -1405,7 +1405,7 @@ void ZoombiniInteractiveLilly::setRunnerClickRect(int16 col, int16 row, ZmbFeatu
 	}
 }
 
-void ZoombiniInteractiveLilly::swapCellsAndUpdateRunners(int16 colA, int16 rowA, int16 colB, int16 rowB) {
+void ZoombiniPuzzleLilly::swapCellsAndUpdateRunners(int16 colA, int16 rowA, int16 colB, int16 rowB) {
 	// IDA: maze_swapCellsAndUpdateRunners (0x4273BC)
 	// Swap attributes between two grid cells and reinitialize affected runner paths
 
@@ -1428,14 +1428,14 @@ void ZoombiniInteractiveLilly::swapCellsAndUpdateRunners(int16 colA, int16 rowA,
 
 	// Reinitialize BFS paths for all placed runners
 	for (int16 i = 0; i < _totalZmbCount; i++) {
-		LillyRunnerState &rs = _runnerStates[i];
+		ZmbLillyRunnerState &rs = _runnerStates[i];
 		if (rs.placed && rs.direction != 4) {
 			initRunnerBFSPath(i);
 		}
 	}
 }
 
-void ZoombiniInteractiveLilly::spawnObstacleRunner() {
+void ZoombiniPuzzleLilly::spawnObstacleRunner() {
 	// IDA: maze_registerObstacleRunner (0x4267AF)
 	// Spawn a new obstacle on the grid (difficulty >= 3)
 	if (_activeObstacleCount >= _obstacleRows)
@@ -1458,7 +1458,7 @@ void ZoombiniInteractiveLilly::spawnObstacleRunner() {
 
 			int16 runnerIdx = _obstacleRunners[_nextObstacleIdx];
 			if (runnerIdx >= 0 && runnerIdx < kMaxRunners) {
-				LillyRunnerState &rs = _runnerStates[runnerIdx];
+				ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 				rs.obstRow = row;
 				rs.obstCol = 0;
 				rs.col = 0;

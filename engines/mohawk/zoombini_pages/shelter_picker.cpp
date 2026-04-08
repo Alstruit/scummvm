@@ -33,9 +33,9 @@
 
 namespace Mohawk {
 
-const int16 ZoombiniInteractivePicker::kEmbarkOrder[4] = {11, 12, 6, 7};
+const int16 ZoombiniShelterPicker::kEmbarkOrder[4] = {11, 12, 6, 7};
 
-ZoombiniInteractivePicker::ZoombiniInteractivePicker(MohawkEngine_Zoombini *vm) : ZoombiniShelter(vm, ZoombiniPageType::kPicker), _previewSnoid(vm, 0, ZmbFeature::FLAG_00000001_TYPE_SNOID) {
+ZoombiniShelterPicker::ZoombiniShelterPicker(MohawkEngine_Zoombini *vm) : ZoombiniShelter(vm, ZoombiniPageType::kPicker), _previewSnoid(vm, 0, ZmbFeature::FLAG_00000001_TYPE_SNOID) {
 	_mode = kPickerMode_SelectZoombinis;
 	_isFirstVisit = _vm->_state->isFirstLaunch();
 	if (_isFirstVisit && 0 < _vm->_state->_r._saveCount1 && _vm->_state->_currentSaveSlot == ZoombiniGameState::kUnsavedNewGame) {
@@ -62,10 +62,10 @@ ZoombiniInteractivePicker::ZoombiniInteractivePicker(MohawkEngine_Zoombini *vm) 
 	_pickerButtonRectMap[kPickerButtons_Dice] = _diceButtonRect;
 }
 
-ZoombiniInteractivePicker::~ZoombiniInteractivePicker() {
+ZoombiniShelterPicker::~ZoombiniShelterPicker() {
 }
 
-void ZoombiniInteractivePicker::open() {
+void ZoombiniShelterPicker::open() {
 	if (_vm->isGameVariant(GF_ZMB_TLC))
 		openArchive(ZMB_MHK_MUSIC);
 	else
@@ -73,7 +73,7 @@ void ZoombiniInteractivePicker::open() {
 	openArchive(ZMB_MHK_PICKER);
 }
 
-void ZoombiniInteractivePicker::setBackgroundMusic() {
+void ZoombiniShelterPicker::setBackgroundMusic() {
 	// Play background music (1.x: MIDI, 2.0: WAV).
 	if (_vm->isGameVariant(GF_ZMB_TLC)) // 1.x: MIDI from MIDIMPC.MHK
 		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound30001_Isle), Audio::Mixer::kMusicSoundType);
@@ -81,12 +81,12 @@ void ZoombiniInteractivePicker::setBackgroundMusic() {
 		_vm->_midi->playZmbMidi(ZmbResource(ZmbArchiveKind::kPage, kResMidi30001_Isle));
 }
 
-void ZoombiniInteractivePicker::setBackgroundBitmap() {
+void ZoombiniShelterPicker::setBackgroundBitmap() {
 	_vm->_gfx->setPalette(kResBackground4000);
 	_vm->_gfx->drawBackground(kResBackground4000);
 }
 
-void ZoombiniInteractivePicker::loadFeatures() {
+void ZoombiniShelterPicker::loadFeatures() {
 	_vm->_gfx->preloadImage(kResBitmapShapes4400_PickerMatrix);    // to shape slot 0
 	_vm->_gfx->preloadImage(kResBitmapShapes4200_Buttons);         // to shape slot 2
 	_vm->_gfx->preloadImage(kResBitmapShapes4300_ZoombiniPreview); // to shape slot 1
@@ -184,9 +184,9 @@ void ZoombiniInteractivePicker::loadFeatures() {
 		// IDA: picker_init registers a single wResId=0 runner with custom
 		// picker_onPreRenderUI / picker_onPostRenderUI callbacks.
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractivePicker::pickerMatrix_onPreRenderShape));
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractivePicker::pickerMatrix_onPostRender));
-		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractivePicker::pickerMatrix_onLButtonDown));
+		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterPicker::pickerMatrix_onPreRenderShape));
+		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterPicker::pickerMatrix_onPostRender));
+		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniShelterPicker::pickerMatrix_onLButtonDown));
 
 		Common::Array<ZmbHotspot> hotspots;
 		// Normal hotspots (indices 0..19)
@@ -208,11 +208,11 @@ void ZoombiniInteractivePicker::loadFeatures() {
 
 	{ // [*] Callback-only runner (tBMP 4200) - Picker Buttons
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractivePicker::pickerButtons_onPreRenderShape));
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractivePicker::pickerButtons_onPostRender));
-		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractivePicker::pickerButtons_onLButtonDown));
-		hooks.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniInteractivePicker::pickerButtons_onKeyDown));
-		hooks.setKeyUpFunc(reinterpret_cast<ZmbFeature::OnKeyUpFunc>(&ZoombiniInteractivePicker::pickerButtons_onKeyUp));
+		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterPicker::pickerButtons_onPreRenderShape));
+		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterPicker::pickerButtons_onPostRender));
+		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniShelterPicker::pickerButtons_onLButtonDown));
+		hooks.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniShelterPicker::pickerButtons_onKeyDown));
+		hooks.setKeyUpFunc(reinterpret_cast<ZmbFeature::OnKeyUpFunc>(&ZoombiniShelterPicker::pickerButtons_onKeyUp));
 
 		Common::Array<ZmbHotspot> hotspots;
 		hotspots.push_back(ZmbHotspot(kHotspotGenerateButtonNormal, kShape4200_02_GenerateButtonNormal, 0, _generateButtonRect));
@@ -229,7 +229,7 @@ void ZoombiniInteractivePicker::loadFeatures() {
 
 	{ // [*] Callback-only runner (tBMP 4300) - Zoombini Preview
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractivePicker::zoombiniPreview_onPreRenderShape));
+		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterPicker::zoombiniPreview_onPreRenderShape));
 
 		// TODO: Use proper ZmbFeature for Zoombinis later
 		const int16 previewTraitOffsetX = _previewZoombiniRect.left + 39;
@@ -254,7 +254,7 @@ void ZoombiniInteractivePicker::loadFeatures() {
 	// [*] Callback-only runner - open loadDialog if required
 	if (_mode == kPickerMode_LoadGame) {
 		ZmbFeature::EventHooks hooks;
-		hooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractivePicker::oneTimeLoadDialog_onRenderShape));
+		hooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniShelterPicker::oneTimeLoadDialog_onRenderShape));
 
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 						ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
@@ -262,14 +262,14 @@ void ZoombiniInteractivePicker::loadFeatures() {
 	}
 }
 
-void ZoombiniInteractivePicker::pickerMatrix_onPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
+void ZoombiniShelterPicker::pickerMatrix_onPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
 	genericStickyButton_selectShapes(feature, hotspots, _matrixButtonStateMap);
 }
 
-void ZoombiniInteractivePicker::pickerMatrix_onPostRender(ZmbFeature *feature) {
+void ZoombiniShelterPicker::pickerMatrix_onPostRender(ZmbFeature *feature) {
 }
 
-void ZoombiniInteractivePicker::pickerMatrix_onButtonAction(ZmbFeature *feature, uint32 bsIdx, StickyButtonState &bs) {
+void ZoombiniShelterPicker::pickerMatrix_onButtonAction(ZmbFeature *feature, uint32 bsIdx, StickyButtonState &bs) {
 	uint32 row = bsIdx / kMatrixColumns;
 	uint32 column = bsIdx % kMatrixColumns;
 
@@ -325,11 +325,11 @@ void ZoombiniInteractivePicker::pickerMatrix_onButtonAction(ZmbFeature *feature,
 	_pickerButtonStateMap[kPickerButtons_Generate]._isPressDisabled = !isZoombiniTraitGeneratable(_previewSnoid._trait);
 }
 
-ZmbEventHandleResult ZoombiniInteractivePicker::pickerMatrix_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
-	return genericStickyButton_onLButtonDown(feature, absPos, _matrixButtonStateMap, _matrixButtonRectMap, reinterpret_cast<OnStickyButtonActionFunc>(&ZoombiniInteractivePicker::pickerMatrix_onButtonAction));
+ZmbEventHandleResult ZoombiniShelterPicker::pickerMatrix_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
+	return genericStickyButton_onLButtonDown(feature, absPos, _matrixButtonStateMap, _matrixButtonRectMap, reinterpret_cast<OnStickyButtonActionFunc>(&ZoombiniShelterPicker::pickerMatrix_onButtonAction));
 }
 
-void ZoombiniInteractivePicker::pickerButtons_onPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
+void ZoombiniShelterPicker::pickerButtons_onPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
 	// IDA: puzzlePicker_checkCanMoreZmbGenerated_43B359 logic:
 	// wBoolCanMoreZmbGenerated = (loadedCount >= 16 || totalGenerated >= 625)
 	const bool isFull = (static_cast<int16>(_snoidMap.size()) >= 16) || (_vm->_state->_f._zmbGeneratedCount >= 625);
@@ -339,7 +339,7 @@ void ZoombiniInteractivePicker::pickerButtons_onPreRenderShape(ZmbFeature *featu
 	genericButton_selectShapes(feature, hotspots, _pickerButtonStateMap);
 }
 
-void ZoombiniInteractivePicker::pickerButtons_onPostRender(ZmbFeature *feature) {
+void ZoombiniShelterPicker::pickerButtons_onPostRender(ZmbFeature *feature) {
 	updatePendingGoTransition();
 
 	// IDA 0x43A816: Name text is only drawn when wBoolUpdateDrawPreviewName is
@@ -357,10 +357,10 @@ void ZoombiniInteractivePicker::pickerButtons_onPostRender(ZmbFeature *feature) 
 		_vm->_gfx->drawText(screenKind, _previewSnoid._name, nameTextRect, tc);
 	}
 
-	genericButton_action(feature, _pickerButtonStateMap, reinterpret_cast<OnButtonActionFunc>(&ZoombiniInteractivePicker::pickerButtons_onButtonAction));
+	genericButton_action(feature, _pickerButtonStateMap, reinterpret_cast<OnButtonActionFunc>(&ZoombiniShelterPicker::pickerButtons_onButtonAction));
 }
 
-void ZoombiniInteractivePicker::updatePendingGoTransition() {
+void ZoombiniShelterPicker::updatePendingGoTransition() {
 	if (!_pendingGoTransition)
 		return;
 
@@ -380,13 +380,13 @@ void ZoombiniInteractivePicker::updatePendingGoTransition() {
 	close();
 }
 
-ZmbSnoid *ZoombiniInteractivePicker::findSnoidAtSeat(int16 seatIdx) {
+ZmbSnoid *ZoombiniShelterPicker::findSnoidAtSeat(int16 seatIdx) {
 	if (seatIdx < 0 || seatIdx >= 16)
 		return nullptr;
 	return _seatToSnoid[seatIdx];
 }
 
-bool ZoombiniInteractivePicker::areAllEmbarkersDone() const {
+bool ZoombiniShelterPicker::areAllEmbarkersDone() const {
 	// Check if all embarking snoids have finished (either idle or walked off-screen right edge)
 	// IDA: departure polling similar to picker_tryTransition at 0x439E8F
 	for (ZmbSnoid *snoid : _embarkingSnoids) {
@@ -408,7 +408,7 @@ bool ZoombiniInteractivePicker::areAllEmbarkersDone() const {
 	return true;
 }
 
-void ZoombiniInteractivePicker::pickerButtons_onButtonAction(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs) {
+void ZoombiniShelterPicker::pickerButtons_onButtonAction(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs) {
 	if (bs._isPressDisabled)
 		return;
 
@@ -505,11 +505,11 @@ void ZoombiniInteractivePicker::pickerButtons_onButtonAction(ZmbFeature *feature
 	}
 }
 
-ZmbEventHandleResult ZoombiniInteractivePicker::pickerButtons_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniShelterPicker::pickerButtons_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
 	return genericButton_onLButtonDown(feature, absPos, _pickerButtonStateMap, _pickerButtonRectMap);
 }
 
-ZmbEventHandleResult ZoombiniInteractivePicker::pickerButtons_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat) {
+ZmbEventHandleResult ZoombiniShelterPicker::pickerButtons_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat) {
 	// SHIFT held changes the dice button to an "arrow" variant that force-generates all 16 zoombinis
 	if (kbd.hasFlags(Common::KBD_SHIFT)) {
 		_randomizeAll = true;
@@ -526,7 +526,7 @@ ZmbEventHandleResult ZoombiniInteractivePicker::pickerButtons_onKeyDown(ZmbFeatu
 	return ZmbEventHandleResult::kPassthrough;
 }
 
-ZmbEventHandleResult ZoombiniInteractivePicker::pickerButtons_onKeyUp(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat) {
+ZmbEventHandleResult ZoombiniShelterPicker::pickerButtons_onKeyUp(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat) {
 	if (!kbd.hasFlags(Common::KBD_SHIFT)) {
 		_randomizeAll = false;
 
@@ -542,7 +542,7 @@ ZmbEventHandleResult ZoombiniInteractivePicker::pickerButtons_onKeyUp(ZmbFeature
 	return ZmbEventHandleResult::kPassthrough;
 }
 
-void ZoombiniInteractivePicker::zoombiniPreview_onPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
+void ZoombiniShelterPicker::zoombiniPreview_onPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
 	// Body is always visible
 	ZmbHotspot &hsBody = hotspots[kHotspotPreviewBody];
 	hsBody._shapeIdx = kShape4300_01_PreviewBody;
@@ -574,7 +574,7 @@ void ZoombiniInteractivePicker::zoombiniPreview_onPreRenderShape(ZmbFeature *fea
 	}
 }
 
-ZmbRenderResult ZoombiniInteractivePicker::oneTimeLoadDialog_onRenderShape(ZmbFeature *feature) {
+ZmbRenderResult ZoombiniShelterPicker::oneTimeLoadDialog_onRenderShape(ZmbFeature *feature) {
 	_vm->_gfx->flushScreens(); // Ensure screen is up-to-date before opening a first-screen loadDialog
 	ZoombiniDialogResult dialogResult = _vm->openLoadDialog(true);
 	if (dialogResult == ZoombiniDialogResult::kYes)
@@ -591,7 +591,7 @@ ZmbRenderResult ZoombiniInteractivePicker::oneTimeLoadDialog_onRenderShape(ZmbFe
 // IDA: puzzlePicker_buttonClickHandler_439EC2 case 8 (DragZoombini)
 // ---------------------------------------------------------------------------
 
-ZmbEventHandleResult ZoombiniInteractivePicker::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniShelterPicker::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
 	// IDA: puzzlePicker_buttonClickHandler_439EC2 calls picker_tryTransition() (0x439E8F) first.
 	// picker_tryTransition immediately completes the pending departure if puzzle_pendingTransitionTarget is set.
 	if (_pendingGoTransition) {
@@ -640,7 +640,7 @@ ZmbEventHandleResult ZoombiniInteractivePicker::onLButtonDown(const Common::Poin
 	return ZmbEventHandleResult::kConsumed;
 }
 
-void ZoombiniInteractivePicker::updateCaveMarkHighlight() {
+void ZoombiniShelterPicker::updateCaveMarkHighlight() {
 	// IDA: beginDragFeatureRunner_45360F — DRAW_ON_REG highlight logic.
 	// Check if the cave mark reg point is within clickZoneRadius of the dragged snoid.
 	if (!isDragging() || !_caveMarkFeature) {
@@ -671,13 +671,13 @@ void ZoombiniInteractivePicker::updateCaveMarkHighlight() {
 	}
 }
 
-ZmbEventHandleResult ZoombiniInteractivePicker::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniShelterPicker::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
 	ZmbEventHandleResult result = ZoombiniInteractive::onMouseMove(absPos, relPos);
 	updateCaveMarkHighlight();
 	return result;
 }
 
-void ZoombiniInteractivePicker::endDrag(const Common::Point &dropPos) {
+void ZoombiniShelterPicker::endDrag(const Common::Point &dropPos) {
 	// Deactivate cave mark highlight when drag ends
 	if (_caveMarkHighlighted && _caveMarkFeature) {
 		_caveMarkFeature->deactivateRender();
@@ -748,7 +748,7 @@ void ZoombiniInteractivePicker::endDrag(const Common::Point &dropPos) {
 	}
 }
 
-ZmbEventHandleResult ZoombiniInteractivePicker::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniShelterPicker::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
 	if (!isDragging())
 		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
 
@@ -761,7 +761,7 @@ ZmbEventHandleResult ZoombiniInteractivePicker::onLButtonUp(const Common::Point 
 	return ZmbEventHandleResult::kConsumed;
 }
 
-void ZoombiniInteractivePicker::repackSeatPositions() {
+void ZoombiniShelterPicker::repackSeatPositions() {
 	// IDA: picker_getNextSeatOrRepack(0, 0)
 	// Reassign all remaining snoids to sequential seat positions.
 	// Also rebuild the active pack entries and seat-to-snoid mapping.
@@ -798,7 +798,7 @@ void ZoombiniInteractivePicker::repackSeatPositions() {
 	f._zmbPackActive._wPackZmbCount = seatIdx;
 }
 
-void ZoombiniInteractivePicker::onGoButtonActivated() {
+void ZoombiniShelterPicker::onGoButtonActivated() {
 	if (_pendingGoTransition)
 		return;
 
@@ -858,7 +858,7 @@ void ZoombiniInteractivePicker::onGoButtonActivated() {
 	updatePendingGoTransition();
 }
 
-void ZoombiniInteractivePicker::onMapButtonActivated() {
+void ZoombiniShelterPicker::onMapButtonActivated() {
 	// IDA: picker_cleanup with (wChangeColorPaletteState_4A4462 || puzzle_nextPuzzleId == 1):
 	// Copy active pack → Isle pack (preserve snoids on the picker for when user returns).
 	// Then clear active pack.
@@ -878,7 +878,7 @@ void ZoombiniInteractivePicker::onMapButtonActivated() {
 	close();
 }
 
-void ZoombiniInteractivePicker::randomizeTraitSelection() {
+void ZoombiniShelterPicker::randomizeTraitSelection() {
 	// IDA: puzzlePicker_diceRandomZoombini_43ABE2(wBool)
 	// wBool = pickerRunner_4B0C5C.wBoolUpdateDrawPreviewName (whether current
 	// combo is already generatable). When wBool=false, only EMPTY trait slots
@@ -1044,18 +1044,18 @@ void ZoombiniInteractivePicker::randomizeTraitSelection() {
 	_pickerButtonStateMap[kPickerButtons_Generate]._isPressDisabled = !isGeneratable;
 }
 
-bool ZoombiniInteractivePicker::isZoombiniTraitGeneratable(ZmbTrait trait) const {
+bool ZoombiniShelterPicker::isZoombiniTraitGeneratable(ZmbTrait trait) const {
 	if (!trait.isComplete())
 		return false;
 	int16 snoidId = trait.snoidId();
 	return _vm->_state->_f._twinGenStatus[snoidId] < 2;
 }
 
-void ZoombiniInteractivePicker::generateZoombiniName() {
+void ZoombiniShelterPicker::generateZoombiniName() {
 	_previewSnoid._name = _vm->_text->pickNextZoombiniName();
 }
 
-int16 ZoombiniInteractivePicker::loadZoombinisFromPack(ZmbStateActivePack &pack) {
+int16 ZoombiniShelterPicker::loadZoombinisFromPack(ZmbStateActivePack &pack) {
 	int16 count = 0;
 	uint16 occupiedPosIdx = 0;
 

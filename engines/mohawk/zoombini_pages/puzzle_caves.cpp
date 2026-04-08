@@ -29,7 +29,7 @@
 namespace Mohawk {
 
 // IDA: pedestal positions at 0x4A0A70 (20 POINTS)
-const Common::Point ZoombiniInteractiveCaves::kSnoidPositions[20] = {
+const Common::Point ZoombiniPuzzleCaves::kSnoidPositions[20] = {
 	Common::Point(180, 110),
 	Common::Point(160, 136),
 	Common::Point(130, 167),
@@ -54,7 +54,7 @@ const Common::Point ZoombiniInteractiveCaves::kSnoidPositions[20] = {
 
 // IDA: DRAW_ON_REG positions at off_4A09BC+1 thru +20 for SCRB 7000-7019
 // Cave entrance positions forming a spiral path through the cave system
-const Common::Point ZoombiniInteractiveCaves::kCaveEntrancePositions[20] = {
+const Common::Point ZoombiniPuzzleCaves::kCaveEntrancePositions[20] = {
 	Common::Point(254, 140),
 	Common::Point(296, 148),
 	Common::Point(340, 146),
@@ -77,20 +77,20 @@ const Common::Point ZoombiniInteractiveCaves::kCaveEntrancePositions[20] = {
 	Common::Point(554, 359),
 };
 
-ZoombiniInteractiveCaves::ZoombiniInteractiveCaves(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kCaves) {
+ZoombiniPuzzleCaves::ZoombiniPuzzleCaves(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kCaves) {
 }
 
-ZoombiniInteractiveCaves::~ZoombiniInteractiveCaves() {
+ZoombiniPuzzleCaves::~ZoombiniPuzzleCaves() {
 }
 
-void ZoombiniInteractiveCaves::open() {
+void ZoombiniPuzzleCaves::open() {
 	// MIDIMPC.MHK contains MIDI BGM (tMID 30025-30028) — Broderbund v1.x only.
 	if (!_vm->isGameVariant(GF_ZMB_TLC))
 		openArchive(ZMB_MHK_MIDIMPC);
 	openArchive(ZMB_MHK_CAVES);
 }
 
-void ZoombiniInteractiveCaves::setBackgroundMusic() {
+void ZoombiniPuzzleCaves::setBackgroundMusic() {
 	// IDA: caves_funcInit (0x416978) at 0x4172ad:
 	//   if (caves_difficultyLevel < 4) scrb_enqueueSoundResource(30025 + routeDiffLevel)
 	// Plays MIDI BGM for difficulty levels 1-3 (routeLevel 0-2); silent at level 4 (routeLevel 3).
@@ -102,12 +102,12 @@ void ZoombiniInteractiveCaves::setBackgroundMusic() {
 	}
 }
 
-void ZoombiniInteractiveCaves::setBackgroundBitmap() {
+void ZoombiniPuzzleCaves::setBackgroundBitmap() {
 	_vm->_gfx->setPalette(5000);
 	_vm->_gfx->drawBackground(5000);
 }
 
-void ZoombiniInteractiveCaves::loadFeatures() {
+void ZoombiniPuzzleCaves::loadFeatures() {
 	// IDA: caves_funcInit (0x416978)
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel() + 1;
 
@@ -353,14 +353,14 @@ void ZoombiniInteractiveCaves::loadFeatures() {
 	_celebrationTarget = 3;
 }
 
-void ZoombiniInteractiveCaves::onGoButtonActivated() {
+void ZoombiniPuzzleCaves::onGoButtonActivated() {
 	// IDA: caves_onClickHandler case 2 -> puzzle_pendingTransitionTarget = 17
 	// Route 4: Caves -> Smoke (via Xfer)
 	_departXferSrcSiPage = ZMB_SI_CAVES_14;
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
-void ZoombiniInteractiveCaves::loadZoombinisFromPack() {
+void ZoombiniPuzzleCaves::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;
 
@@ -384,7 +384,7 @@ void ZoombiniInteractiveCaves::loadZoombinisFromPack() {
 	}
 }
 
-void ZoombiniInteractiveCaves::initDifficultyParams() {
+void ZoombiniPuzzleCaves::initDifficultyParams() {
 	// IDA: caves_initDifficultyParams_41896E
 	// Initialize difficulty parameters based on route level.
 	// The level determines how many entrances are active and which SCRB panel to use.
@@ -421,7 +421,7 @@ void ZoombiniInteractiveCaves::initDifficultyParams() {
 	}
 }
 
-void ZoombiniInteractiveCaves::setupEntranceGlyphs() {
+void ZoombiniPuzzleCaves::setupEntranceGlyphs() {
 	// IDA: caves_glyphSetupDispatch_418A6E
 	// Calls three sub-functions to setup the glyph pattern system:
 	initEntranceAttrPattern();
@@ -432,7 +432,7 @@ void ZoombiniInteractiveCaves::setupEntranceGlyphs() {
 	distributeEntranceAttributes();
 }
 
-void ZoombiniInteractiveCaves::initEntranceAttrPattern() {
+void ZoombiniPuzzleCaves::initEntranceAttrPattern() {
 	// IDA: caves_initEntranceAttrPattern_418A7E
 	// Initializes random attribute patterns using Fisher-Yates shuffle.
 
@@ -503,7 +503,7 @@ void ZoombiniInteractiveCaves::initEntranceAttrPattern() {
 	}
 }
 
-void ZoombiniInteractiveCaves::countGlyphDistribution() {
+void ZoombiniPuzzleCaves::countGlyphDistribution() {
 	// IDA: caves_countGlyphDistribution_418BFE
 	// Counts glyph attribute distribution across loaded Zoombinis.
 
@@ -548,7 +548,7 @@ void ZoombiniInteractiveCaves::countGlyphDistribution() {
 	}
 }
 
-void ZoombiniInteractiveCaves::buildGlyphTimingTable() {
+void ZoombiniPuzzleCaves::buildGlyphTimingTable() {
 	// IDA: caves_buildGlyphTimingTable_418F6C
 	// Builds timing tables for glyph animations.
 
@@ -587,7 +587,7 @@ void ZoombiniInteractiveCaves::buildGlyphTimingTable() {
 	}
 }
 
-void ZoombiniInteractiveCaves::distributeEntranceAttributes() {
+void ZoombiniPuzzleCaves::distributeEntranceAttributes() {
 	// IDA: caves_entranceAttrDist_418CB1
 	// Distributes attributes to cave entrances based on difficulty level.
 
@@ -710,7 +710,7 @@ void ZoombiniInteractiveCaves::distributeEntranceAttributes() {
 // Gameplay methods
 // =========================================================================
 
-int16 ZoombiniInteractiveCaves::getEntranceSlotAtPoint(const Common::Point &pos) const {
+int16 ZoombiniPuzzleCaves::getEntranceSlotAtPoint(const Common::Point &pos) const {
 	// Check each active entrance's hit rect
 	for (int16 i = 0; i < 20; i++) {
 		if (_entranceHitRects[i].contains(pos.x, pos.y))
@@ -719,7 +719,7 @@ int16 ZoombiniInteractiveCaves::getEntranceSlotAtPoint(const Common::Point &pos)
 	return -1;
 }
 
-int16 ZoombiniInteractiveCaves::findMatchingGlyphSlot(const ZmbTrait &traits) const {
+int16 ZoombiniPuzzleCaves::findMatchingGlyphSlot(const ZmbTrait &traits) const {
 	// IDA: caves_findMatchingGlyphSlot
 	// Determines which cave entrance matches a Zoombini's attributes.
 	// Uses _baseAttrTypes[0] as the primary attribute to match against entrance columns.
@@ -760,7 +760,7 @@ int16 ZoombiniInteractiveCaves::findMatchingGlyphSlot(const ZmbTrait &traits) co
 	return 0;
 }
 
-void ZoombiniInteractiveCaves::handleCorrectPlacement(ZmbSnoid *snoid, int16 entranceSlot) {
+void ZoombiniPuzzleCaves::handleCorrectPlacement(ZmbSnoid *snoid, int16 entranceSlot) {
 	// IDA: caves correct placement handler
 	// Zoombini enters the correct cave.
 
@@ -799,7 +799,7 @@ void ZoombiniInteractiveCaves::handleCorrectPlacement(ZmbSnoid *snoid, int16 ent
 	}
 }
 
-void ZoombiniInteractiveCaves::handleWrongPlacement(ZmbSnoid *snoid, int16 droppedSlot, int16 correctSlot) {
+void ZoombiniPuzzleCaves::handleWrongPlacement(ZmbSnoid *snoid, int16 droppedSlot, int16 correctSlot) {
 	// IDA: caves wrong placement handler
 	// Door rejects the Zoombini and optionally shows a hint.
 
@@ -833,7 +833,7 @@ void ZoombiniInteractiveCaves::handleWrongPlacement(ZmbSnoid *snoid, int16 dropp
 	}
 }
 
-void ZoombiniInteractiveCaves::endDrag(const Common::Point &dropPos) {
+void ZoombiniPuzzleCaves::endDrag(const Common::Point &dropPos) {
 	ZmbSnoid *snoid = finishSnoidDrag();
 	if (!snoid)
 		return;
@@ -864,7 +864,7 @@ void ZoombiniInteractiveCaves::endDrag(const Common::Point &dropPos) {
 	}
 }
 
-ZmbEventHandleResult ZoombiniInteractiveCaves::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleCaves::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
 	// Sticky mouse: second click ends drag
 	if (isDragging() && _vm->_state->getEnableStickyMouse()) {
 		endDrag(absPos);
@@ -899,7 +899,7 @@ ZmbEventHandleResult ZoombiniInteractiveCaves::onLButtonDown(const Common::Point
 	return ZmbEventHandleResult::kConsumed;
 }
 
-ZmbEventHandleResult ZoombiniInteractiveCaves::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleCaves::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
 	if (!isDragging())
 		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
 
@@ -911,7 +911,7 @@ ZmbEventHandleResult ZoombiniInteractiveCaves::onLButtonUp(const Common::Point &
 	return ZmbEventHandleResult::kConsumed;
 }
 
-void ZoombiniInteractiveCaves::onEveryFrame() {
+void ZoombiniPuzzleCaves::onEveryFrame() {
 	if (_processingFrame || !_puzzleActive)
 		return;
 	_processingFrame = true;
@@ -975,7 +975,7 @@ void ZoombiniInteractiveCaves::onEveryFrame() {
 	_processingFrame = false;
 }
 
-void ZoombiniInteractiveCaves::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleCaves::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 		if (eventCode == kZmbAnimEventM1_End) {
 			// End-of-animation — check state and handle completion.

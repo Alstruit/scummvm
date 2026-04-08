@@ -30,7 +30,7 @@
 namespace Mohawk {
 
 // IDA: pedestal positions at 0x4A0E5C (20 POINTS)
-const Common::Point ZoombiniInteractiveFerry::kSnoidPositions[20] = {
+const Common::Point ZoombiniPuzzleFerry::kSnoidPositions[20] = {
 	Common::Point(370, 160), Common::Point(395, 196), Common::Point(332, 156), Common::Point(348, 196),
 	Common::Point(294, 168), Common::Point(316, 196), Common::Point(253, 166), Common::Point(276, 196),
 	Common::Point(214, 157), Common::Point(237, 196), Common::Point(175, 160), Common::Point(196, 190),
@@ -39,36 +39,36 @@ const Common::Point ZoombiniInteractiveFerry::kSnoidPositions[20] = {
 };
 
 // IDA: qword_4A0EBC — dock area rect
-const Common::Rect ZoombiniInteractiveFerry::kDockRect(0, 130, 469, 240);
+const Common::Rect ZoombiniPuzzleFerry::kDockRect(0, 130, 469, 240);
 
 // IDA: word_4A0CFC — boat approach SCRB pool (4 entries)
-const uint16 ZoombiniInteractiveFerry::kBoatScrbPool[4] = { 1800, 1801, 1802, 1803 };
+const uint16 ZoombiniPuzzleFerry::kBoatScrbPool[4] = { 1800, 1801, 1802, 1803 };
 
 // IDA: word_4A0D08 — captain idle fidget SCRB pool (5 entries)
-const uint16 ZoombiniInteractiveFerry::kFidgetScrbPool[5] = { 1823, 1824, 1825, 1826, 1827 };
+const uint16 ZoombiniPuzzleFerry::kFidgetScrbPool[5] = { 1823, 1824, 1825, 1826, 1827 };
 
 // IDA: word_4A0D18 — correct placement reaction SCRB pool (2 entries)
-const uint16 ZoombiniInteractiveFerry::kGoodReactionPool[2] = { 1817, 1818 };
+const uint16 ZoombiniPuzzleFerry::kGoodReactionPool[2] = { 1817, 1818 };
 
 // IDA: word_4A0D20 — wrong placement reaction SCRB pool (11 entries)
-const uint16 ZoombiniInteractiveFerry::kBadReactionPool[11] = {
+const uint16 ZoombiniPuzzleFerry::kBadReactionPool[11] = {
 	1804, 1805, 1806, 1807, 1808, 1809, 1810, 1811, 1812, 1813, 1814
 };
 
 // IDA: word_4A0D4C — moved-from-dock reaction SCRB pool (3 entries)
-const uint16 ZoombiniInteractiveFerry::kMoveReactionPool[3] = { 1820, 1821, 1822 };
+const uint16 ZoombiniPuzzleFerry::kMoveReactionPool[3] = { 1820, 1821, 1822 };
 
-ZoombiniInteractiveFerry::ZoombiniInteractiveFerry(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kFerry) {
+ZoombiniPuzzleFerry::ZoombiniPuzzleFerry(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kFerry) {
 }
 
-ZoombiniInteractiveFerry::~ZoombiniInteractiveFerry() {
+ZoombiniPuzzleFerry::~ZoombiniPuzzleFerry() {
 }
 
-void ZoombiniInteractiveFerry::open() {
+void ZoombiniPuzzleFerry::open() {
 	openArchive(ZMB_MHK_FERRY);
 }
 
-void ZoombiniInteractiveFerry::setBackgroundMusic() {
+void ZoombiniPuzzleFerry::setBackgroundMusic() {
 	// IDA: ferry_funcInit (0x41a394) has NO music playback call on page load.
 	// sound_activeHandle (20073/20074) is stored at the END of funcInit for F1 replay only.
 	// scrb_enqueueSoundResource(0, SND_00997_MOVE_SHORT_SFX) plays a UI click via SCRB when
@@ -76,13 +76,13 @@ void ZoombiniInteractiveFerry::setBackgroundMusic() {
 	// Therefore no sound plays here; the narrator voice must not auto-play on page load.
 }
 
-void ZoombiniInteractiveFerry::setBackgroundBitmap() {
+void ZoombiniPuzzleFerry::setBackgroundBitmap() {
 	// IDA: gfx_drawBackgroundFromResId(1300)
 	_vm->_gfx->setPalette(1300);
 	_vm->_gfx->drawBackground(1300);
 }
 
-void ZoombiniInteractiveFerry::loadFeatures() {
+void ZoombiniPuzzleFerry::loadFeatures() {
 	// IDA: ferry_funcInit (0x41a394)
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
 	_visitCounter++;
@@ -299,7 +299,7 @@ void ZoombiniInteractiveFerry::loadFeatures() {
 	_rejectSnoidId = 0;
 }
 
-void ZoombiniInteractiveFerry::onGoButtonActivated() {
+void ZoombiniPuzzleFerry::onGoButtonActivated() {
 	// IDA: ferry_onClickHandler case 2 -> word_4AB17C=1 -> puzzle_pendingTransitionTarget = 11
 	// Route 2: Ferry -> Lilly (via Xfer)
 	_departXferSrcSiPage = ZMB_SI_FERRY_06;
@@ -308,7 +308,7 @@ void ZoombiniInteractiveFerry::onGoButtonActivated() {
 	_goButtonPressed = true;
 }
 
-void ZoombiniInteractiveFerry::loadZoombinisFromPack() {
+void ZoombiniPuzzleFerry::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;
 
@@ -355,7 +355,7 @@ void ZoombiniInteractiveFerry::loadZoombinisFromPack() {
 //   SCRB ID = shapeId + 1499 (→ 1503-1509)
 //   Flags: DEFER_ANIM | PLAY_ONCE | POS_DELTA | OVERLAY | ZSORT_*
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFerry::loadSeatLayout() {
+void ZoombiniPuzzleFerry::loadSeatLayout() {
 	// Parse the seating SCRB to extract layout entries from both frame groups
 	Common::SeekableReadStream *stream = _vm->getResource(ID_SCRB,
 		ZmbResource(ZmbArchiveKind::kPage, _seatingSCRB));
@@ -479,7 +479,7 @@ void ZoombiniInteractiveFerry::loadSeatLayout() {
 // Difficulty >= 3 adds a third test (raw overlap with no expansion).
 // Matching pairs store 1-based neighbor IDs in the adjacency matrix (max 8 per seat).
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFerry::buildAdjacencyMatrix() {
+void ZoombiniPuzzleFerry::buildAdjacencyMatrix() {
 	memset(_adjacencyMatrix, 0, sizeof(_adjacencyMatrix));
 
 	// Gather seat bounding rects from seat runners
@@ -538,7 +538,7 @@ void ZoombiniInteractiveFerry::buildAdjacencyMatrix() {
 // IDA: click_testZoneRadius_455DFB — builds ±clickZoneRadius rect around pos,
 // tests each posArr_4B7C44 slot. Returns 0-based seat index, or -1 if no match.
 // ---------------------------------------------------------------------------
-int16 ZoombiniInteractiveFerry::getDropTargetSeat(const Common::Point &pos) const {
+int16 ZoombiniPuzzleFerry::getDropTargetSeat(const Common::Point &pos) const {
 	return hitTestDrawOnRegSlot(pos, _clickZoneRadius, true);
 }
 
@@ -548,7 +548,7 @@ int16 ZoombiniInteractiveFerry::getDropTargetSeat(const Common::Point &pos) cons
 // IDA: ferry_onClickHandler case 4, the inner loop.
 // seatIdx is 0-based. Returns true if valid placement; also sets _matchBitmask.
 // ---------------------------------------------------------------------------
-bool ZoombiniInteractiveFerry::testAdjacentMatch(int16 seatIdx, ZmbSnoid *droppedSnoid) {
+bool ZoombiniPuzzleFerry::testAdjacentMatch(int16 seatIdx, ZmbSnoid *droppedSnoid) {
 	_matchBitmask = 0;
 	bool anyNeighborFound = false;
 
@@ -592,7 +592,7 @@ bool ZoombiniInteractiveFerry::testAdjacentMatch(int16 seatIdx, ZmbSnoid *droppe
 // findIdlePackSnoid: Find idle Zoombini from pack (IDs >= 10000).
 // IDA: zmb_findIdleFeatureRunner (0x456A95)
 // ---------------------------------------------------------------------------
-ZmbSnoid *ZoombiniInteractiveFerry::findIdlePackSnoid(uint16 preferredId) {
+ZmbSnoid *ZoombiniPuzzleFerry::findIdlePackSnoid(uint16 preferredId) {
 	if (preferredId > 0) {
 		ZmbSnoid *snoid = getSnoid(preferredId);
 		if (snoid && snoid->getAnimState() == kSnoidAnimIdle)
@@ -612,7 +612,7 @@ ZmbSnoid *ZoombiniInteractiveFerry::findIdlePackSnoid(uint16 preferredId) {
 // startRejectWalk: Set up the reject walk animation.
 // IDA: puzzleFerry_1705_1706_41BA30
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFerry::startRejectWalk(int16 destination) {
+void ZoombiniPuzzleFerry::startRejectWalk(int16 destination) {
 	_rejectDestination = destination;
 
 	if (_rejectSnoidId == 0)
@@ -674,7 +674,7 @@ void ZoombiniInteractiveFerry::startRejectWalk(int16 destination) {
 // handleRejectWalkSetup: Called from onEveryFrame when reject walk is pending.
 // IDA: ferry_funcOnHover, word_4AB12A branch
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFerry::handleRejectWalkSetup() {
+void ZoombiniPuzzleFerry::handleRejectWalkSetup() {
 	_rejectWalkPending = false;
 
 	// IDA: picker_findOpenSlotForZmb — find an open slot to send the rejected zmb to
@@ -716,7 +716,7 @@ void ZoombiniInteractiveFerry::handleRejectWalkSetup() {
 // onEveryFrame: Per-frame tick for ferry puzzle.
 // IDA: ferry_funcOnHover (0x41a9f6)
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFerry::onEveryFrame() {
+void ZoombiniPuzzleFerry::onEveryFrame() {
 	if (!_isActive)
 		return;
 
@@ -847,7 +847,7 @@ void ZoombiniInteractiveFerry::onEveryFrame() {
 // onLButtonDown: Click handler.
 // IDA: ferry_onClickHandler (0x41ae20)
 // ---------------------------------------------------------------------------
-ZmbEventHandleResult ZoombiniInteractiveFerry::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleFerry::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
 	// Handle sticky mouse drop on second click
 	if (isDragging() && _vm->_state->getEnableStickyMouse()) {
 		endDrag(absPos);
@@ -894,7 +894,7 @@ ZmbEventHandleResult ZoombiniInteractiveFerry::onLButtonDown(const Common::Point
 // ---------------------------------------------------------------------------
 // onLButtonUp: Release drag.
 // ---------------------------------------------------------------------------
-ZmbEventHandleResult ZoombiniInteractiveFerry::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleFerry::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
 	if (!isDragging())
 		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
 
@@ -911,7 +911,7 @@ ZmbEventHandleResult ZoombiniInteractiveFerry::onLButtonUp(const Common::Point &
 // IDA: ferry_onClickHandler case 4, after beginDragFeatureRunner.
 // Uses draw-on-reg occupancy for seat tracking and snap positions.
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFerry::endDrag(const Common::Point &mousePos) {
+void ZoombiniPuzzleFerry::endDrag(const Common::Point &mousePos) {
 	ZmbSnoid *snoid = finishSnoidDrag();
 	if (!snoid)
 		return;
@@ -1018,7 +1018,7 @@ void ZoombiniInteractiveFerry::endDrag(const Common::Point &mousePos) {
 // onFeatureAnimEvent: Animation event callback.
 // IDA: dispatched via hotspot group callbacks
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveFerry::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleFerry::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	if (feature == _boatAnimFeature) {
 		// Frogman/boat animation completed
 		if (eventCode == kZmbAnimEventM1_End) {

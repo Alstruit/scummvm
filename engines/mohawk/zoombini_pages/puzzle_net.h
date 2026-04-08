@@ -28,17 +28,14 @@ namespace Mohawk {
 
 /**
  * Net puzzle page (ZoombiniPageType::kNet).
- *
- * Route 4, Puzzle 3: Zoombinis must navigate a sorting net with
- * attribute-based column filters. The puzzle uses 2-3 columns
- * depending on difficulty, with animated column slots.
+ * Route 3, Puzzle 3
  *
  * IDA entry: puzzleNet_4361D4 (0x4361d4)
  */
-class ZoombiniInteractiveNet : public ZoombiniPuzzle {
+class ZoombiniPuzzleNet : public ZoombiniPuzzle {
 public:
-	ZoombiniInteractiveNet(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractiveNet() override;
+	ZoombiniPuzzleNet(MohawkEngine_Zoombini *vm);
+	~ZoombiniPuzzleNet() override;
 
 	void open() override;
 	void setBackgroundMusic() override;

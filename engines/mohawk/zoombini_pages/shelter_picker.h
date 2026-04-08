@@ -26,7 +26,7 @@
 
 namespace Mohawk {
 
-class ZoombiniInteractivePicker : public ZoombiniShelter {
+class ZoombiniShelterPicker : public ZoombiniShelter {
 public:
 	enum PickerMode {
 		/**
@@ -40,8 +40,8 @@ public:
 		kPickerMode_SelectZoombinis,
 	};
 
-	ZoombiniInteractivePicker(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractivePicker() override;
+	ZoombiniShelterPicker(MohawkEngine_Zoombini *vm);
+	~ZoombiniShelterPicker() override;
 
 	void open() override;
 	void setBackgroundMusic() override;

@@ -31,7 +31,7 @@ namespace Mohawk {
  * Maps to the original engine's per-runner struct fields at byte offsets
  * +195..+295.
  */
-struct LillyRunnerState {
+struct ZmbLillyRunnerState {
 	byte col = 0;               // Current grid column. IDA: runner+195
 	byte row = 0;               // Current grid row. IDA: runner+196
 	byte frontierCol = 0;       // BFS frontier column. IDA: runner+199
@@ -67,18 +67,20 @@ struct LillyRunnerState {
 
 /**
  * Lily Pads puzzle page (ZoombiniPageType::kLilly).
+ * Route 2, Puzzle 2
  *
- * Route 3, Puzzle 2: Zoombinis must cross a pond by hopping on lily pads.
- * The grid of pads has an adjacency-based movement system; the player
- * selects pads to form paths. At higher difficulty a frog obstacle appears.
+ * Zoombinis must cross a pond by hopping on lily pads, seating on the big toads.
+ * The grid of pads has an adjacency-based movement system; the player selects start pads.
+ * The player drops a big toad onto the first column of pads, which then hops to the next valid pad.
+ * At higher difficulty a crab obstacle appears.
  *
  * IDA entry: lilly_puzzleInit (0x422de4)
  * NOTE: Non-standard layout — does NOT use zmb_layoutStaticAndWalkInGroups.
  */
-class ZoombiniInteractiveLilly : public ZoombiniPuzzle {
+class ZoombiniPuzzleLilly : public ZoombiniPuzzle {
 public:
-	ZoombiniInteractiveLilly(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractiveLilly() override;
+	ZoombiniPuzzleLilly(MohawkEngine_Zoombini *vm);
+	~ZoombiniPuzzleLilly() override;
 
 	void open() override;
 	void setBackgroundMusic() override;
@@ -272,7 +274,7 @@ private:
 
 	// --- Per-runner state ---
 	static const int kMaxRunners = 21;
-	LillyRunnerState _runnerStates[kMaxRunners];
+	ZmbLillyRunnerState _runnerStates[kMaxRunners];
 	ZmbFeature *_zmbRunners[kMaxRunners] = {};
 
 	// --- Obstacle runners ---

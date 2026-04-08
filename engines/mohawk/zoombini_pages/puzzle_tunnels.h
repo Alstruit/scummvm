@@ -27,23 +27,23 @@
 namespace Mohawk {
 
 /**
- * Tunnels puzzle page (ZoombiniPageType::kTunnels).
- *
- * Route 1, Puzzle 2: Deep Dark Forest - Zoombinis must navigate through tunnels,
- * matching their attributes to the correct tunnel entrance.
+ * Stone Cold Cave: puzzle page (ZoombiniPageType::kTunnels).
+ * Route 1, Puzzle 2
+ * 
+ * Players must guide Zoombinis through one of four tunnels, by matching their attributes to the correct tunnel entrances.
  *
  * Difficulty levels:
- * - Level 0: 2 tunnels, single-attribute rule (e.g., "has blue eyes")
- * - Level 1: 4 tunnels, two single-attribute guards
- * - Level 2: 4 tunnels, two dual-attribute guards (OR within category)
- * - Level 3: 4 tunnels, two cross-category dual-attribute guards (AND)
+ * - Level 1: 2 tunnels active, single-attribute rule (e.g., "has blue eyes")
+ * - Level 2: 4 tunnels active, two single-attribute guards
+ * - Level 3: 4 tunnels active, two dual-attribute guards (OR within category)
+ * - Level 4: 4 tunnels active, two cross-category dual-attribute guards (AND)
  *
  * IDA entry: puzzleTunnels_459DCB (0x459dcb)
  */
-class ZoombiniInteractiveTunnels : public ZoombiniPuzzle {
+class ZoombiniPuzzleTunnels : public ZoombiniPuzzle {
 public:
-	ZoombiniInteractiveTunnels(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractiveTunnels() override;
+	ZoombiniPuzzleTunnels(MohawkEngine_Zoombini *vm);
+	~ZoombiniPuzzleTunnels() override;
 
 	void open() override;
 	void setBackgroundMusic() override;

@@ -33,7 +33,7 @@ namespace Mohawk {
 
 // Snoid position table for 16 Zoombinis on the left bank.
 // IDA: unk_4A07B0 (16 POINTS as x,y int16 pairs)
-const Common::Point ZoombiniInteractiveBridge::kSnoidPositions[16] = {
+const Common::Point ZoombiniPuzzleBridge::kSnoidPositions[16] = {
 	Common::Point(176, 304), Common::Point(169, 327), Common::Point(144, 283), Common::Point(147, 355),
 	Common::Point(124, 318), Common::Point(119, 379), Common::Point(108, 284), Common::Point( 99, 345),
 	Common::Point( 88, 414), Common::Point( 69, 262), Common::Point( 79, 303), Common::Point( 78, 370),
@@ -42,14 +42,14 @@ const Common::Point ZoombiniInteractiveBridge::kSnoidPositions[16] = {
 
 // Bridge segment feature positions (2 entries).
 // IDA: dword_4A07F0 / dword_4A07F4
-const Common::Point ZoombiniInteractiveBridge::kSegmentPositions[2] = {
+const Common::Point ZoombiniPuzzleBridge::kSegmentPositions[2] = {
 	Common::Point(116, 104),
 	Common::Point(128, 203),
 };
 
 // Lane 1 (top) arrival positions for Zoombinis (16 entries).
 // IDA: unk_4A0718
-const Common::Point ZoombiniInteractiveBridge::kLane1Positions[16] = {
+const Common::Point ZoombiniPuzzleBridge::kLane1Positions[16] = {
 	Common::Point(618,  45), Common::Point(582,  49), Common::Point(552,  36), Common::Point(524,  32),
 	Common::Point(493,  25), Common::Point(464,  27), Common::Point(422,  36), Common::Point(618,  86),
 	Common::Point(588,  81), Common::Point(556,  76), Common::Point(615, 129), Common::Point(580, 122),
@@ -58,7 +58,7 @@ const Common::Point ZoombiniInteractiveBridge::kLane1Positions[16] = {
 
 // Lane 2 (bottom) arrival positions for Zoombinis (16 entries).
 // IDA: unk_4A0758
-const Common::Point ZoombiniInteractiveBridge::kLane2Positions[16] = {
+const Common::Point ZoombiniPuzzleBridge::kLane2Positions[16] = {
 	Common::Point(615, 342), Common::Point(590, 332), Common::Point(579, 303), Common::Point(549, 290),
 	Common::Point(522, 281), Common::Point(492, 271), Common::Point(621, 314), Common::Point(602, 283),
 	Common::Point(573, 267), Common::Point(533, 248), Common::Point(622, 257), Common::Point(596, 242),
@@ -89,34 +89,34 @@ static const uint32 kLevel2StepTable[6] = {
 
 // Drag constraint rect for Zoombini (left bank area).
 // IDA: unk_4A07A8 = { 0, 0, 280, 480 }
-const Common::Rect ZoombiniInteractiveBridge::kDragConstraint = Common::Rect(0, 0, 280, 480);
+const Common::Rect ZoombiniPuzzleBridge::kDragConstraint = Common::Rect(0, 0, 280, 480);
 
-ZoombiniInteractiveBridge::ZoombiniInteractiveBridge(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kBridge) {
+ZoombiniPuzzleBridge::ZoombiniPuzzleBridge(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kBridge) {
 }
 
-ZoombiniInteractiveBridge::~ZoombiniInteractiveBridge() {
+ZoombiniPuzzleBridge::~ZoombiniPuzzleBridge() {
 }
 
-const Common::Rect &ZoombiniInteractiveBridge::getDragConstraintRect() const {
+const Common::Rect &ZoombiniPuzzleBridge::getDragConstraintRect() const {
 	return kDragConstraint;
 }
 
-void ZoombiniInteractiveBridge::open() {
+void ZoombiniPuzzleBridge::open() {
 	openArchive(ZMB_MHK_BRIDGE);
 }
 
-void ZoombiniInteractiveBridge::setBackgroundMusic() {
+void ZoombiniPuzzleBridge::setBackgroundMusic() {
 	// Bridge intentionally has no dedicated BGM in the original game.
 	// IDA: bridge_initPuzzleState (0x414C83) has no call to playBgm/loadBgmTrack.
 	// Ambient audio comes from water/troll SCRS animations.
 }
 
-void ZoombiniInteractiveBridge::setBackgroundBitmap() {
+void ZoombiniPuzzleBridge::setBackgroundBitmap() {
 	_vm->_gfx->setPalette(kResBackground1000);
 	_vm->_gfx->drawBackground(kResBackground1000);
 }
 
-void ZoombiniInteractiveBridge::loadFeatures() {
+void ZoombiniPuzzleBridge::loadFeatures() {
 	// --- Initialize puzzle state ---
 	// IDA: bridge_initPuzzleState_414C83
 	_anyZmbCrossed = 0;
@@ -327,7 +327,7 @@ void ZoombiniInteractiveBridge::loadFeatures() {
 	_vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagBridge);
 }
 
-void ZoombiniInteractiveBridge::loadZoombinisFromPack() {
+void ZoombiniPuzzleBridge::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;
 
@@ -355,11 +355,11 @@ void ZoombiniInteractiveBridge::loadZoombinisFromPack() {
 	}
 }
 
-void ZoombiniInteractiveBridge::debugPrepareForDeparture() {
+void ZoombiniPuzzleBridge::debugPrepareForDeparture() {
 	_anyZmbCrossed = 1;
 }
 
-void ZoombiniInteractiveBridge::onGoButtonActivated() {	// IDA: bridge_funcOnClick_4157EB case 2
+void ZoombiniPuzzleBridge::onGoButtonActivated() {	// IDA: bridge_funcOnClick_4157EB case 2
 	// Play departing SFX and start walk-off animation, then fade out when SFX finishes.
 	if (_anyZmbCrossed) {
 		_departXferSrcSiPage = ZMB_SI_BRIDGE_02;
@@ -370,7 +370,7 @@ void ZoombiniInteractiveBridge::onGoButtonActivated() {	// IDA: bridge_funcOnCli
 	}
 }
 
-int16 ZoombiniInteractiveBridge::collectZmbAttrPacked(Common::Array<uint32> &outTraits) const {
+int16 ZoombiniPuzzleBridge::collectZmbAttrPacked(Common::Array<uint32> &outTraits) const {
 	// IDA: collectZmbAttrBytes_4552FE
 	// Collects attribute bytes from all loaded Zoombini snoids into packed DWORDs.
 	// Layout: byte0=foot, byte1=nose, byte2=eye, byte3=head (matching original memory layout)
@@ -393,7 +393,7 @@ int16 ZoombiniInteractiveBridge::collectZmbAttrPacked(Common::Array<uint32> &out
 	return outTraits.size();
 }
 
-void ZoombiniInteractiveBridge::buildAttrTollTable() {
+void ZoombiniPuzzleBridge::buildAttrTollTable() {
 	// IDA: bridge_buildAttrTollTable_4160EF
 	// Builds a pool of all valid toll combinations for the current difficulty level,
 	// counts how many Zoombinis match each combo, and selects the one closest to half.
@@ -747,7 +747,7 @@ void ZoombiniInteractiveBridge::buildAttrTollTable() {
 	}
 }
 
-bool ZoombiniInteractiveBridge::testAttrMatch(const ZmbTrait &trait, int16 targetSlot) const {
+bool ZoombiniPuzzleBridge::testAttrMatch(const ZmbTrait &trait, int16 targetSlot) const {
 	// IDA: bridge_testAttrMatchRule_4168E9
 	// Uses _bRandomLaneSwap to determine which lane is the "match" lane.
 	// targetSlot=1 or 2, laneResult is computed from match + randomSwap + slot inversion.
@@ -785,25 +785,25 @@ bool ZoombiniInteractiveBridge::testAttrMatch(const ZmbTrait &trait, int16 targe
 	return laneResult == 0;
 }
 
-void ZoombiniInteractiveBridge::bridgeButtons_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
+void ZoombiniPuzzleBridge::bridgeButtons_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
 	// IDA: bridge_buttonDraw_415122 (but adapted for ScummVM's pre-render hook pattern)
 	// Enables/disables the Go button based on whether any Zoombini has crossed
 	setGoButtonsEnabled(_anyZmbCrossed != 0);
 	goMapButtons_preRenderShape(feature, hsGroup, hotspots);
 }
 
-ZmbEventHandleResult ZoombiniInteractiveBridge::bridgeButtons_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleBridge::bridgeButtons_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
 	return goMapButtons_onLButtonDown(feature, absPos, relPos);
 }
 
-ZmbRenderResult ZoombiniInteractiveBridge::bridgeVisuals_render(ZmbFeature *feature) {
+ZmbRenderResult ZoombiniPuzzleBridge::bridgeVisuals_render(ZmbFeature *feature) {
 	// IDA: bridge_invalidateVisualRects_415204
 	// Toggle the Go button visibility based on whether any Zoombini has crossed.
 	setGoButtonsEnabled(_anyZmbCrossed != 0);
 	return ZmbRenderResult::kRendered;
 }
 
-void ZoombiniInteractiveBridge::bridgeVisuals_postRender(ZmbFeature *feature) {
+void ZoombiniPuzzleBridge::bridgeVisuals_postRender(ZmbFeature *feature) {
 	// IDA: bridge_drawAllButtons_4151DC
 	// In ScummVM, button rendering is handled by the interactive_base framework.
 	// Nothing additional needed here.
@@ -813,7 +813,7 @@ void ZoombiniInteractiveBridge::bridgeVisuals_postRender(ZmbFeature *feature) {
 // Helper: Reload SCRB animation data on an existing feature.
 // Delegates to ZoombiniPage::loadScrbOntoFeature (IDA: scrb_loadOnRunner 0x460384).
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveBridge::reloadScrbAnimation(uint16 featureId, uint16 newScrbId) {
+void ZoombiniPuzzleBridge::reloadScrbAnimation(uint16 featureId, uint16 newScrbId) {
 	ZmbFeature *feature = _scrbFeatures.find(featureId);
 	if (!feature)
 		return;
@@ -824,7 +824,7 @@ void ZoombiniInteractiveBridge::reloadScrbAnimation(uint16 featureId, uint16 new
 // Helper: Find an idle pack snoid (IDs 10000+).
 // IDA: findIdleFeatureRunner_456A95
 // ---------------------------------------------------------------------------
-ZmbSnoid *ZoombiniInteractiveBridge::findIdlePackSnoid(uint16 preferredId) {
+ZmbSnoid *ZoombiniPuzzleBridge::findIdlePackSnoid(uint16 preferredId) {
 	// If a specific snoid is requested, try it first
 	if (preferredId > 0) {
 		ZmbSnoid *snoid = getSnoid(preferredId);
@@ -846,7 +846,7 @@ ZmbSnoid *ZoombiniInteractiveBridge::findIdlePackSnoid(uint16 preferredId) {
 // Helper: Determine drop target lane from position.
 // IDA: getDropTargetResult_453571 (uses slot positions from bridge segments)
 // ---------------------------------------------------------------------------
-int16 ZoombiniInteractiveBridge::getDropTargetLane(const Common::Point &pos) const {
+int16 ZoombiniPuzzleBridge::getDropTargetLane(const Common::Point &pos) const {
 	// Check proximity to each bridge segment entrance.
 	// Segment 0 (lane 1/top) at kSegmentPositions[0] = (116, 104)
 	// Segment 1 (lane 2/bottom) at kSegmentPositions[1] = (128, 203)
@@ -862,7 +862,7 @@ int16 ZoombiniInteractiveBridge::getDropTargetLane(const Common::Point &pos) con
 // ---------------------------------------------------------------------------
 // Helper: Find a snoid whose drawn area contains the given point.
 // ---------------------------------------------------------------------------
-ZmbSnoid *ZoombiniInteractiveBridge::findSnoidAtPoint(const Common::Point &pos) {
+ZmbSnoid *ZoombiniPuzzleBridge::findSnoidAtPoint(const Common::Point &pos) {
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
 		if ((*it)->getId() < 10000)
 			continue; // Skip template snoids
@@ -877,7 +877,7 @@ ZmbSnoid *ZoombiniInteractiveBridge::findSnoidAtPoint(const Common::Point &pos) 
 // onEveryFrame: Main per-frame logic.
 // IDA: puzzleBridge_onHover_4152C3
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveBridge::onEveryFrame() {
+void ZoombiniPuzzleBridge::onEveryFrame() {
 	if (_processingFrame || !_isActive)
 		return;
 	_processingFrame = true;
@@ -1083,7 +1083,7 @@ void ZoombiniInteractiveBridge::onEveryFrame() {
 // ---------------------------------------------------------------------------
 // onFeatureAnimEvent: Dispatches animation event codes to the appropriate handler.
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveBridge::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleBridge::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 		// Crossing snoid → lane step callback
 		processLaneStepEvent(feature, eventCode);
@@ -1097,7 +1097,7 @@ void ZoombiniInteractiveBridge::onFeatureAnimEvent(ZmbFeature *feature, int16 ev
 // processLaneStepEvent: Lane step callback from crossing snoid SCRS playback.
 // IDA: bridge_zmbLaneStepCallback_415D30
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 stepCode) {
+void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 stepCode) {
 	ZmbSnoid *snoid = static_cast<ZmbSnoid *>(snoidFeature);
 
 	switch (stepCode) {
@@ -1259,7 +1259,7 @@ void ZoombiniInteractiveBridge::processLaneStepEvent(ZmbFeature *snoidFeature, i
 // processEntranceEvent: Troll entrance event callback.
 // IDA: bridge_onEntranceCallback_415C34
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveBridge::processEntranceEvent(int16 eventId, ZmbFeature *eventSource) {
+void ZoombiniPuzzleBridge::processEntranceEvent(int16 eventId, ZmbFeature *eventSource) {
 	if (eventId >= 1 && eventId <= 6) {
 		// Record the troll attribute display state (which attribute the troll shows)
 		_trollAttrState = eventId;
@@ -1296,7 +1296,7 @@ void ZoombiniInteractiveBridge::processEntranceEvent(int16 eventId, ZmbFeature *
 // Drag-and-drop: Zoombini interaction.
 // IDA: bridge_funcOnClick_4157EB case 4
 // ---------------------------------------------------------------------------
-ZmbEventHandleResult ZoombiniInteractiveBridge::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleBridge::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
 	// In sticky mouse mode, a second click ends the drag
 	if (isDragging() && _vm->_state->getEnableStickyMouse()) {
 		endDrag(absPos);
@@ -1354,7 +1354,7 @@ ZmbEventHandleResult ZoombiniInteractiveBridge::onLButtonDown(const Common::Poin
 	return ZmbEventHandleResult::kConsumed;
 }
 
-void ZoombiniInteractiveBridge::endDrag(const Common::Point &dropPos) {
+void ZoombiniPuzzleBridge::endDrag(const Common::Point &dropPos) {
 	ZmbSnoid *snoid = finishSnoidDrag();
 	_isDragging = 0;
 
@@ -1393,7 +1393,7 @@ void ZoombiniInteractiveBridge::endDrag(const Common::Point &dropPos) {
 	}
 }
 
-ZmbEventHandleResult ZoombiniInteractiveBridge::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleBridge::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
 	if (!isDragging()) {
 		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
 	}

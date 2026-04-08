@@ -28,17 +28,18 @@ namespace Mohawk {
 
 /**
  * Pizza puzzle page (ZoombiniPageType::kPizza).
+ * Route 1, Puzzle 3
  *
- * Route 1, End puzzle: Zoombinis order pizzas with specific toppings.
- * The player must figure out which toppings each Zoombini wants by
- * trial and error. Correct toppings make the Zoombini happy.
+ * Zoombinis deliver pizzas to the pizza trolls with specific toppings.
+ * The player must figure out which toppings each pizza troll wants by trial and error.
+ * Deliver exact correct toppings to the pizza trolls to make Zoombinis passable.
  *
  * IDA entry: puzzlePizza_43B394
  */
-class ZoombiniInteractivePizza : public ZoombiniPuzzle {
+class ZoombiniPuzzlePizza : public ZoombiniPuzzle {
 public:
-	ZoombiniInteractivePizza(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractivePizza() override;
+	ZoombiniPuzzlePizza(MohawkEngine_Zoombini *vm);
+	~ZoombiniPuzzlePizza() override;
 
 	void open() override;
 	void setBackgroundMusic() override;

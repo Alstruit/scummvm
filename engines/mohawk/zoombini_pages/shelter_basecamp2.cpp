@@ -35,31 +35,31 @@
 
 namespace Mohawk {
 
-ZoombiniInteractiveBasecampTwo::ZoombiniInteractiveBasecampTwo(MohawkEngine_Zoombini *vm)
+ZoombiniShelterBasecampTwo::ZoombiniShelterBasecampTwo(MohawkEngine_Zoombini *vm)
 	: ZoombiniShelter(vm, ZoombiniPageType::kBasecamp2) {
 	memset(_buttonAnimRunnerIdxs, 0, sizeof(_buttonAnimRunnerIdxs));
 }
 
-ZoombiniInteractiveBasecampTwo::~ZoombiniInteractiveBasecampTwo() {
+ZoombiniShelterBasecampTwo::~ZoombiniShelterBasecampTwo() {
 }
 
-void ZoombiniInteractiveBasecampTwo::open() {
+void ZoombiniShelterBasecampTwo::open() {
 	openArchive(ZMB_MHK_BCTWO);
 	loadREGS(ZmbArchiveKind::kPage, kResRegs10000);
 }
 
-void ZoombiniInteractiveBasecampTwo::setBackgroundMusic() {
+void ZoombiniShelterBasecampTwo::setBackgroundMusic() {
 	// BC2 intentionally has no background music in the original game.
 	// IDA: bc2_initAndSetupPuzzle (0x412E68) has no call to playBgm/loadBgmTrack.
 	// Ambient audio comes from SCRS feature animations (storage scroll, transport, etc.).
 }
 
-void ZoombiniInteractiveBasecampTwo::setBackgroundBitmap() {
+void ZoombiniShelterBasecampTwo::setBackgroundBitmap() {
 	_vm->_gfx->setPalette(kResBackground5000);
 	_vm->_gfx->drawBackground(kResBackground5000);
 }
 
-void ZoombiniInteractiveBasecampTwo::loadFeatures() {
+void ZoombiniShelterBasecampTwo::loadFeatures() {
 	ZmbStateFile &f = _vm->_state->_f;
 
 	// -- Read persisted storage state --
@@ -88,8 +88,8 @@ void ZoombiniInteractiveBasecampTwo::loadFeatures() {
 
 	{ // [*] Virtual Feature: Storage area (no SCRB; preRender=scroll SM, postRender=draw grid)
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveBasecampTwo::storage_preRender));
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveBasecampTwo::storage_postRender));
+		hooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniShelterBasecampTwo::storage_preRender));
+		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterBasecampTwo::storage_postRender));
 		ZmbFeature *vf = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 6,
 											ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM,
 											hooks);
@@ -99,7 +99,7 @@ void ZoombiniInteractiveBasecampTwo::loadFeatures() {
 
 	{ // [*] Virtual Feature: Scroll-button panel (postRender draws scroll arrows via SHPL 9000)
 		ZmbFeature::EventHooks hooks;
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveBasecampTwo::buttons_postRender));
+		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterBasecampTwo::buttons_postRender));
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 						ZmbFeature::FLAG_00001000_TOPMOST | ZmbFeature::FLAG_00008000_LOOP_ANIM,
 						hooks);
@@ -107,9 +107,9 @@ void ZoombiniInteractiveBasecampTwo::loadFeatures() {
 
 	{ // [*] Virtual Feature: Go/Map/Save buttons
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniInteractiveBasecampTwo::goButton_preRender));
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveBasecampTwo::goButton_postRender));
-		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveBasecampTwo::goButton_onLButtonDown));
+		hooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniShelterBasecampTwo::goButton_preRender));
+		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterBasecampTwo::goButton_postRender));
+		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniShelterBasecampTwo::goButton_onLButtonDown));
 		ZmbFeature *vf = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 											ZmbFeature::FLAG_00001000_TOPMOST,
 											hooks);
@@ -288,7 +288,7 @@ void ZoombiniInteractiveBasecampTwo::loadFeatures() {
 	f._storedChunkBC2._storedCount = static_cast<uint16>(_storedCount);
 }
 
-bool ZoombiniInteractiveBasecampTwo::storage_preRender(ZmbFeature *feature) {
+bool ZoombiniShelterBasecampTwo::storage_preRender(ZmbFeature *feature) {
 	// Scroll state machine — runs every frame for LOOP_ANIM feature.
 	// Mirrors sub_4142BF logic: advances _storageLeftmostColumnIdx by the
 	// appropriate step count each time the update interval elapses.
@@ -389,7 +389,7 @@ bool ZoombiniInteractiveBasecampTwo::storage_preRender(ZmbFeature *feature) {
 	return true;
 }
 
-void ZoombiniInteractiveBasecampTwo::storage_postRender(ZmbFeature *feature) {
+void ZoombiniShelterBasecampTwo::storage_postRender(ZmbFeature *feature) {
 	// IDA: bridge_renderAttrSlots_4144A0
 	// Z-order: 1) honeycomb, 2) snoids, 3) lattice, 4) border
 
@@ -459,12 +459,12 @@ void ZoombiniInteractiveBasecampTwo::storage_postRender(ZmbFeature *feature) {
 	_vm->_gfx->drawImage(screenKind, kResBitmapShape8000_Storage + kShape8000_StorageBorder - 1, Common::Point(101, 0));
 }
 
-void ZoombiniInteractiveBasecampTwo::buttons_postRender(ZmbFeature *feature) {
+void ZoombiniShelterBasecampTwo::buttons_postRender(ZmbFeature *feature) {
 	// Draws scroll arrows (button group 2 = v4=4..7).
 	renderButtons(false, 2, false, 0);
 }
 
-bool ZoombiniInteractiveBasecampTwo::goButton_preRender(ZmbFeature *feature) {
+bool ZoombiniShelterBasecampTwo::goButton_preRender(ZmbFeature *feature) {
 	// Sync _canGoVisible with _canGoEnabled each frame.
 	// IDA: The original just toggles between shapes 1 (enabled) and 15 (disabled)
 	// in renderButtons based on bridge_bAllZmbOnField. No separate animation SCRB.
@@ -477,13 +477,13 @@ bool ZoombiniInteractiveBasecampTwo::goButton_preRender(ZmbFeature *feature) {
 	return true;
 }
 
-void ZoombiniInteractiveBasecampTwo::goButton_postRender(ZmbFeature *feature) {
+void ZoombiniShelterBasecampTwo::goButton_postRender(ZmbFeature *feature) {
 	// Draw go/map/save buttons, then draw the special Save button.
 	renderButtons(false, 1, false, 0);
 	renderButtons(false, 0, false, 4);
 }
 
-ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::goButton_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniShelterBasecampTwo::goButton_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
 	// IDA: caves_entranceBridge_funcOnClick_413740
 	if (_goButtonRect.contains(absPos) && _canGoEnabled && !_pendingGoDepart) {
 		// Case 1: Go button — SFX 996, walk snoids to (680, 316), fade out when SFX finishes.
@@ -530,7 +530,7 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::goButton_onLButtonDown(ZmbF
 // IDA: bc2_onHotspotHover (arg0=1 → pick up, arg0=2 → drag/drop)
 // ---------------------------------------------------------------------------
 
-ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniShelterBasecampTwo::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
 	// Sticky mouse: second click ends drag
 	if (isDragging() && _vm->_state->getEnableStickyMouse()) {
 		endDrag(absPos);
@@ -616,7 +616,7 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonDown(const Common:
 	return ZmbEventHandleResult::kConsumed;
 }
 
-ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniShelterBasecampTwo::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
 	// Handle scroll button release
 	// IDA: caves_entranceBridge_funcOnClick_413740 scroll loop exit
 	if (_currentScrollButton != 0) {
@@ -643,7 +643,7 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onLButtonUp(const Common::P
 	return ZmbEventHandleResult::kConsumed;
 }
 
-void ZoombiniInteractiveBasecampTwo::endDrag(const Common::Point &dropPos) {
+void ZoombiniShelterBasecampTwo::endDrag(const Common::Point &dropPos) {
 	// Clear pedestal hover highlight before ending drag
 	deactivatePedestalHover();
 
@@ -799,7 +799,7 @@ void ZoombiniInteractiveBasecampTwo::endDrag(const Common::Point &dropPos) {
 	_dragStorageOriginSlot = -1;
 }
 
-ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniShelterBasecampTwo::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
 	// Update pedestal hover state during drag
 	if (isDragging()) {
 		updatePedestalHover(_draggedSnoid->getPointLoc());
@@ -809,7 +809,7 @@ ZmbEventHandleResult ZoombiniInteractiveBasecampTwo::onMouseMove(const Common::P
 	return ZoombiniInteractive::onMouseMove(absPos, relPos);
 }
 
-void ZoombiniInteractiveBasecampTwo::updatePedestalHover(const Common::Point &snoidPos) {
+void ZoombiniShelterBasecampTwo::updatePedestalHover(const Common::Point &snoidPos) {
 	// IDA: beginDragFeatureRunner_45360F (~0x453A23–0x453B4B)
 	// Find nearest empty pedestal within hover radius
 	int16 nearestIdx = -1;
@@ -870,7 +870,7 @@ void ZoombiniInteractiveBasecampTwo::updatePedestalHover(const Common::Point &sn
 	_hoveredPedestalIdx = nearestIdx;
 }
 
-void ZoombiniInteractiveBasecampTwo::deactivatePedestalHover() {
+void ZoombiniShelterBasecampTwo::deactivatePedestalHover() {
 	// Clear any pedestal hover highlight when drag ends
 	if (_hoveredPedestalIdx >= 0) {
 		ZmbFeature *pedestal = _scrbFeatures.find(kResScrb7000_Pedestal + _hoveredPedestalIdx);
@@ -881,7 +881,7 @@ void ZoombiniInteractiveBasecampTwo::deactivatePedestalHover() {
 	}
 }
 
-bool ZoombiniInteractiveBasecampTwo::updateButtonAnimations(const Common::Point &cursorPos) {
+bool ZoombiniShelterBasecampTwo::updateButtonAnimations(const Common::Point &cursorPos) {
 	// IDA: bc2_onHotspotHover (0x41392D) button hotspot loop
 	// Check if cursor is over one of the decorative button hotspots
 	// and trigger the corresponding animation if it's not already playing.
@@ -957,7 +957,7 @@ bool ZoombiniInteractiveBasecampTwo::updateButtonAnimations(const Common::Point 
 	return false; // No animation triggered
 }
 
-void ZoombiniInteractiveBasecampTwo::playArrivalVoice() {
+void ZoombiniShelterBasecampTwo::playArrivalVoice() {
 	// IDA: bc2_initAndSetupPuzzle (~0x4133E0–0x4134CD)
 	// Plays a random arrival voice line.
 	// Simplified: plays a random voice from the available BC2 voice set.
@@ -986,7 +986,7 @@ void ZoombiniInteractiveBasecampTwo::playArrivalVoice() {
 	}
 }
 
-void ZoombiniInteractiveBasecampTwo::executeDeparture() {
+void ZoombiniShelterBasecampTwo::executeDeparture() {
 	// IDA: bc2_cleanupOnExit (0x4134D9)
 	saveSnoidsToPack();
 	saveBc2PackState(true);
@@ -996,7 +996,7 @@ void ZoombiniInteractiveBasecampTwo::executeDeparture() {
 	close();
 }
 
-void ZoombiniInteractiveBasecampTwo::renderButtons(bool blit, int group, bool pressed, int singleButton) {
+void ZoombiniShelterBasecampTwo::renderButtons(bool blit, int group, bool pressed, int singleButton) {
 	ZoombiniGraphics::ScreenKind screenKind = ZoombiniGraphics::kShapeScreen;
 
 	// Determine v4 (start button index) and v12 (end button index, exclusive)
@@ -1079,7 +1079,7 @@ void ZoombiniInteractiveBasecampTwo::renderButtons(bool blit, int group, bool pr
 	}
 }
 
-int16 ZoombiniInteractiveBasecampTwo::findLastOccupiedSlot() {
+int16 ZoombiniShelterBasecampTwo::findLastOccupiedSlot() {
 	// Scan from slot 624 downward for first occupied slot.
 	const ZmbStateStoredChunk &chunk = _vm->_state->_f._storedChunkBC2;
 	for (int16 i = 624; i >= 0; i--) {
@@ -1090,7 +1090,7 @@ int16 ZoombiniInteractiveBasecampTwo::findLastOccupiedSlot() {
 	return 0;
 }
 
-void ZoombiniInteractiveBasecampTwo::recalcStorageCapacity(int16 newSlotIdx) {
+void ZoombiniShelterBasecampTwo::recalcStorageCapacity(int16 newSlotIdx) {
 	// Update _storageCapacity and _storageColumnCount based on the highest occupied slot index.
 	const ZmbStateStoredChunk &chunk = _vm->_state->_f._storedChunkBC2;
 	(void)chunk;
@@ -1117,7 +1117,7 @@ void ZoombiniInteractiveBasecampTwo::recalcStorageCapacity(int16 newSlotIdx) {
 	_vm->_state->_f._storedChunkBC2._storedCount = (uint16)_storedCount;
 }
 
-void ZoombiniInteractiveBasecampTwo::expandStorageCapacity() {
+void ZoombiniShelterBasecampTwo::expandStorageCapacity() {
 	// If slots 0..4 are occupied and slots 620..624 are empty, 
     // shift all entries right by 5 slots to open a new leftmost column.
 
@@ -1159,7 +1159,7 @@ void ZoombiniInteractiveBasecampTwo::expandStorageCapacity() {
 	updateScrollSound(kScrollDir_LeftMax, false);
 }
 
-int16 ZoombiniInteractiveBasecampTwo::placeZoombinisIntoStorage(int16 occupiedCount) {
+int16 ZoombiniShelterBasecampTwo::placeZoombinisIntoStorage(int16 occupiedCount) {
 	// Place occupied entries from the active Zoombini pack into the storage grid.
 	// Mirrors bc1_storeArrivingZoombinis (IDA: 0x412C5A).
 	// Returns 1 if Zoombinis fit contiguously after the last occupied slot, or 0 if wrapped.
@@ -1215,7 +1215,7 @@ int16 ZoombiniInteractiveBasecampTwo::placeZoombinisIntoStorage(int16 occupiedCo
 	}
 }
 
-void ZoombiniInteractiveBasecampTwo::compactStorage() {
+void ZoombiniShelterBasecampTwo::compactStorage() {
 	// Count leading empty slots and, if 5+ empty at the left, shift all entries left to remove dead columns.
 
 	ZmbStateStoredChunk &chunk = _vm->_state->_f._storedChunkBC2;
@@ -1246,14 +1246,14 @@ void ZoombiniInteractiveBasecampTwo::compactStorage() {
 	_vm->_state->_f._storedChunkBC2._leftmostColumnIdx = (uint16)_storageLeftmostColumnIdx;
 }
 
-void ZoombiniInteractiveBasecampTwo::resetStorageSortRect() {
+void ZoombiniShelterBasecampTwo::resetStorageSortRect() {
 	// Reset the storage feature's sort rect.
 	ZmbFeature *storage = _storageFeature;
 	if (storage)
 		storage->setSortRect(Common::Rect());
 }
 
-int16 ZoombiniInteractiveBasecampTwo::findStorageSlotIndex(bool searchOccupied, const Common::Point &cursorPos, uint16 leftmostColumnIdx) {
+int16 ZoombiniShelterBasecampTwo::findStorageSlotIndex(bool searchOccupied, const Common::Point &cursorPos, uint16 leftmostColumnIdx) {
 	// Find a storage slot by cursor position.
 	// Searches the 25-slot visible window starting at leftmostColumnIdx.
 
@@ -1299,7 +1299,7 @@ int16 ZoombiniInteractiveBasecampTwo::findStorageSlotIndex(bool searchOccupied, 
 	return best;
 }
 
-void ZoombiniInteractiveBasecampTwo::updateScrollSound(int scrollDir, bool forceReset) {
+void ZoombiniShelterBasecampTwo::updateScrollSound(int scrollDir, bool forceReset) {
 	// Play or stop the storage-scroll sound depending on
 	// whether there is still room to scroll in the active direction.
 
@@ -1339,7 +1339,7 @@ void ZoombiniInteractiveBasecampTwo::updateScrollSound(int scrollDir, bool force
 	}
 }
 
-int16 ZoombiniInteractiveBasecampTwo::loadZoombinisFromPack(ZmbStateActivePack &pack, bool loadNonOccupied) {
+int16 ZoombiniShelterBasecampTwo::loadZoombinisFromPack(ZmbStateActivePack &pack, bool loadNonOccupied) {
 	// Mirrors BC1's loadZoombinisFromPack / IDA: zmb_loadAnimationsFromActivePack(animFlags).
 	// Loads zoombinis from the given pack into snoid features on-screen.
 	// If loadNonOccupied is false, loads only occupied entries (arriving snoids).
@@ -1388,7 +1388,7 @@ int16 ZoombiniInteractiveBasecampTwo::loadZoombinisFromPack(ZmbStateActivePack &
 	return count;
 }
 
-void ZoombiniInteractiveBasecampTwo::saveSnoidsToPack() {
+void ZoombiniShelterBasecampTwo::saveSnoidsToPack() {
 	// Mirrors BC1's saveSnoidsToPack / IDA: save_updateZmbPacksOnPuzzleComplete(0,1).
 	// Two-pass save: occupied first (pass 0), then non-occupied (pass 1).
 	ZmbStateFile &f = _vm->_state->_f;
@@ -1428,7 +1428,7 @@ void ZoombiniInteractiveBasecampTwo::saveSnoidsToPack() {
 	}
 }
 
-void ZoombiniInteractiveBasecampTwo::saveBc2PackState(bool isDeparture) {
+void ZoombiniShelterBasecampTwo::saveBc2PackState(bool isDeparture) {
 	// Mirrors BC1's saveBc1PackState / IDA: bc2_cleanupOnExit (0x4134D9).
 	// Must be called AFTER saveSnoidsToPack() has populated f._zmbPackActive.
 	ZmbStateFile &f = _vm->_state->_f;

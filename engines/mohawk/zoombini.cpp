@@ -353,52 +353,52 @@ void MohawkEngine_Zoombini::loadNextPage() {
 		page = new ZoombiniTransitionXfer(this);
 		break;
 	case ZoombiniPageType::kPicker:
-		page = new ZoombiniInteractivePicker(this);
+		page = new ZoombiniShelterPicker(this);
 		break;
 	case ZoombiniPageType::kBasecamp1:
-		page = new ZoombiniInteractiveBasecampOne(this);
+		page = new ZoombiniShelterBasecampOne(this);
 		break;
 	case ZoombiniPageType::kTown:
-		page = new ZoombiniInteractiveTown(this);
+		page = new ZoombiniShelterTown(this);
 		break;
 	case ZoombiniPageType::kBasecamp2:
-		page = new ZoombiniInteractiveBasecampTwo(this);
+		page = new ZoombiniShelterBasecampTwo(this);
 		break;
 	case ZoombiniPageType::kBridge:
-		page = new ZoombiniInteractiveBridge(this);
+		page = new ZoombiniPuzzleBridge(this);
 		break;
 	case ZoombiniPageType::kCaves:
-		page = new ZoombiniInteractiveCaves(this);
+		page = new ZoombiniPuzzleCaves(this);
 		break;
 	case ZoombiniPageType::kPizza:
-		page = new ZoombiniInteractivePizza(this);
+		page = new ZoombiniPuzzlePizza(this);
 		break;
 	case ZoombiniPageType::kFerry:
-		page = new ZoombiniInteractiveFerry(this);
+		page = new ZoombiniPuzzleFerry(this);
 		break;
 	case ZoombiniPageType::kLilly:
-		page = new ZoombiniInteractiveLilly(this);
+		page = new ZoombiniPuzzleLilly(this);
 		break;
 	case ZoombiniPageType::kSlides:
-		page = new ZoombiniInteractiveSlides(this);
+		page = new ZoombiniPuzzleSlides(this);
 		break;
 	case ZoombiniPageType::kFleens:
-		page = new ZoombiniInteractiveFleens(this);
+		page = new ZoombiniPuzzleFleens(this);
 		break;
 	case ZoombiniPageType::kHotel:
-		page = new ZoombiniInteractiveHotel(this);
+		page = new ZoombiniPuzzleHotel(this);
 		break;
 	case ZoombiniPageType::kNet:
-		page = new ZoombiniInteractiveNet(this);
+		page = new ZoombiniPuzzleNet(this);
 		break;
 	case ZoombiniPageType::kTunnels:
-		page = new ZoombiniInteractiveTunnels(this);
+		page = new ZoombiniPuzzleTunnels(this);
 		break;
 	case ZoombiniPageType::kSmoke:
-		page = new ZoombiniInteractiveSmoke(this);
+		page = new ZoombiniPuzzleSmoke(this);
 		break;
 	case ZoombiniPageType::kMaze:
-		page = new ZoombiniInteractiveMaze(this);
+		page = new ZoombiniPuzzleMaze(this);
 		break;
 	default:
 		error("Not implemented page: %d", static_cast<int32>(nextPageType));

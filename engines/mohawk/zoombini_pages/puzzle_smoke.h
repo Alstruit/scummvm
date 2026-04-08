@@ -30,7 +30,7 @@ namespace Mohawk {
  * Per-runner puzzle-specific state for the smoke puzzle.
  * Maps IDA byte offsets in the original runner struct to named fields.
  */
-struct SmokeRunnerState {
+struct ZmbSmokeRunnerState {
 	uint8 attrs[4] = {};       // IDA: runner+188..191 (grid/cliff display attrs)
 	uint8 cachedAttrs[4] = {}; // IDA: runner+236..239 (cached zmb attrs stored on runner)
 	uint8 orientation = 0;     // IDA: runner+241
@@ -41,18 +41,21 @@ struct SmokeRunnerState {
 
 /**
  * Smoke puzzle page (ZoombiniPageType::kSmoke).
- *
- * Route 3, Puzzle 3: Zoombinis must be sorted by comparing attributes
- * on a smoke-stack cliffside. The puzzle uses a custom stack-based
- * positioning system instead of the standard walk-in layout.
+ * Route 4, Puzzle 2
+ * 
+ * Magic mirror checks if the lvalue and rvalue matches. 
+ * The player must place the correct Zoombini onto the minecart (lvalue), and correct mirror (rvalue) to make the Zoombini passable.
+ * In the later difficulty levels, the player must also place the correct shims between the lvalue/rvalue and the magic mirror.
+ * 
+ * The puzzle uses a custom stack-based positioning system instead of the standard walk-in layout.
  * NON-STANDARD: Does not use layoutStaticAndWalkIn().
  *
  * IDA entry: smoke_init (0x44983c)
  */
-class ZoombiniInteractiveSmoke : public ZoombiniPuzzle {
+class ZoombiniPuzzleSmoke : public ZoombiniPuzzle {
 public:
-	ZoombiniInteractiveSmoke(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractiveSmoke() override;
+	ZoombiniPuzzleSmoke(MohawkEngine_Zoombini *vm);
+	~ZoombiniPuzzleSmoke() override;
 
 	void open() override;
 	void setBackgroundMusic() override;
@@ -125,10 +128,10 @@ private:
 	int16 copyPairToCompareBuffer();
 
 	/** IDA: smoke_assignRunnerAttrsForLevel (0x44D67C) */
-	void assignRunnerAttrsForLevel(int16 levelIdx, SmokeRunnerState &state);
+	void assignRunnerAttrsForLevel(int16 levelIdx, ZmbSmokeRunnerState &state);
 
 	/** IDA: smoke_generateAttrGrid (0x44E181) */
-	void generateAttrGrid(int16 rowIndex, SmokeRunnerState &state);
+	void generateAttrGrid(int16 rowIndex, ZmbSmokeRunnerState &state);
 
 	/** IDA: smoke_assignZmbAttrsFromSrc (0x44C048) — copy zmb attrs to runner */
 	void assignZmbAttrsFromSrc(int16 srcIdx, ZmbSnoid *zmb);
@@ -212,7 +215,7 @@ private:
 	void unloadTimerScrb();
 
 	/** Find a SmokeRunnerState for a given runner feature. */
-	SmokeRunnerState *findRunnerState(ZmbFeature *feature);
+	ZmbSmokeRunnerState *findRunnerState(ZmbFeature *feature);
 
 	// === Core gameplay state ===
 
@@ -310,23 +313,23 @@ private:
 
 	ZmbFeature *_cliffRunners[20] = {};       // IDA: smoke_cliffRunnerArr — type 1
 	int16 _cliffRunnerCount = 0;
-	SmokeRunnerState _cliffRunnerStates[20];
+	ZmbSmokeRunnerState _cliffRunnerStates[20];
 
 	ZmbFeature *_level2Runners[6] = {};       // IDA: smoke_level2RunnerArr — type 2
 	int16 _level2RunnerCount = 0;
-	SmokeRunnerState _level2RunnerStates[6];
+	ZmbSmokeRunnerState _level2RunnerStates[6];
 
 	ZmbFeature *_gridRunners[9] = {};         // IDA: smoke_gridRunnerArr — type 3
 	int16 _gridRunnerCount = 0;               // NOTE: starts at 1 in original!
-	SmokeRunnerState _gridRunnerStates[9];
+	ZmbSmokeRunnerState _gridRunnerStates[9];
 
 	ZmbFeature *_exitRunners[4] = {};         // IDA: smoke_exitRunnerArr — type 4
 	int16 _exitRunnerCount = 0;
-	SmokeRunnerState _exitRunnerStates[4];
+	ZmbSmokeRunnerState _exitRunnerStates[4];
 
 	ZmbFeature *_bottomRunners[2] = {};       // IDA: smoke_bottomRunnerArr — type 5
 	int16 _bottomRunnerCount = 0;
-	SmokeRunnerState _bottomRunnerStates[2];
+	ZmbSmokeRunnerState _bottomRunnerStates[2];
 
 	int16 _dragSlotIdxA = 0;                  // IDA: smoke_dragSlotIdxA — L3-4 drag slot tracking
 	int16 _dragSlotIdxB = 0;                  // IDA: smoke_dragSlotIdxB

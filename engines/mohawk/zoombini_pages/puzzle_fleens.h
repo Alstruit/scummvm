@@ -28,18 +28,19 @@ namespace Mohawk {
 
 /**
  * Fleens puzzle page (ZoombiniPageType::kFleens).
+ * Route 3, Puzzle 1
  *
- * Route 2, Puzzle 2: "Who's Bayou?" — Zoombinis must avoid Fleens
- * (floating swamp creatures) that capture them if they have wrong
- * attributes. The player drags Zoombinis onto a raft; mismatched ones
- * are captured by Fleens and returned to shore.
+ * Fleens is a Zoombini-like creature that its traits are linked with the Zoombini's.
+ * Dropping a Zoombini to the predefined seat triggers Fleens jump animation.
+ * Player must lure the randomly selected three fleens which seating on the beehive.
+ * If the player correctly identifies the three key Zoombini, angry bee animation are played and fleens flee.
  *
  * IDA entry: fleens_initAndSetupPuzzle (0x41C1E0)
  */
-class ZoombiniInteractiveFleens : public ZoombiniPuzzle {
+class ZoombiniPuzzleFleens : public ZoombiniPuzzle {
 public:
-	ZoombiniInteractiveFleens(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractiveFleens() override;
+	ZoombiniPuzzleFleens(MohawkEngine_Zoombini *vm);
+	~ZoombiniPuzzleFleens() override;
 
 	void open() override;
 	void setBackgroundMusic() override;

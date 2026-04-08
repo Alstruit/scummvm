@@ -27,18 +27,19 @@
 namespace Mohawk {
 
 /**
- * Mudball Wall / Slides puzzle page (ZoombiniPageType::kSlides).
+ * Slides puzzle page (ZoombiniPageType::kSlides).
+ * Route 2, Puzzle 3
  *
- * Route 2, End puzzle: Zoombinis must be placed into slots on a
- * hex grid. Matching attribute patterns let groups slide down.
- * At highest difficulty, NODE/PATH walking is enabled.
+ * Zoombinis must be placed into slots on a hex grid. 
+ * Matching attribute patterns let groups glow, which is a visual indicator of a correct arrangement.
+ * Only Zoombinis with correct arrangement can proceed to the next page.
  *
  * IDA entry: puzzleSlides_441F0C
  */
-class ZoombiniInteractiveSlides : public ZoombiniPuzzle {
+class ZoombiniPuzzleSlides : public ZoombiniPuzzle {
 public:
-	ZoombiniInteractiveSlides(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractiveSlides() override;
+	ZoombiniPuzzleSlides(MohawkEngine_Zoombini *vm);
+	~ZoombiniPuzzleSlides() override;
 
 	void open() override;
 	void setBackgroundMusic() override;

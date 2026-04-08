@@ -32,7 +32,7 @@
 namespace Mohawk {
 
 // IDA: pedestal positions from 0x4A13E4 (20 POINTS)
-const Common::Point ZoombiniInteractiveHotel::kSnoidPositions[20] = {
+const Common::Point ZoombiniPuzzleHotel::kSnoidPositions[20] = {
 	Common::Point(455, 423), Common::Point(432, 421), Common::Point(412, 420), Common::Point(395, 425),
 	Common::Point(379, 418), Common::Point(365, 433), Common::Point(352, 412), Common::Point(340, 433),
 	Common::Point(328, 418), Common::Point(314, 432), Common::Point(295, 421), Common::Point(279, 430),
@@ -40,13 +40,13 @@ const Common::Point ZoombiniInteractiveHotel::kSnoidPositions[20] = {
 	Common::Point(211, 427), Common::Point(195, 419), Common::Point(176, 423), Common::Point(158, 431),
 };
 
-ZoombiniInteractiveHotel::ZoombiniInteractiveHotel(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kHotel) {
+ZoombiniPuzzleHotel::ZoombiniPuzzleHotel(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kHotel) {
 }
 
-ZoombiniInteractiveHotel::~ZoombiniInteractiveHotel() {
+ZoombiniPuzzleHotel::~ZoombiniPuzzleHotel() {
 }
 
-void ZoombiniInteractiveHotel::open() {
+void ZoombiniPuzzleHotel::open() {
 	// MIDIMPC.MHK contains MIDI BGM (tMID 30020-30023) — Broderbund v1.x only.
 	// TLC v2.0 removed all MIDI resources.
 	if (!_vm->isGameVariant(GF_ZMB_TLC))
@@ -63,18 +63,18 @@ void ZoombiniInteractiveHotel::open() {
 		_vm->_sound->setStopMidiOnSfx(!ConfMan.getBool("fix_hotel_midi_bgm"));
 }
 
-void ZoombiniInteractiveHotel::setBackgroundMusic() {
+void ZoombiniPuzzleHotel::setBackgroundMusic() {
 	// IDA: hotel_initAndSetupPuzzle (0x41ede4) has no music playback call on page load.
 	// sound_activeHandle = 20081 is stored at end of funcInit for F1 replay only.
 }
 
-void ZoombiniInteractiveHotel::setBackgroundBitmap() {
+void ZoombiniPuzzleHotel::setBackgroundBitmap() {
 	// IDA: gfx_drawBackgroundFromResId(5000)
 	_vm->_gfx->setPalette(5000);
 	_vm->_gfx->drawBackground(5000);
 }
 
-void ZoombiniInteractiveHotel::loadFeatures() {
+void ZoombiniPuzzleHotel::loadFeatures() {
 	// IDA: hotel_initAndSetupPuzzle (0x41ede4)
 	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
 
@@ -291,7 +291,7 @@ void ZoombiniInteractiveHotel::loadFeatures() {
 	_bPuzzleActive = true;
 }
 
-void ZoombiniInteractiveHotel::onGoButtonActivated() {
+void ZoombiniPuzzleHotel::onGoButtonActivated() {
 	// IDA: hotel_onClickHandler case 2
 	// Stop BGM before departure, play SFX 996, fade out when SFX finishes.
 	// IDA: scrb_enqueueSoundResource(0, 0) — stop background music
@@ -301,7 +301,7 @@ void ZoombiniInteractiveHotel::onGoButtonActivated() {
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
-void ZoombiniInteractiveHotel::loadZoombinisFromPack() {
+void ZoombiniPuzzleHotel::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;
 
@@ -329,7 +329,7 @@ void ZoombiniInteractiveHotel::loadZoombinisFromPack() {
 // computeTraitVariantCounts: Count distinct trait values per axis.
 // IDA: picker_countAttrVariants_421919
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::computeTraitVariantCounts() {
+void ZoombiniPuzzleHotel::computeTraitVariantCounts() {
 	const ZmbStateFile &f = _vm->_state->_f;
 	_totalZmbCount = 0;
 	memset(_traitVariantCounts, 0, sizeof(_traitVariantCounts));
@@ -372,7 +372,7 @@ void ZoombiniInteractiveHotel::computeTraitVariantCounts() {
 // generateRoomRules: Pick random axes and optionally forbidden rooms.
 // IDA: sub_4209AA (0x4209AA)
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::generateRoomRules() {
+void ZoombiniPuzzleHotel::generateRoomRules() {
 	// Count how many axes have <X variants for axis-selection validation
 	auto countLimitedAxes = [&](int threshold) -> int {
 		int count = 0;
@@ -514,7 +514,7 @@ void ZoombiniInteractiveHotel::generateRoomRules() {
 // setupGameBoard: Called from onEveryFrame when intro animation completes.
 // IDA: hotel_onHoverPerFrame priority-3 block (word_4AB77A / word_4AB7C4 branch)
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::setupGameBoard() {
+void ZoombiniPuzzleHotel::setupGameBoard() {
 	_setupFrameCount = getCurrentFrameCounter();
 
 	// IDA 0x41f90b: Free room anim feature if type != 4
@@ -651,7 +651,7 @@ void ZoombiniInteractiveHotel::setupGameBoard() {
 // reassignPedestalPositions: Reposition remaining non-placed snoids to
 // the first `count` pedestal positions. IDA: zmb_assignPedestalPositions
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::reassignPedestalPositions(int16 count) {
+void ZoombiniPuzzleHotel::reassignPedestalPositions(int16 count) {
 	int16 posIdx = 0;
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end() && posIdx < count; ++it) {
 		ZmbSnoid *snoid = *it;
@@ -677,7 +677,7 @@ void ZoombiniInteractiveHotel::reassignPedestalPositions(int16 count) {
 // registerDisplayScrbs: Register room display and hotspot runners.
 // IDA: hotel_registerDisplayScrbs_4203ED (0x4203ED)
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::registerDisplayScrbs() {
+void ZoombiniPuzzleHotel::registerDisplayScrbs() {
 	// Free any existing features
 	for (int i = 0; i < 125; i++) {
 		if (_roomDisplayFeatures[i]) {
@@ -799,7 +799,7 @@ void ZoombiniInteractiveHotel::registerDisplayScrbs() {
 // Parameters: slot=targetSlot, axis2Val=trait[_attrAxis2], axis1Val=trait[_attrAxis1]
 // Returns true = valid placement.
 // ---------------------------------------------------------------------------
-bool ZoombiniInteractiveHotel::validate2AttrPlacement(int16 slot, int16 axis2Val, int16 axis1Val) const {
+bool ZoombiniPuzzleHotel::validate2AttrPlacement(int16 slot, int16 axis2Val, int16 axis1Val) const {
 	if (_attrBypass)
 		return true;
 
@@ -850,7 +850,7 @@ bool ZoombiniInteractiveHotel::validate2AttrPlacement(int16 slot, int16 axis2Val
 //   4. For each pair of axes where one matches and the other's constraint is 0,
 //      verify the other axis value doesn't appear in that grid's 5 entries
 // ---------------------------------------------------------------------------
-bool ZoombiniInteractiveHotel::validate3AttrPlacement(int16 slot, int16 axis3Val, int16 axis2Val, int16 axis1Val) const {
+bool ZoombiniPuzzleHotel::validate3AttrPlacement(int16 slot, int16 axis3Val, int16 axis2Val, int16 axis1Val) const {
 	if (_attrBypass)
 		return true;
 
@@ -968,7 +968,7 @@ bool ZoombiniInteractiveHotel::validate3AttrPlacement(int16 slot, int16 axis3Val
 // IDA: ferry_fillCellRow_4216BC (0x4216BC)
 // rowIdx: target slot (0-24); axis2Val: row attribute; axis1Val: col attribute.
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::fillCellRow(int16 rowIdx, int16 axis2Val, int16 axis1Val) {
+void ZoombiniPuzzleHotel::fillCellRow(int16 rowIdx, int16 axis2Val, int16 axis1Val) {
 	for (int k = 0; k < 5; k++) {
 		// Fill entire column (all row-groups at position rowIdx%5)
 		_attrGrid1[5 * k + rowIdx % 5] = axis1Val;
@@ -981,7 +981,7 @@ void ZoombiniInteractiveHotel::fillCellRow(int16 rowIdx, int16 axis2Val, int16 a
 // setCellAttrsIn3Grids: Set all three attribute grids for diff-3 placement.
 // IDA: maze_setCellAttrsInGrids_422197 (0x422197)
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::setCellAttrsIn3Grids(int16 cellIdx, int16 attrType, int16 attrValue, int16 gridLayer) {
+void ZoombiniPuzzleHotel::setCellAttrsIn3Grids(int16 cellIdx, int16 attrType, int16 attrValue, int16 gridLayer) {
 	_attrGrid1[cellIdx % 25 / 5] = gridLayer; // axis1 → row-group
 	_attrGrid2[cellIdx / 25]     = attrValue;  // axis2 → floor
 	_attrGrid3[cellIdx % 5]      = attrType;   // axis3 → column
@@ -991,7 +991,7 @@ void ZoombiniInteractiveHotel::setCellAttrsIn3Grids(int16 cellIdx, int16 attrTyp
 // placeZoombiniInRoom: Animate a zoombini entering an assigned room slot.
 // IDA: hotel_setupRoomSlotScrb_422534 (0x422534)
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::placeZoombiniInRoom(int16 roomSlot, ZmbSnoid *snoid) {
+void ZoombiniPuzzleHotel::placeZoombiniInRoom(int16 roomSlot, ZmbSnoid *snoid) {
 	const Common::Point *posTable = (_difficultyLevel == 3) ? kRoomPositions125 : kRoomPositions25;
 	Common::Point basePos = posTable[roomSlot];
 	Common::Point finalPos;
@@ -1109,7 +1109,7 @@ void ZoombiniInteractiveHotel::placeZoombiniInRoom(int16 roomSlot, ZmbSnoid *sno
 // dimPaletteOnError: Dim palette slightly after a wrong placement.
 // IDA: picker_applyBrightnessDim_42185D (0x42185D)
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::dimPaletteOnError() {
+void ZoombiniPuzzleHotel::dimPaletteOnError() {
 	uint8 scalePercent = 92;
 	if (_difficultyLevel == 0)
 		scalePercent = 88;
@@ -1123,7 +1123,7 @@ void ZoombiniInteractiveHotel::dimPaletteOnError() {
 // registerWinCheckpoints: Reload room icon SCRBs to win-state (slot+6063).
 // IDA: maze_registerCheckpointRunners_422A61 (0x422A61)
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::registerWinCheckpoints() {
+void ZoombiniPuzzleHotel::registerWinCheckpoints() {
 	// IDA: diff 0 → stride-5 (j=4,9,14,19,24); diff 1-2 → all 25; diff 3 → nothing
 	if (_difficultyLevel == 0) {
 		for (int16 j = 4; j < _totalRoomCount; j += 5) {
@@ -1144,7 +1144,7 @@ void ZoombiniInteractiveHotel::registerWinCheckpoints() {
 // ---------------------------------------------------------------------------
 // onFeatureAnimEvent: Called when a feature's animation cycle ends.
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+void ZoombiniPuzzleHotel::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	if (eventCode != kZmbAnimEventM1_End)
 		return; // Only handle end-of-animation
 
@@ -1190,7 +1190,7 @@ void ZoombiniInteractiveHotel::onFeatureAnimEvent(ZmbFeature *feature, int16 eve
 // onEveryFrame: Main per-frame state machine for the hotel puzzle.
 // IDA: hotel_onHoverPerFrame_41F6D2 (0x41F6D2)
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::onEveryFrame() {
+void ZoombiniPuzzleHotel::onEveryFrame() {
 	// IDA: hotel_onHoverPerFrame_41F6D2 (0x41F6D2)
 	// hotel_bPuzzleComplete is NOT checked here — onEveryFrame runs always.
 
@@ -1451,7 +1451,7 @@ void ZoombiniInteractiveHotel::onEveryFrame() {
 // ---------------------------------------------------------------------------
 // findSnoidAtPoint: Only return draggable pack snoids (IDs 10000–12999).
 // ---------------------------------------------------------------------------
-ZmbSnoid *ZoombiniInteractiveHotel::findSnoidAtPoint(const Common::Point &pos) {
+ZmbSnoid *ZoombiniPuzzleHotel::findSnoidAtPoint(const Common::Point &pos) {
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
 		uint16 id = (*it)->getId();
 		// Only pack snoids (10000–12999); skip pool snoids (13000+)
@@ -1474,7 +1474,7 @@ ZmbSnoid *ZoombiniInteractiveHotel::findSnoidAtPoint(const Common::Point &pos) {
 // ---------------------------------------------------------------------------
 // getDropTargetSlot: Find closest room slot to the drop position.
 // ---------------------------------------------------------------------------
-int16 ZoombiniInteractiveHotel::getDropTargetSlot(const Common::Point &dropPos) const {
+int16 ZoombiniPuzzleHotel::getDropTargetSlot(const Common::Point &dropPos) const {
 	// IDA: getDropTargetResult_453571 checks registered click-zone runners.
 	// We approximate with a proximity check against known room positions.
 	const int32 kDropRadiusSq = 55 * 55; // ~55px radius
@@ -1518,7 +1518,7 @@ int16 ZoombiniInteractiveHotel::getDropTargetSlot(const Common::Point &dropPos) 
 // getTraitValue: Read trait value for a given axis index.
 // IDA: *(char*)(&traitDword + axisIdx) — packed DWORD byte order: 0=foot,1=nose,2=eye,3=head.
 // ---------------------------------------------------------------------------
-byte ZoombiniInteractiveHotel::getTraitValue(const ZmbTrait &trait, int16 axisIdx) const {
+byte ZoombiniPuzzleHotel::getTraitValue(const ZmbTrait &trait, int16 axisIdx) const {
 	switch (axisIdx) {
 	case 0: return trait._foot;
 	case 1: return trait._nose;
@@ -1532,7 +1532,7 @@ byte ZoombiniInteractiveHotel::getTraitValue(const ZmbTrait &trait, int16 axisId
 // endDrag: Evaluate drop after drag release.
 // IDA: hotel_funcOnHover_420DFC case 4 drag evaluation
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveHotel::endDrag(const Common::Point &mousePos) {
+void ZoombiniPuzzleHotel::endDrag(const Common::Point &mousePos) {
 	ZmbSnoid *snoid = finishSnoidDrag();
 	if (!snoid)
 		return;
@@ -1635,7 +1635,7 @@ void ZoombiniInteractiveHotel::endDrag(const Common::Point &mousePos) {
 // onLButtonDown: Click / drag initiation.
 // IDA: hotel_onClickHandler (case 1 mouse-down; case 4 drag logic)
 // ---------------------------------------------------------------------------
-ZmbEventHandleResult ZoombiniInteractiveHotel::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleHotel::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
 	// Sticky mouse: second click drops the dragged snoid
 	if (isDragging() && _vm->_state->getEnableStickyMouse()) {
 		endDrag(absPos);
@@ -1672,7 +1672,7 @@ ZmbEventHandleResult ZoombiniInteractiveHotel::onLButtonDown(const Common::Point
 // ---------------------------------------------------------------------------
 // onLButtonUp: Release drag.
 // ---------------------------------------------------------------------------
-ZmbEventHandleResult ZoombiniInteractiveHotel::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+ZmbEventHandleResult ZoombiniPuzzleHotel::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
 	if (!isDragging())
 		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
 
@@ -1690,7 +1690,7 @@ ZmbEventHandleResult ZoombiniInteractiveHotel::onLButtonUp(const Common::Point &
 
 // IDA: dword_4A1110[25] — room center positions for diff 0–2 (5 cols × 5 rows)
 // Parsed from binary: each entry is (LOWORD=x, HIWORD=y) little-endian int16 pair.
-const Common::Point ZoombiniInteractiveHotel::kRoomPositions25[25] = {
+const Common::Point ZoombiniPuzzleHotel::kRoomPositions25[25] = {
 	Common::Point(0x87, 0x4e),  // [0]  col0 row0  (135, 78)
 	Common::Point(0x8a, 0x8e),  // [1]  col0 row1  (138, 142)
 	Common::Point(0x8e, 0xcc),  // [2]  col0 row2  (142, 204)
@@ -1720,7 +1720,7 @@ const Common::Point ZoombiniInteractiveHotel::kRoomPositions25[25] = {
 
 // IDA: dword_4A1178[125] — room center positions for diff 3 (5 floors × 5×5 grid)
 // 125 entries extracted from binary at 0x4A1178 (500 bytes).
-const Common::Point ZoombiniInteractiveHotel::kRoomPositions125[125] = {
+const Common::Point ZoombiniPuzzleHotel::kRoomPositions125[125] = {
 	// Floor 0 (entries 0–24)
 	Common::Point(0x10, 0x28),  // [0]   (16, 40)
 	Common::Point(0x27, 0x32),  // [1]   (39, 50)
@@ -1854,9 +1854,9 @@ const Common::Point ZoombiniInteractiveHotel::kRoomPositions125[125] = {
 };
 
 // IDA: word_4A138C[5] — column X-offsets for diff 3 runner registration
-const int16 ZoombiniInteractiveHotel::kColumnOffsetX[5] = { 0, 23, 46, 69, 94 };
+const int16 ZoombiniPuzzleHotel::kColumnOffsetX[5] = { 0, 23, 46, 69, 94 };
 
 // IDA: word_4A1396[5] — column Y-offsets for diff 3 runner registration
-const int16 ZoombiniInteractiveHotel::kColumnOffsetY[5] = { 0, 7, 11, 14, 17 };
+const int16 ZoombiniPuzzleHotel::kColumnOffsetY[5] = { 0, 7, 11, 14, 17 };
 
 } // End of namespace Mohawk

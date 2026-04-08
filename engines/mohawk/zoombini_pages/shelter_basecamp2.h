@@ -26,10 +26,10 @@
 
 namespace Mohawk {
 
-class ZoombiniInteractiveBasecampTwo : public ZoombiniShelter {
+class ZoombiniShelterBasecampTwo : public ZoombiniShelter {
 public:
-	ZoombiniInteractiveBasecampTwo(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractiveBasecampTwo() override;
+	ZoombiniShelterBasecampTwo(MohawkEngine_Zoombini *vm);
+	~ZoombiniShelterBasecampTwo() override;
 
 	void open() override;
 	void setBackgroundMusic() override;

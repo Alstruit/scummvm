@@ -33,17 +33,17 @@
 
 namespace Mohawk {
 
-ZoombiniInteractiveTown::ZoombiniInteractiveTown(MohawkEngine_Zoombini *vm) : ZoombiniShelter(vm, ZoombiniPageType::kTown) {
+ZoombiniShelterTown::ZoombiniShelterTown(MohawkEngine_Zoombini *vm) : ZoombiniShelter(vm, ZoombiniPageType::kTown) {
 }
 
-ZoombiniInteractiveTown::~ZoombiniInteractiveTown() {
+ZoombiniShelterTown::~ZoombiniShelterTown() {
 }
 
-void ZoombiniInteractiveTown::open() {
+void ZoombiniShelterTown::open() {
 	openArchive(ZMB_MHK_TOWN);
 }
 
-void ZoombiniInteractiveTown::setBackgroundMusic() {
+void ZoombiniShelterTown::setBackgroundMusic() {
 	if (_allZoombinisInTown) {
 		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound3003_BGM), Audio::Mixer::kMusicSoundType);
 	} else {
@@ -51,12 +51,12 @@ void ZoombiniInteractiveTown::setBackgroundMusic() {
 	}
 }
 
-void ZoombiniInteractiveTown::setBackgroundBitmap() {
+void ZoombiniShelterTown::setBackgroundBitmap() {
 	_vm->_gfx->setPalette(kResBackground1200);
 	_vm->_gfx->drawBackground(kResBackground1200);
 }
 
-void ZoombiniInteractiveTown::loadFeatures() {
+void ZoombiniShelterTown::loadFeatures() {
 	ZmbStateFile &f = _vm->_state->_f;
 
 	// Move active pack Zoombinis into town storage
@@ -106,7 +106,7 @@ void ZoombiniInteractiveTown::loadFeatures() {
 
 	{ // [*] SCRB 1002: Overlay with REGS + pre-render shape callback
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveTown::overlay_preRenderShape));
+		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::overlay_preRenderShape));
 		_overlayFeatures[1] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), kResScrb1002_Overlay, 0,
 						ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 						ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY |
@@ -116,7 +116,7 @@ void ZoombiniInteractiveTown::loadFeatures() {
 
 	{ // [*] SCRB 1003: Overlay with REGS + pre-render shape callback
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveTown::overlay_preRenderShape));
+		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::overlay_preRenderShape));
 		_overlayFeatures[2] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), kResScrb1003_Overlay, 0,
 						ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 						ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY |
@@ -126,7 +126,7 @@ void ZoombiniInteractiveTown::loadFeatures() {
 
 	{ // [*] SCRB 1001: Overlay with REGS + pre-render shape callback
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveTown::overlay_preRenderShape));
+		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::overlay_preRenderShape));
 		_overlayFeatures[3] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), kResScrb1001_Overlay, 0,
 						ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 						ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY |
@@ -248,8 +248,8 @@ void ZoombiniInteractiveTown::loadFeatures() {
 
 	{ // [*] Virtual Feature: Town Zoombini render (renders walking Zoombinis)
 		ZmbFeature::EventHooks hooks;
-		hooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniInteractiveTown::townZoombini_render));
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveTown::townZoombini_postRender));
+		hooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniShelterTown::townZoombini_render));
+		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterTown::townZoombini_postRender));
 		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 						ZmbFeature::FLAG_00001000_TOPMOST,
 						hooks);
@@ -260,7 +260,7 @@ void ZoombiniInteractiveTown::loadFeatures() {
 	// TYPE_TOWN_ENTITY|LOOP_ANIM, with onPreRenderShapeFunc = town_preRenderMemorialStatue
 	{
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveTown::memorialStatue_preRenderShape));
+		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::memorialStatue_preRenderShape));
 		_memorialStatueFeature = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 6000), kResScrb6000_Zodiac, 6,
 			ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY | ZmbFeature::FLAG_00008000_LOOP_ANIM,
@@ -379,7 +379,7 @@ void ZoombiniInteractiveTown::loadFeatures() {
 // NOTE: Walking Zoombinis are not yet individual snoid features in ScummVM,
 // so SCRS playback is deferred until walker feature system is implemented.
 // ---------------------------------------------------------------------------
-void ZoombiniInteractiveTown::onEveryFrame() {
+void ZoombiniShelterTown::onEveryFrame() {
 	if (_walkingZmbCount <= 0)
 		return;
 
@@ -408,7 +408,7 @@ void ZoombiniInteractiveTown::onEveryFrame() {
 	// Requires walking Zoombinis to be implemented as snoid features.
 }
 
-void ZoombiniInteractiveTown::transferActivePackToTownStorage() {
+void ZoombiniShelterTown::transferActivePackToTownStorage() {
 	ZmbStateFile &f = _vm->_state->_f;
 
 	for (uint16 i = 0; i < _activePackCount && i < 16; i++) {
@@ -424,13 +424,13 @@ void ZoombiniInteractiveTown::transferActivePackToTownStorage() {
 	}
 }
 
-ZmbRenderResult ZoombiniInteractiveTown::townZoombini_render(ZmbFeature *feature) {
+ZmbRenderResult ZoombiniShelterTown::townZoombini_render(ZmbFeature *feature) {
 	// Virtual feature render: captures the background rect for later compositing.
 	// Walking Zoombinis are rendered through their own snoid feature runners.
 	return ZmbRenderResult::kRendered;
 }
 
-void ZoombiniInteractiveTown::townZoombini_postRender(ZmbFeature *feature) {
+void ZoombiniShelterTown::townZoombini_postRender(ZmbFeature *feature) {
 	// Post-render: renders exit gate scroll buttons at overlay positions.
 	// Original: town_onPostRenderButtons (0x45880F) calls picker_renderExitGateScrb
 	// for buttons 1 (left gate, shape 5) and 2 (right gate, shape 24).
@@ -455,7 +455,7 @@ void ZoombiniInteractiveTown::townZoombini_postRender(ZmbFeature *feature) {
 						 Common::Point(600, 441));
 }
 
-void ZoombiniInteractiveTown::overlay_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
+void ZoombiniShelterTown::overlay_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
 	// Filters overlay building shapes by town population density threshold.
 	// Original: town_preRenderFilterByPopulation (0x45945c)
 	// Removes any hotspot whose shapeIdx exceeds the building display threshold.
@@ -470,7 +470,7 @@ void ZoombiniInteractiveTown::overlay_preRenderShape(ZmbFeature *feature, ZmbHot
 
 // Town inhabitant position data (16 x,y coordinate pairs).
 // Source: unk_4A72D0 in the original binary (puzzleTown_457C7E).
-const Common::Point ZoombiniInteractiveTown::kInhabitantPositions[16] = {
+const Common::Point ZoombiniShelterTown::kInhabitantPositions[16] = {
 	Common::Point(467, 265), Common::Point(349, 225), Common::Point(777, 291), Common::Point(828, 284),
 	Common::Point( 44, 330), Common::Point(283, 152), Common::Point(195, 211), Common::Point(607, 201),
 	Common::Point(1182, 287), Common::Point(1299, 228), Common::Point(1422, 269), Common::Point(1807, 316),
@@ -480,12 +480,12 @@ const Common::Point ZoombiniInteractiveTown::kInhabitantPositions[16] = {
 // Town inhabitant SCRB IDs (16 IDs for inhabitant animations, cycling 4000-4007 twice).
 // Source: unk_4A7310 in the original binary (puzzleTown_457C7E).
 // These are SCRB resources, not SCRS; loaded via loadSnoidFromScrb().
-const uint16 ZoombiniInteractiveTown::kInhabitantScrbIds[16] = {
+const uint16 ZoombiniShelterTown::kInhabitantScrbIds[16] = {
 	4000, 4001, 4002, 4003, 4004, 4005, 4006, 4007,
 	4000, 4001, 4002, 4003, 4004, 4005, 4006, 4007,
 };
 
-void ZoombiniInteractiveTown::memorialStatue_updateDials() {
+void ZoombiniShelterTown::memorialStatue_updateDials() {
 	// IDA: town_updateDateCachePeriodic (0x457C19)
 	// Debounce: only update every 1800 frames (~30 seconds at 60fps)
 	if (_currentFrameCounter <= _statueUpdateTimer + 1800)
@@ -501,7 +501,7 @@ void ZoombiniInteractiveTown::memorialStatue_updateDials() {
 	_statueMinuteDial = static_cast<uint8>(td.tm_min) % 12;
 }
 
-void ZoombiniInteractiveTown::memorialStatue_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
+void ZoombiniShelterTown::memorialStatue_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
 	// IDA: town_preRenderMemorialStatue (0x458597)
 	// Hides the memorial zodiac statue shapes, then selectively re-shows them
 	// when the town is scrolled to column 1 or 2.

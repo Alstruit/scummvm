@@ -28,17 +28,17 @@ namespace Mohawk {
 
 /**
  * Caves puzzle page (ZoombiniPageType::kCaves).
+ * Route 4, Puzzle 1
  *
- * Route 4, Puzzle 1: Zoombinis must enter the correct cave based on
- * hieroglyph patterns. Each cave entrance has a pattern that the player
- * must match with Zoombini attributes.
+ * Zoombinis must enter the correct cave based on hieroglyph patterns. 
+ * Each cave entrance has a pattern that the player must match with Zoombini attributes.
  *
  * IDA entry: caves_funcInit (0x416978)
  */
-class ZoombiniInteractiveCaves : public ZoombiniPuzzle {
+class ZoombiniPuzzleCaves : public ZoombiniPuzzle {
 public:
-	ZoombiniInteractiveCaves(MohawkEngine_Zoombini *vm);
-	~ZoombiniInteractiveCaves() override;
+	ZoombiniPuzzleCaves(MohawkEngine_Zoombini *vm);
+	~ZoombiniPuzzleCaves() override;
 
 	void open() override;
 	void setBackgroundMusic() override;
