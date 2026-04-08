@@ -177,6 +177,7 @@ private:
 	GUI::CheckboxWidget *_audioPopFixCheckbox;
 	GUI::CheckboxWidget *_brightenPaletteCheckbox;
 	GUI::CheckboxWidget *_originalPrngCheckbox;
+	GUI::CheckboxWidget *_fixHotelMidiBgmCheckbox;
 };
 
 #endif

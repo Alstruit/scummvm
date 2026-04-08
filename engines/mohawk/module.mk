@@ -91,23 +91,25 @@ MODULE_OBJS += \
 	zoombini_debug.o \
 	zoombini_page.o \
 	zoombini_pages/interactive_base.o \
-	zoombini_pages/rodmap.o \
-	zoombini_pages/picker.o \
-	zoombini_pages/basecamp1.o \
-	zoombini_pages/basecamp2.o \
-	zoombini_pages/town.o \
-	zoombini_pages/bridge.o \
-	zoombini_pages/caves.o \
-	zoombini_pages/pizza.o \
-	zoombini_pages/ferry.o \
-	zoombini_pages/lilly.o \
-	zoombini_pages/net.o \
-	zoombini_pages/fleens.o \
-	zoombini_pages/hotel.o \
-	zoombini_pages/slides.o \
-	zoombini_pages/tunnels.o \
-	zoombini_pages/smoke.o \
-	zoombini_pages/maze.o \
+	zoombini_pages/shelter_base.o \
+	zoombini_pages/puzzle_base.o \
+	zoombini_pages/interactive_rodmap.o \
+	zoombini_pages/shelter_picker.o \
+	zoombini_pages/shelter_basecamp1.o \
+	zoombini_pages/shelter_basecamp2.o \
+	zoombini_pages/shelter_town.o \
+	zoombini_pages/puzzle_bridge.o \
+	zoombini_pages/puzzle_caves.o \
+	zoombini_pages/puzzle_pizza.o \
+	zoombini_pages/puzzle_ferry.o \
+	zoombini_pages/puzzle_lilly.o \
+	zoombini_pages/puzzle_net.o \
+	zoombini_pages/puzzle_fleens.o \
+	zoombini_pages/puzzle_hotel.o \
+	zoombini_pages/puzzle_slides.o \
+	zoombini_pages/puzzle_tunnels.o \
+	zoombini_pages/puzzle_smoke.o \
+	zoombini_pages/puzzle_maze.o \
 	zoombini_pages/transition_base.o \
 	zoombini_pages/transition_logo.o \
 	zoombini_pages/transition_xfer.o \

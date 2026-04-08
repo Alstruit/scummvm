@@ -66,6 +66,7 @@ void ZoombiniPage::close() {
 	if (_isClosed)
 		return;
 
+	_vm->_sound->setStopMidiOnSfx(false);
 	onFadeOut();
 	_isClosed = true;
 }
@@ -236,6 +237,17 @@ ZmbFeature *ZoombiniPage::registerFeature(ZoombiniPage *page, ZmbFeatureList<Zmb
 		if (renderFunc == nullptr)
 			renderFunc = &ZoombiniPage::blitShapes;
 		(page->*renderFunc)(feature);
+
+		// IDA: runner_registerAndAllocate (0x45F7A1) — auto-populate draw-on-reg
+		// slot when FLAG_DRAW_ON_REG is set. Stores runner ID and registration
+		// position as snap position. Pages with custom snap offsets (e.g. ferry)
+		// call setDrawOnRegSnapPosition() afterwards to override.
+		if (page->_drawOnRegCount < kMaxDrawOnRegSlots) {
+			page->_drawOnRegRunnerIds[page->_drawOnRegCount] = feature->getId();
+			page->_drawOnRegSnapPositions[page->_drawOnRegCount] = pointRef;
+			page->_drawOnRegOccupancy[page->_drawOnRegCount] = 0;
+			page->_drawOnRegCount++;
+		}
 	}
 
 	return feature;
@@ -1227,6 +1239,7 @@ void ZoombiniPage::clear() {
 	clearRegs();
 	clearNode();
 	clearTerrainBitmap();
+	resetDrawOnRegSlots();
 	_cachedOverlayOrder.clear();
 }
 
@@ -1488,6 +1501,76 @@ Common::Point ZoombiniPage::findNonCollidingPosition(const ZmbSnoid *self, const
 void ZoombiniPage::clearTerrainBitmap() {
 	// Not owned by us — cached by GraphicsManager, freed on archive clear.
 	_terrainBitmap = nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// Draw-on-Region Slot System
+// IDA: scrb_drawOnRegRunnerIdxArr[], posArr_4B7C44[], scrb_drawOnRegFlagArr[],
+//      scrb_activeDrawOnRegCount
+// ---------------------------------------------------------------------------
+
+int16 ZoombiniPage::registerDrawOnRegSlot(uint16 runnerId, const Common::Point &snapPos) {
+	if (_drawOnRegCount >= kMaxDrawOnRegSlots) {
+		warning("Draw-on-reg slot overflow (max %d)", kMaxDrawOnRegSlots);
+		return -1;
+	}
+	int16 idx = _drawOnRegCount;
+	_drawOnRegRunnerIds[idx] = runnerId;
+	_drawOnRegSnapPositions[idx] = snapPos;
+	_drawOnRegOccupancy[idx] = 0;
+	_drawOnRegCount++;
+	return idx;
+}
+
+void ZoombiniPage::setDrawOnRegSnapPosition(int16 slotIdx, const Common::Point &pos) {
+	assert(slotIdx >= 0 && slotIdx < _drawOnRegCount);
+	_drawOnRegSnapPositions[slotIdx] = pos;
+}
+
+uint16 ZoombiniPage::getDrawOnRegOccupant(int16 slotIdx) const {
+	assert(slotIdx >= 0 && slotIdx < _drawOnRegCount);
+	return _drawOnRegOccupancy[slotIdx];
+}
+
+void ZoombiniPage::setDrawOnRegOccupant(int16 slotIdx, uint16 occupantId) {
+	assert(slotIdx >= 0 && slotIdx < _drawOnRegCount);
+	_drawOnRegOccupancy[slotIdx] = occupantId;
+}
+
+void ZoombiniPage::clearDrawOnRegOccupant(int16 slotIdx) {
+	assert(slotIdx >= 0 && slotIdx < _drawOnRegCount);
+	_drawOnRegOccupancy[slotIdx] = 0;
+}
+
+int16 ZoombiniPage::findDrawOnRegSlotByOccupant(uint16 occupantId) const {
+	for (int16 i = 0; i < _drawOnRegCount; i++) {
+		if (_drawOnRegOccupancy[i] == occupantId)
+			return i;
+	}
+	return -1;
+}
+
+int16 ZoombiniPage::hitTestDrawOnRegSlot(const Common::Point &pos, int16 zoneRadius, bool emptyOnly) const {
+	// IDA: beginDragFeatureRunner_45360F 0x4537C4–0x453811 and 0x453A13–0x453B13
+	// Builds a rect centered on pos with ±zoneRadius, tests each slot's snap position.
+	Common::Rect zoneRect(pos.x - zoneRadius, pos.y - zoneRadius,
+	                      pos.x + zoneRadius, pos.y + zoneRadius);
+	for (int16 i = 0; i < _drawOnRegCount; i++) {
+		if (emptyOnly && _drawOnRegOccupancy[i] != 0)
+			continue;
+		if (zoneRect.contains(_drawOnRegSnapPositions[i].x, _drawOnRegSnapPositions[i].y))
+			return i;
+	}
+	return -1;
+}
+
+void ZoombiniPage::resetDrawOnRegSlots() {
+	// IDA: scrb_resetAllState (0x45FF82) zeroes all arrays and resets count.
+	for (int16 i = 0; i < kMaxDrawOnRegSlots; i++) {
+		_drawOnRegRunnerIds[i] = 0;
+		_drawOnRegOccupancy[i] = 0;
+	}
+	_drawOnRegCount = 0;
 }
 
 void ZoombiniPage::loadWalkAnims() {

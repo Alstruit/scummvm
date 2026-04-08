@@ -357,6 +357,7 @@ void MohawkMetaEngine::registerDefaultSettings(const Common::String &target) con
 	if (gameId == "zoombini") {
 		ConfMan.registerDefault("brighten_palette", false);
 		ConfMan.registerDefault("original_prng", true);
+		ConfMan.registerDefault("fix_hotel_midi_bgm", true);
 	}
 #endif
 

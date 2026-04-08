@@ -42,6 +42,13 @@ public:
 	void stopZmbSound(ZmbResource resource);
 
 	/**
+	 * When true, any SFX playback will also stop the active MIDI.
+	 * Replicates the original Windows audio driver conflict where
+	 * WAV playback via MCI killed concurrent MIDI playback.
+	 */
+	void setStopMidiOnSfx(bool enabled) { _stopMidiOnSfx = enabled; }
+
+	/**
 	 * Opaque handle returned by createSoundQueue().
 	 * kInvalidSoundQueueHandle is the null/uninitialised value.
 	 */
@@ -98,6 +105,8 @@ private:
 
 	MohawkEngine_Zoombini *_vm;
 
+	bool _stopMidiOnSfx = false;
+
 	Common::HashMap<uint32, SoundQueueChannel> _soundQueues;
 	uint32 _nextQueueHandle = 1; // 0 is kInvalidSoundQueueHandle
 
@@ -114,6 +123,7 @@ public:
 	~ZoombiniMidiPlayer() override;
 
 	void playZmbMidi(ZmbResource resource);
+	void stopMidi() { stop(); }
 
 private:
 	MohawkEngine_Zoombini *_vm;

@@ -1027,6 +1027,16 @@ void ZoombiniInteractive::startSnoidDrag(ZmbSnoid *snoid, const Common::Point &m
 	_dragOrigPos = snoid->getPointLoc();
 	_dragOffset = Common::Point(mousePos.x - _dragOrigPos.x, mousePos.y - _dragOrigPos.y);
 	_dragPrevMouseX = mousePos.x;
+	_dragHighlightSlot = -1;
+
+	// IDA: beginDragFeatureRunner_45360F 0x4537C4–0x453811
+	// Check if snoid is being picked up FROM a draw-on-reg slot.
+	// If so, clear that slot's occupancy.
+	_dragSourceSlot = findDrawOnRegSlotByOccupant(snoid->getId());
+	if (_dragSourceSlot >= 0) {
+		clearDrawOnRegOccupant(_dragSourceSlot);
+	}
+
 	// Start directly with right-facing dangling feet animation (skip entry poses).
 	// IDA: Entry poses are frames 0-1, looping animation starts at frame 2.
 	// Set facing right initially for consistent appearance.
@@ -1042,6 +1052,7 @@ void ZoombiniInteractive::startSnoidDrag(ZmbSnoid *snoid, const Common::Point &m
 ZmbSnoid *ZoombiniInteractive::finishSnoidDrag() {
 	ZmbSnoid *snoid = _draggedSnoid;
 	_draggedSnoid = nullptr;
+	clearDrawOnRegHighlight();
 	endSnoidDrag(snoid);
 	hideNotiBoxShort();
 	return snoid;
@@ -1082,7 +1093,58 @@ ZmbEventHandleResult ZoombiniInteractive::onMouseMove(const Common::Point &absPo
 	// If no horizontal movement, keep current frame (don't reset to middle)
 	_dragPrevMouseX = absPos.x;
 
+	// IDA: beginDragFeatureRunner_45360F 0x4539BF — update seat highlighting
+	updateDrawOnRegHighlight();
+
 	return ZmbEventHandleResult::kConsumed;
+}
+
+// ---------------------------------------------------------------------------
+// updateDrawOnRegHighlight: Highlight/unhighlight seat runners during drag.
+// IDA: beginDragFeatureRunner_45360F 0x4539BF–0x453B51
+// ---------------------------------------------------------------------------
+void ZoombiniInteractive::updateDrawOnRegHighlight() {
+	if (_drawOnRegCount <= 0 || !_draggedSnoid)
+		return;
+
+	Common::Point snoidPos = _draggedSnoid->getPointLoc();
+	int16 hitSlot = hitTestDrawOnRegSlot(snoidPos, _clickZoneRadius, true);
+
+	if (hitSlot >= 0) {
+		// Found an empty slot within zone
+		uint16 seatRunnerId = _drawOnRegRunnerIds[hitSlot];
+		if (hitSlot != _dragHighlightSlot) {
+			// Changed slot — unhighlight old, highlight new
+			clearDrawOnRegHighlight();
+			_dragHighlightSlot = hitSlot;
+
+			// IDA: 0x453ACB–0x453AE3: Enable render, set highlight frame
+			// wBoolDoRender=1, wGroupFrameIdx0098=0, dwHotspotIdx009A=1
+			ZmbFeature *seatRunner = _scrbFeatures.find(seatRunnerId);
+			if (seatRunner) {
+				seatRunner->activateRender();
+				seatRunner->setLastFrameIdx(0);
+				seatRunner->setNeedsRedraw(true);
+			}
+		}
+	} else if (_dragHighlightSlot >= 0) {
+		// Left all slots — unhighlight
+		clearDrawOnRegHighlight();
+	}
+}
+
+void ZoombiniInteractive::clearDrawOnRegHighlight() {
+	if (_dragHighlightSlot < 0)
+		return;
+
+	// IDA: 0x453AA5–0x453AB4: Unhighlight — set SKIP_ONCE flag and trigger render
+	uint16 seatRunnerId = _drawOnRegRunnerIds[_dragHighlightSlot];
+	ZmbFeature *seatRunner = _scrbFeatures.find(seatRunnerId);
+	if (seatRunner && seatRunner->isRenderActivated()) {
+		seatRunner->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
+		seatRunner->resetNextRenderFrame();
+	}
+	_dragHighlightSlot = -1;
 }
 
 void ZoombiniInteractive::layoutStaticAndWalkIn() {
@@ -1100,6 +1162,19 @@ void ZoombiniInteractive::layoutStaticAndWalkIn() {
 	// IDA: v8 = 3 * LoadedZmbRunnerCount / 4 — 75% threshold.
 	const int16 total = (int16)occupied.size();
 	const int16 walkInStart = (3 * total) / 4;
+
+	// IDA: zmb_layoutStaticAndWalkInGroups 0x4544E4–0x454576
+	// Static snoids (first 75%): match each snoid's position to draw-on-reg
+	// slots. If a slot's snap position falls within ±clickZoneRadius of the
+	// snoid's position, mark that slot as occupied by this snoid.
+	for (int16 i = 0; i < walkInStart && i < total; i++) {
+		ZmbSnoid *snoid = occupied[i];
+		const Common::Point sPos = snoid->getPointLoc();
+		int16 slotIdx = hitTestDrawOnRegSlot(sPos, _clickZoneRadius, true);
+		if (slotIdx >= 0) {
+			setDrawOnRegOccupant(slotIdx, snoid->getId());
+		}
+	}
 
 	// Last 25%: start off-screen left, walk to pedestal.
 	// IDA: posLoc.x = -50, posLoc.y = target.y, animDestPos = target,

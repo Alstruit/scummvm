@@ -494,6 +494,10 @@ ZoombiniOptionsWidget::ZoombiniOptionsWidget(GuiObject *boss, const Common::Stri
 	_originalPrngCheckbox = new GUI::CheckboxWidget(widgetsBoss(), "ZoombiniEngineOptionsDialog.OriginalPRNG",
 		_("Use original PRNG"),
 		_("Uses the original engine's pseudo-random number generator instead of ScummVM's default."));
+
+	_fixHotelMidiBgmCheckbox = new GUI::CheckboxWidget(widgetsBoss(), "ZoombiniEngineOptionsDialog.FixHotelMidiBGM",
+		_("Fix hotel MIDI background music halt (v1.x only)"),
+		_("Prevents hotel MIDI music from stopping when sound effects play (original engine bug). Only affects Broderbund v1.x releases."));
 }
 
 ZoombiniOptionsWidget::~ZoombiniOptionsWidget() {
@@ -506,6 +510,7 @@ void ZoombiniOptionsWidget::defineLayout(GUI::ThemeEval &layouts, const Common::
 			.addWidget("AudioDiscontinuityFix", "Checkbox")
 			.addWidget("BrightenPalette", "Checkbox")
 			.addWidget("OriginalPRNG", "Checkbox")
+			.addWidget("FixHotelMidiBGM", "Checkbox")
 		.closeLayout()
 	.closeDialog();
 }
@@ -514,12 +519,14 @@ void ZoombiniOptionsWidget::load() {
 	_audioPopFixCheckbox->setState(ConfMan.getBool("fix_audio_pops", _domain));
 	_brightenPaletteCheckbox->setState(ConfMan.getBool("brighten_palette", _domain));
 	_originalPrngCheckbox->setState(ConfMan.getBool("original_prng", _domain));
+	_fixHotelMidiBgmCheckbox->setState(ConfMan.getBool("fix_hotel_midi_bgm", _domain));
 }
 
 bool ZoombiniOptionsWidget::save() {
 	ConfMan.setBool("fix_audio_pops", _audioPopFixCheckbox->getState(), _domain);
 	ConfMan.setBool("brighten_palette", _brightenPaletteCheckbox->getState(), _domain);
 	ConfMan.setBool("original_prng", _originalPrngCheckbox->getState(), _domain);
+	ConfMan.setBool("fix_hotel_midi_bgm", _fixHotelMidiBgmCheckbox->getState(), _domain);
 	return true;
 }
 

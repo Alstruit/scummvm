@@ -325,6 +325,41 @@ protected:
 	 */
 	virtual const Common::Rect &getDragConstraintRect() const;
 
+	// [*] Draw-on-Region Drop-Target Interaction
+	// IDA: beginDragFeatureRunner_45360F — zone-radius highlighting and drop logic.
+
+	/**
+	 * Click zone radius for draw-on-reg drop detection.
+	 * IDA: zmb_clickZoneRadius (0x4B6D3E) — default 15. Set per page in loadFeatures.
+	 * Bridge=55, Picker=60, etc.
+	 */
+	int16 _clickZoneRadius = 15;
+
+	/**
+	 * Source draw-on-reg slot the snoid was picked up from, or -1.
+	 * IDA: beginDragFeatureRunner_45360F srcSlotIdx (source occupancy cleared on pickup).
+	 */
+	int16 _dragSourceSlot = -1;
+
+	/**
+	 * Currently highlighted draw-on-reg slot during drag, or -1.
+	 * IDA: beginDragFeatureRunner_45360F wFeatureRunnerIdx tracking.
+	 */
+	int16 _dragHighlightSlot = -1;
+
+	/**
+	 * Update draw-on-reg seat highlighting during drag.
+	 * Called from onMouseMove. Highlights empty slots within zone radius,
+	 * unhighlights when leaving.
+	 * IDA: beginDragFeatureRunner_45360F 0x4539BF–0x453B51
+	 */
+	void updateDrawOnRegHighlight();
+
+	/**
+	 * Clear any active draw-on-reg highlight (e.g. on drag end).
+	 */
+	void clearDrawOnRegHighlight();
+
 	/**
 	 * Apply the 75/25 split: first 75% of loaded pack snoids remain idle at their
 	 * pedestal positions; last 25% are given a walk-in animation from x=-50.

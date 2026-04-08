@@ -193,10 +193,16 @@ void ZmbFeature::initValues() {
 		_hasClickRect = 0;
 		_skipFirstAdvance = 1;
 		if (hasFlag(ZmbFeature::FLAG_00800000_POS_DELTA)) {
+			// IDA loadSCRB (0x460384) at 0x4604DC:
+			//   if (POS_DELTA set) pos2 = hsArr[0].pos;
+			// Only pos2 (_pointRef) is updated to the SCRB's first hotspot position.
+			// posLoc (_pointLoc) retains the layout position from the constructor
+			// (set in runner_registerAndAllocate from corePosUnion).
+			// Delta = posLoc - pos2 offsets all hotspots so the first one appears
+			// at the constructor-provided layout position.
 			assert(getHotspotGroup(0) != nullptr);
 			assert(0 < getHotspotGroup(0)->getHotspotCount());
-			_pointLoc = getHotspotGroup(0)->getHotspot(0).getPos();
-			_pointRef = _pointLoc;
+			_pointRef = getHotspotGroup(0)->getHotspot(0).getPos();
 		}
 	}
 }

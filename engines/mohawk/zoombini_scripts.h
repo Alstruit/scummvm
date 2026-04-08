@@ -660,6 +660,7 @@ public:
 	void setLastFrameIdx(int32 idx) { _lastFrameIdx = idx; }
 	int32 defaultSelectRenderFrame(uint32 currentFrameCounter);
 	uint32 getFrameInterval() const { return _frameInterval; }
+	void setFrameInterval(uint32 interval) { _frameInterval = interval; }
 	Common::Point getPointLoc() const { return _pointLoc; }
 	void setPointLoc(const Common::Point &pointLoc) { _pointLoc = pointLoc; }
 	Common::Point getPosDelta() const;
@@ -723,6 +724,8 @@ public:
 	 * as true (no timing gate — the hook drives frame advancement directly).
 	 */
 	bool isFrameTimingReady() const { return _frameTimingReady; }
+	/** Reset dNextRenderFrame to 0 so the timing gate passes on the next tick. */
+	void resetNextRenderFrame() { _nextRenderFrame = 0; }
 	/**
 	 * Check if this feature should be animated.
 	 * @return True if this feature is being animated in animation frame

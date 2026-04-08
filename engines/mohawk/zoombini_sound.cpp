@@ -33,6 +33,8 @@ ZoombiniSound::~ZoombiniSound() {
 }
 
 Audio::SoundHandle *ZoombiniSound::playZmbSound(ZmbResource resource, Audio::Mixer::SoundType soundType, bool loop) {
+	if (_stopMidiOnSfx && soundType == Audio::Mixer::kSFXSoundType)
+		_vm->_midi->stopMidi();
 	ZmbArchiveKind lastKind = _vm->setActiveResourceKind(resource._archiveKind);
 	Audio::SoundHandle *sndHandle = playSound(resource._id, soundType, 255, loop, nullptr);
 	_vm->setActiveResourceKind(lastKind);
@@ -40,6 +42,8 @@ Audio::SoundHandle *ZoombiniSound::playZmbSound(ZmbResource resource, Audio::Mix
 }
 
 Audio::SoundHandle *ZoombiniSound::playZmbSound(ZmbResource resource, Audio::Mixer::SoundType soundType, byte volume, bool loop) {
+	if (_stopMidiOnSfx && soundType == Audio::Mixer::kSFXSoundType)
+		_vm->_midi->stopMidi();
 	ZmbArchiveKind lastKind = _vm->setActiveResourceKind(resource._archiveKind);
 	Audio::SoundHandle *sndHandle = playSound(resource._id, soundType, volume, loop, nullptr);
 	_vm->setActiveResourceKind(lastKind);

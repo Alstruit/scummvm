@@ -38,95 +38,77 @@ namespace Mohawk {
 
 /**
  * Ordered feature container: preserves insertion (registration) order for
- * iteration while providing O(1) lookup by uint16 ID.
+ * iteration with linear-scan lookup by uint16 ID.
  *
  * The original engine stores all feature/snoid runners in a single singly-linked
  * list (zmb_pRunnerListHead). Each runner has a unique auto-incremented
  * wFeatureRunnerIdx and a separate wResId (SCRB resource ID). Multiple runners
  * may share the same wResId. Iteration order = registration order, and lookups
- * walk the list (runner_findByIndex). We keep a HashMap for efficient lookups.
+ * walk the list (runner_findByIndex). Collection sizes are small (<100) so a
+ * cache-friendly array with linear scan matches or beats hash-map lookup.
  *
- * Duplicate keys: insert() always appends to the iteration list. The HashMap
- * index stores only the FIRST entry for each key; subsequent entries with the
- * same key are list-only. This matches the original engine where multiple
- * runners may share a wResId. Use eraseByPtr() for pointer-identity removal.
+ * Duplicate keys: insert() always appends. find() returns the first entry
+ * for a given key, matching the original engine behaviour.
  */
 template<class T>
 class ZmbFeatureList {
 public:
-	using ListType = Common::List<T *>;
-	using iterator = typename ListType::iterator;
-	using const_iterator = typename ListType::const_iterator;
+	using iterator = typename Common::Array<T *>::iterator;
+	using const_iterator = typename Common::Array<T *>::const_iterator;
 
-	iterator begin() { return _list.begin(); }
-	iterator end() { return _list.end(); }
-	const_iterator begin() const { return _list.begin(); }
-	const_iterator end() const { return _list.end(); }
+	iterator begin() { return _items.begin(); }
+	iterator end() { return _items.end(); }
+	const_iterator begin() const { return _items.begin(); }
+	const_iterator end() const { return _items.end(); }
 
-	uint size() const { return _list.size(); }
-	bool empty() const { return _list.empty(); }
+	uint size() const { return _items.size(); }
+	bool empty() const { return _items.empty(); }
 
 	/** Insert a feature at the tail (= registered last = drawn last in
-	 *  LOOP_ANIM bucket). Always succeeds; duplicate keys are allowed
-	 *  (only the first entry per key is indexed in the HashMap). */
+	 *  LOOP_ANIM bucket). Always succeeds; duplicate keys are allowed. */
 	void insert(uint16 id, T *feature) {
-		_list.push_back(feature);
-		if (!_index.contains(id))
-			_index[id] = feature;
+		_items.push_back(feature);
 	}
 
-	/** Lookup by ID.  Returns nullptr when not found. */
+	/** Lookup by ID (linear scan). Returns nullptr when not found. */
 	T *find(uint16 id) const {
-		auto it = _index.find(id);
-		if (it == _index.end())
-			return nullptr;
-		return it->_value;
+		for (const auto *item : _items) {
+			if (item->getId() == id)
+				return const_cast<T *>(item);
+		}
+		return nullptr;
 	}
 
-	/** Erase by ID.  Returns the erased pointer (caller responsible for
+	/** Erase by ID. Returns the erased pointer (caller responsible for
 	 *  delete), or nullptr if not found. */
 	T *erase(uint16 id) {
-		auto hashIt = _index.find(id);
-		if (hashIt == _index.end())
-			return nullptr;
-		T *ptr = hashIt->_value;
-		_index.erase(hashIt);
-		for (auto listIt = _list.begin(); listIt != _list.end(); ++listIt) {
-			if (*listIt == ptr) {
-				_list.erase(listIt);
-				break;
+		for (uint i = 0; i < _items.size(); ++i) {
+			if (_items[i]->getId() == id) {
+				T *ptr = _items[i];
+				_items.remove_at(i);
+				return ptr;
 			}
 		}
-		return ptr;
+		return nullptr;
 	}
 
-	/** Erase by pointer identity. Removes from the iteration list and,
-	 *  if this pointer is the HashMap-indexed entry for @p keyHint,
-	 *  removes the index entry as well. */
+	/** Erase by pointer identity. The @p keyHint parameter is unused
+	 *  (kept for API compatibility). */
 	void eraseByPtr(T *ptr, uint16 keyHint) {
-		auto hashIt = _index.find(keyHint);
-		if (hashIt != _index.end() && hashIt->_value == ptr)
-			_index.erase(hashIt);
-		for (auto listIt = _list.begin(); listIt != _list.end(); ++listIt) {
-			if (*listIt == ptr) {
-				_list.erase(listIt);
+		for (uint i = 0; i < _items.size(); ++i) {
+			if (_items[i] == ptr) {
+				_items.remove_at(i);
 				return;
 			}
 		}
 	}
 
 	void clear() {
-		_list.clear();
-		_index.clear();
+		_items.clear();
 	}
 
-	/** Direct read access to the underlying list (for legacy code that
-	 *  needs `operator[]` on seat-runner IDs, etc.). */
-	T *operator[](uint16 id) const { return find(id); }
-
 private:
-	ListType _list;
-	Common::HashMap<uint16, T *> _index;
+	Common::Array<T *> _items;
 };
 
 constexpr const char *ZMB_MHK_ZOOMBINI = "ZOOMBINI.MHK";
@@ -451,6 +433,67 @@ public:
 	 * IDA: clearTerrainSprite_4600B9.
 	 */
 	void clearTerrainBitmap();
+
+	// [*] Draw-on-Region Slot System
+	// IDA: scrb_drawOnRegRunnerIdxArr[], posArr_4B7C44[],
+	//      scrb_drawOnRegFlagArr[], scrb_activeDrawOnRegCount
+	// Tracks seat/pedestal features that serve as snoid drop targets.
+	// Auto-populated by registerFeature() when FLAG_00002000_DRAW_ON_REG is set.
+	// Also populated manually by pages with custom seat loading (e.g. ferry).
+	static const int16 kMaxDrawOnRegSlots = 125;
+
+	/** Number of registered draw-on-reg slots. IDA: scrb_activeDrawOnRegCount (0x4B7B48) */
+	int16 _drawOnRegCount = 0;
+
+	/** Feature IDs of seat/pedestal runners. IDA: scrb_drawOnRegRunnerIdxArr (0x4B7B4A) */
+	uint16 _drawOnRegRunnerIds[kMaxDrawOnRegSlots] = {};
+
+	/** Snap positions for drop targets. IDA: posArr_4B7C44 (0x4B7C44) */
+	Common::Point _drawOnRegSnapPositions[kMaxDrawOnRegSlots];
+
+	/** Occupancy: 0 = empty, else = feature ID of seated snoid. IDA: scrb_drawOnRegFlagArr (0x4B7E38) */
+	uint16 _drawOnRegOccupancy[kMaxDrawOnRegSlots] = {};
+
+	/**
+	 * Register a draw-on-reg slot manually (for pages with custom layout parsing).
+	 * Returns the 0-based slot index.
+	 * IDA: scrb_loadHotspotLayout_ferry writes directly to posArr_4B7C44, etc.
+	 */
+	int16 registerDrawOnRegSlot(uint16 runnerId, const Common::Point &snapPos);
+
+	/** Override the snap position of an existing slot. */
+	void setDrawOnRegSnapPosition(int16 slotIdx, const Common::Point &pos);
+
+	/** Get the occupant feature ID of a slot (0 = empty). */
+	uint16 getDrawOnRegOccupant(int16 slotIdx) const;
+
+	/** Set the occupant of a slot. IDA: scrb_drawOnRegFlagArr[slot] = runnerIdx */
+	void setDrawOnRegOccupant(int16 slotIdx, uint16 occupantId);
+
+	/** Clear a slot's occupant. IDA: scrb_drawOnRegFlagArr[slot] = 0 */
+	void clearDrawOnRegOccupant(int16 slotIdx);
+
+	/**
+	 * Find the slot index occupied by a given feature, or -1 if not found.
+	 * IDA: beginDragFeatureRunner_45360F source slot detection loop.
+	 */
+	int16 findDrawOnRegSlotByOccupant(uint16 occupantId) const;
+
+	/**
+	 * Hit-test a point against draw-on-reg snap positions using a zone rect.
+	 * Returns 0-based slot index of the first empty slot within the zone, or -1.
+	 * IDA: beginDragFeatureRunner_45360F drop-target detection loop.
+	 * @param pos         Point to test (typically snoid position during drag).
+	 * @param zoneRadius  Half-size of the test rect. IDA: zmb_clickZoneRadius.
+	 * @param emptyOnly   If true, skip occupied slots (default drag behavior).
+	 */
+	int16 hitTestDrawOnRegSlot(const Common::Point &pos, int16 zoneRadius, bool emptyOnly = true) const;
+
+	/**
+	 * Reset all draw-on-reg slots. Called by clear().
+	 * IDA: scrb_resetAllState (0x45FF82) zeroes all arrays.
+	 */
+	void resetDrawOnRegSlots();
 
 	// [*] Constant
 	enum CommonResourceId : uint16 {
