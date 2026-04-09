@@ -103,6 +103,32 @@ const int16 ZoombiniPuzzleNet::kColOffsets1[5] = {2, 3, 0, 1, 4};
 // IDA: unk_4A28DE — column offset remapping table 2
 const int16 ZoombiniPuzzleNet::kColOffsets2[5] = {4, 0, 2, 1, 3};
 
+// IDA: word_4A2292 (button runner data, entries 4-19, 36-byte stride)
+// Fixed click rectangles for the submit button and 3x5 attribute column buttons.
+// These match the original engine's CButtonRunner table exactly.
+const Common::Rect ZoombiniPuzzleNet::kButtonClickRects[16] = {
+	// [0] submit button (hotspot 4)
+	Common::Rect(450, 275, 587, 362),
+	// [1-5] column 0 values 0-4 (hotspots 5-9, active only at diff>=2)
+	Common::Rect(446, 378, 475, 407),
+	Common::Rect(476, 375, 498, 402),
+	Common::Rect(499, 373, 524, 399),
+	Common::Rect(525, 367, 549, 394),
+	Common::Rect(550, 363, 573, 390),
+	// [6-10] column 1 values 0-4 (hotspots 10-14)
+	Common::Rect(446, 408, 475, 433),
+	Common::Rect(476, 403, 501, 428),
+	Common::Rect(499, 400, 526, 424),
+	Common::Rect(525, 395, 550, 421),
+	Common::Rect(550, 391, 577, 415),
+	// [11-15] column 2 values 0-4 (hotspots 15-19)
+	Common::Rect(450, 434, 478, 459),
+	Common::Rect(479, 429, 501, 455),
+	Common::Rect(502, 425, 527, 451),
+	Common::Rect(528, 422, 553, 446),
+	Common::Rect(554, 416, 577, 441),
+};
+
 ZoombiniPuzzleNet::ZoombiniPuzzleNet(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kNet) {
 }
 
@@ -230,12 +256,14 @@ void ZoombiniPuzzleNet::loadFeatures() {
 
 	// IDA: net_remainingExitSteps = net_columnCount + (difficulty==3) + 7
 	_remainingExitSteps = _columnCount + (_difficultyLevel == 3 ? 1 : 0) + 7;
+	// IDA: net_totalExitSteps = net_remainingExitSteps (copy for reference)
+	_totalExitSteps = _remainingExitSteps;
 	_exitAnimActive = true;
 	_labelAnimRunning = true;
 	_firstRoundFlag = true;
 	_inputLocked = true;
 	_exitAnimStep = 0;
-	_exitScrbOffset = 0;
+	_exitScrbOffset = 16 - _remainingExitSteps;
 	_sortedZmbCount = 0;
 	_rejectedCount = 0;
 	_submitCount = 0;
@@ -257,7 +285,8 @@ void ZoombiniPuzzleNet::loadFeatures() {
 	_bAdvanceReady = false;
 	_noMatchFlag = false;
 	_hintPending = false;
-	_slotRunnerCount = 0;
+	_slotRunnerCount = -1;
+	_currentSlotIndex = -1;
 	_pendingColumnSetup = 0;
 	_pendingAttrRunning = false;
 	_activeAttrRunning = false;
@@ -265,9 +294,9 @@ void ZoombiniPuzzleNet::loadFeatures() {
 	_activeAttrAnim2Running = false;
 	_activeAttrAnim3Running = false;
 	_columnOpenAnimRunning = false;
+	_columnAnimColIdx = 0;
 	_zmbEntryAnimRunning = false;
 	_sortAnimRunning = false;
-	_exitRunnerActive = false;
 	_hotspotPositionFlag = 0;
 	_bounceCounter = 0;
 	_sortAnimType = 0;
@@ -279,9 +308,12 @@ void ZoombiniPuzzleNet::loadFeatures() {
 	memset(_slotScrbFeatures, 0, sizeof(_slotScrbFeatures));
 	memset(_activeSlotFeatures, 0, sizeof(_activeSlotFeatures));
 
-	// Register column SCRB runners
+	// Register column SCRB runners and start initial animations
 	// IDA: net_registerAllSCRBRunners(v10, &unk_4A28AC)
 	registerColumnRunners();
+	// Exit SCRB animation is started during registerColumnRunners()
+	// IDA: net_exitRunner = scrb_registerHotspotGroup(0, 0, 0, 0, net_exitScrbRunner, net_exitScrbRunner)
+	_exitRunnerActive = true;
 
 	// Layout and stagger walk-in with walkDelay=30
 	// IDA: zmb_layoutStaticAndWalkInGroups(0)
@@ -303,10 +335,11 @@ void ZoombiniPuzzleNet::loadFeatures() {
 	// IDA: sound_activeHandle = 20064 — net narrator voice (F1 key replay)
 	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, 20064);
 
-	// Celebration state init
+	// Idle animation state
+	// IDA: net_idleAnimMax = 3; if (*(_WORD*)(g_pGameState + 32)) net_idleAnimMax = 2;
 	_idleAnimTrigger = false;
 	_idleAnimCount = 0;
-	_idleAnimMax = 0;
+	_idleAnimMax = 3;
 	_idleAnimPoolState = 0;
 	_idleAnimLastFrame = 0;
 	_roundCompletedFlag = false;
@@ -353,6 +386,13 @@ void ZoombiniPuzzleNet::loadZoombinisFromPack() {
 void ZoombiniPuzzleNet::registerColumnRunners() {
 	// IDA: net_registerAllSCRBRunners (0x437733)
 	// Registers all the SCRB features needed for column-based sorting puzzle.
+
+	// IDA: scrb_useFeatureGroup(TRUE, groupId, 7000) — loads REGS 7000/7001
+	// alongside tBMP 7000 for per-shape registration-point offsets.
+	loadREGS(ZmbArchiveKind::kPage, 7000);
+	// IDA: scrb_useFeatureGroup(TRUE, groupId, 9000) — loads REGS 9000/9001
+	// for slot feature shapes (indicator shapes 151-156 have non-zero offsets).
+	loadREGS(ZmbArchiveKind::kPage, 9000);
 	
 	// 5 column SCRB runners at 8000-8004
 	// IDA: for i=0..4: net_columnScrbRunners[i] = registerSCRB(..., 6, i+8000, ..., 0x4180000)
@@ -360,22 +400,23 @@ void ZoombiniPuzzleNet::registerColumnRunners() {
 		_columnScrbFeatures[i] = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 8000), 8000 + i, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
-			ZmbFeature::FLAG_04000000_OVERLAY);
+			ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_04000000_OVERLAY);
 	}
 	
 	// Entry SCRB runner at 8005
-	// IDA: net_entryScrbRunner = registerSCRB(..., 6, 8005, ..., 0x4180000)
+	// IDA: net_entryScrbRunner = registerSCRB(..., 6, 8005, ..., 0x4188000)
 	_entryScrbFeature = loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, 8000), 8005, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
-		ZmbFeature::FLAG_04000000_OVERLAY);
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_04000000_OVERLAY);
 	
 	// Label SCRB runner: 9151 (diff<=1) or 9153 (diff>1)
-	// IDA: net_labelScrbRunner = registerSCRB(..., 6, 9151/9153, ..., 0x4100000)
+	// IDA: net_labelScrbRunner = registerSCRB(..., 6, 9151/9153, ..., 0x4108000)
 	uint16 labelScrbId = (_difficultyLevel > 1) ? 9153 : 9151;
 	_labelScrbFeature = loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, 9000), labelScrbId, 6,
-		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_04000000_OVERLAY);
 	
 	// Attribute animation SCRB runner at 7018
 	// IDA: net_attrAnimScrbRunner = registerSCRB(..., 6, 7018, ..., 0x4188000)
@@ -383,6 +424,8 @@ void ZoombiniPuzzleNet::registerColumnRunners() {
 		ZmbResource(ZmbArchiveKind::kPage, 7000), 7018, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_04000000_OVERLAY);
+	if (_attrAnimScrbFeature)
+		_attrAnimScrbFeature->setShapeRegs(_regsMap[7000]);
 	
 	// Feedback SCRB runner at 10018
 	// IDA: net_feedbackScrbRunner = registerSCRB(..., 6, 10018, ..., 0x188000)
@@ -393,24 +436,34 @@ void ZoombiniPuzzleNet::registerColumnRunners() {
 	
 	// Attribute column SCRB runners at random offsets
 	// IDA: net_attrCol0ScrbRunner (only if diff>=2), net_attrCol1ScrbRunner, net_attrCol2ScrbRunner
+	// IDA flags: 0x4108000 = OVERLAY | PLAY_ONCE | LOOP_ANIM
 	if (_difficultyLevel >= 2) {
 		_attrColScrbFeatures[0] = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 10000), 10002 + _randAttrColOffset[0], 6,
-			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+			ZmbFeature::FLAG_04000000_OVERLAY);
 	}
 	_attrColScrbFeatures[1] = loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, 10000), 10007 + _randAttrColOffset[1], 6,
-		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_04000000_OVERLAY);
 	_attrColScrbFeatures[2] = loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, 10000), 10012 + _randAttrColOffset[2], 6,
-		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
+		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+		ZmbFeature::FLAG_04000000_OVERLAY);
 	
 	// Exit SCRB runner at 7000
-	// IDA: net_exitScrbRunner = registerSCRB(..., 6, 7000, ..., 0x4180000)
+	// IDA: net_exitScrbRunner = registerSCRB(..., 6, 7000, ..., 0x4188000)
+	// IDA: net_exitRunner = scrb_registerHotspotGroup(0, 0, 0, 0, ...) — tracks completion
+	// Original uses DEFER_ANIM: SCRB 7000 is loaded as a placeholder but NEVER plays.
+	// On the first frame tick, hotspot_ownerRunnerArr[exitRunner]==0 (since no render occurred),
+	// so the exit step immediately advances from 0→1, loading SCRB 7001 as the first actual animation.
 	_exitScrbFeature = loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, 7000), 7000, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
-		ZmbFeature::FLAG_04000000_OVERLAY);
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_04000000_OVERLAY);
+	if (_exitScrbFeature)
+		_exitScrbFeature->setShapeRegs(_regsMap[7000]);
 }
 
 bool ZoombiniPuzzleNet::attrSlots_preRender(ZmbFeature *feature) {
@@ -444,26 +497,147 @@ bool ZoombiniPuzzleNet::attrSlots_preRender(ZmbFeature *feature) {
 
 ZmbRenderResult ZoombiniPuzzleNet::attrSlots_render(ZmbFeature *feature) {
 	// IDA: fleens_renderAllAttrSlots_436785 (0x436785)
-	// Renders the attribute slot button sprites.
+	// Renders the attribute slot button sprites:
+	//   Slot 1: Label area (shape 5 from tBMP 6000) at (600, 403)
+	//   Slot 2: Advance button (shape 1=off / 2=ready from tBMP 6000) at (600, 441)
 	//
-	// The original calls:
-	//   fleens_renderAttrSlotSCRB(0, 0, 1) — always render slot 1 (label area)
-	//   fleens_renderAttrSlotSCRB(0, 0, 2) — render slot 2 (advance button, state-dependent)
-	//
-	// fleens_renderAttrSlotSCRB maps slot types:
-	//   slot 1 -> SCRB shape 5/6 (label)
-	//   slot 2 -> SCRB shape 1/2/3 (advance button, depends on net_advanceReady)
-	//
-	// For now, we rely on:
-	// - Label feature (_labelScrbFeature) renders the column labels
-	// - Go button (base class) handles advance state
-	// So this callback is effectively a no-op until full puzzle logic is added.
-	
+	// IDA: fleens_renderAttrSlotSCRB(0, 0, 1) — slot 1 always shape 5
+	//      fleens_renderAttrSlotSCRB(0, 0, 2) — slot 2 shape depends on _bAdvanceReady
+
+	ZmbResource shapeRes(ZmbArchiveKind::kPage, 6000);
+
+	// Slot 1: Map/label button — always shape 5.
+	// IDA: word_4A2292[18] = 600 (x), word_4A2294[18] = 403 (y), shapeIdx = 5
+	_vm->_gfx->drawShape(ZoombiniGraphics::kShapeScreen, shapeRes, 5,
+						  Common::Point(600, 403));
+
+	// Slot 2: Go/advance button — shape depends on _bAdvanceReady.
+	// IDA: word_4A2292[36] = 600 (x), word_4A2294[36] = 441 (y)
+	//      shapeIdx = _bAdvanceReady ? 2 : 1
+	uint16 goShapeIdx = _bAdvanceReady ? 2 : 1;
+	_vm->_gfx->drawShape(ZoombiniGraphics::kShapeScreen, shapeRes, goShapeIdx,
+						  Common::Point(600, 441));
+
 	// Clear dirty flags after render
 	_advanceButtonDirty = false;
 	_columnLabelDirty = false;
-	
+
 	return ZmbRenderResult::kRendered;
+}
+
+void ZoombiniPuzzleNet::remapHotspotFramesByAttr(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
+	// IDA: net_remapHotspotFramesByAttr (0x438761)
+	// Remaps hotspot shape indices based on current attribute column offsets.
+	// Uses kColOffsets1 (unk_4A28D4) and kColOffsets2 (unk_4A28DE) lookup tables.
+	// Also adjusts hotspot x/y positions when _hotspotPositionFlag is set (bounce animation).
+
+	// Map current and previous column offsets through lookup tables
+	int16 mappedCurCol1 = -1;  // v2: kColOffsets1[randAttrColOffset[1]]
+	int16 mappedCurCol2 = -1;  // mappedOffset2: kColOffsets2[randAttrColOffset[2]]
+	int16 mappedCurCol0 = -1;  // v1: kColOffsets2[randAttrColOffset[0]]
+	int16 mappedPrevCol1 = -1; // mappedOffsetA: kColOffsets1[prevAttrColOffset[1]]
+	int16 mappedPrevCol2 = -1; // mappedOffsetB: kColOffsets2[prevAttrColOffset[2]]
+	int16 mappedPrevCol0 = -1; // mappedOffset0: kColOffsets2[prevAttrColOffset[0]]
+
+	if (_randAttrColOffset[1] != -1)
+		mappedCurCol1 = kColOffsets1[_randAttrColOffset[1]];
+	if (_randAttrColOffset[2] != -1)
+		mappedCurCol2 = kColOffsets2[_randAttrColOffset[2]];
+	if (_randAttrColOffset[0] != -1)
+		mappedCurCol0 = kColOffsets2[_randAttrColOffset[0]];
+	if (_prevAttrColOffset[1] != -1)
+		mappedPrevCol1 = kColOffsets1[_prevAttrColOffset[1]];
+	if (_prevAttrColOffset[2] != -1)
+		mappedPrevCol2 = kColOffsets2[_prevAttrColOffset[2]];
+	if (_prevAttrColOffset[0] != -1)
+		mappedPrevCol0 = kColOffsets2[_prevAttrColOffset[0]];
+
+	for (uint i = 0; i < hotspots.size(); i++) {
+		int16 shapeIdx = hotspots[i]._shapeIdx;
+		if (shapeIdx == 0)
+			break;
+
+		if (1 <= shapeIdx && shapeIdx < 185) {
+			// Range 1-5: prev column offsets (both col1 and col0 mapped)
+			if (shapeIdx < 6 && mappedPrevCol1 >= 0 && mappedPrevCol0 != -1) {
+				hotspots[i]._shapeIdx = mappedPrevCol1 + 12 * mappedPrevCol0 + 6;
+			}
+			// Range 1-5: prev column offset (only col1 mapped, no col0)
+			else if (shapeIdx < 6 && mappedPrevCol1 != -1 && mappedPrevCol0 == -1) {
+				hotspots[i]._shapeIdx = mappedPrevCol1 + 1;
+			}
+			// Range 6-10: current column offsets (both col1 and col0 mapped)
+			else if (6 <= shapeIdx && shapeIdx < 11 && mappedCurCol1 >= 0 && mappedCurCol0 != -1) {
+				hotspots[i]._shapeIdx = shapeIdx + mappedCurCol1 + 12 * mappedCurCol0;
+			}
+			// Range 6-10: current column offset (only col1 mapped)
+			else if (6 <= shapeIdx && shapeIdx < 11 && mappedCurCol1 != -1) {
+				hotspots[i]._shapeIdx = mappedCurCol1 + 1;
+			}
+			// Range 11-17: cube plane offset (col0 mapped)
+			else if (11 <= shapeIdx && shapeIdx < 18 && mappedCurCol0 != -1) {
+				hotspots[i]._shapeIdx = shapeIdx + 12 * mappedCurCol0;
+			}
+			// Range 66-87: row offset (col2 mapped)
+			else if (66 <= shapeIdx && shapeIdx < 88 && mappedCurCol2 >= 0) {
+				hotspots[i]._shapeIdx = shapeIdx + 22 * mappedCurCol2;
+			}
+			// Range 176+: prev row offset (prevCol2 mapped)
+			else if (176 <= shapeIdx && mappedPrevCol2 != -1) {
+				hotspots[i]._shapeIdx = 22 * mappedPrevCol2 + 66;
+			}
+
+			// Position adjustment when bouncing or placing at slot
+			if (_hotspotPositionFlag) {
+				if (i == 0) {
+					// First hotspot: base position
+					hotspots[i]._x = _bounceX;
+					hotspots[i]._y = _bounceY;
+				} else if (_bounceCounter) {
+					// During bounce animation
+					hotspots[i]._x = _bounceX + 4;
+					hotspots[i]._y = _bounceY + 3;
+				} else {
+					// At rest in slot
+					if (_difficultyLevel >= 2)
+						hotspots[i]._x = _bounceX + 3;
+					else
+						hotspots[i]._x = _bounceX + 21;
+					hotspots[i]._y = _bounceY + 7;
+				}
+			}
+		}
+	}
+}
+
+void ZoombiniPuzzleNet::slotPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
+	// IDA: net_saveRunnerPosition (0x438736)
+	// Adds the column indicator shape to the slot feature's hotspot list.
+	//
+	// In the original engine, this callback writes directly into the inline
+	// hotspot array: hsArr[1].shapeid = shapeOffset, hsArr[1].pos = hsArr[0].pos,
+	// hsArr[2].shapeid = 0 (terminator).
+	//
+	// In ScummVM, the hotspots array is a per-frame copy, so we append a
+	// new hotspot with the indicator shape at the same position as the
+	// SCRB's first hotspot (the slot background/dot).
+
+	for (int16 i = 0; i < _totalSlotCount; i++) {
+		if (_slotScrbFeatures[i] == feature && _slotColumnAssign[i] > 0) {
+			int16 shapeOffset = (_difficultyLevel > 1)
+				? _slotColumnAssign[i] + 153
+				: _slotColumnAssign[i] + 150;
+			if (!hotspots.empty()) {
+				ZmbHotspot indicator(
+					static_cast<uint16>(hotspots.size()),
+					shapeOffset,
+					hotspots[0]._frame,
+					hotspots[0]._x, hotspots[0]._y);
+				hotspots.push_back(indicator);
+			}
+			return;
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -573,7 +747,7 @@ void ZoombiniPuzzleNet::generateAttrRules() {
 			}
 			for (int16 j = 0; j < 5; j++) {
 				for (int16 k = 0; k < 5; k++)
-					_ruleGridC[25 * k + j + 5 * i] = valC;
+					_ruleGridC[25 * k + 5 * j + i] = valB;
 			}
 		}
 	}
@@ -604,8 +778,11 @@ void ZoombiniPuzzleNet::generateAttrRules() {
 
 		for (int16 plane = 0; plane < 5; plane++) {
 			for (int16 col = 1; col < 5; col++) {
+				// IDA: reads via net_columnCount[idx] which is ruleGridA[idx-1]
+				// due to net_columnCount being 2 bytes before ruleGridA in memory.
+				// This cascading shift reads z=col-1 and writes to z=col.
 				for (int16 k = 0; k < 5; k++)
-					tempBuf[k] = _ruleGridA[25 * k + 5 * plane + col];
+					tempBuf[k] = _ruleGridA[25 * k + 5 * plane + col - 1];
 				for (int16 s = 0; s < shift; s++) {
 					int16 last = tempBuf[4];
 					for (int16 k = 4; k > 0; k--)
@@ -639,14 +816,30 @@ void ZoombiniPuzzleNet::generateAttrRules() {
 				? _slotColumnAssign[i] + 153
 				: _slotColumnAssign[i] + 150;
 
+			// IDA: flags = 0x4188000 = OVERLAY | PLAY_ONCE | DEFER_ANIM | LOOP_ANIM
+			// Original uses DEFER_ANIM + runner_linkRelativeToParent(column[0], 0, slot)
+			// to make slots visible only when linked to the column.
+			// Since runner_linkRelativeToParent is not implemented, we use LOOP_ANIM | OVERLAY
+			// (auto-activate) and immediately freeze the animation on frame 0 so the slot
+			// feature renders its indicator shape statically without flickering.
 			_slotScrbFeatures[i] = loadScrbFeature(
 				ZmbResource(ZmbArchiveKind::kPage, 9000), scrbId, 6,
 				ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
 
-			// TODO: Set slot display shape offset and position callback
-			// IDA: v25[5] = net_saveRunnerPosition; *(WORD*)(v25+44) = shapeOffset;
-			// IDA: runner_linkRelativeToParent(net_columnScrbRunners[0], 0, ...)
-			(void)shapeOffset;
+			if (_slotScrbFeatures[i]) {
+				// IDA: v25[5] = net_saveRunnerPosition; *(WORD*)(v25+44) = shapeOffset;
+				// Set preRenderShape callback to add column indicator shape at slot position.
+				_slotScrbFeatures[i]->setPreRenderShapeFunc(
+					reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleNet::slotPreRenderShape));
+				// IDA: scrb_useFeatureGroup(1, 2, 9000) — REGS 9000/9001 provides
+				// registration-point offsets for indicator shapes (151-156).
+				_slotScrbFeatures[i]->setShapeRegs(_regsMap[9000]);
+				// Freeze animation on frame 0: slot shows its static indicator permanently.
+				// LOOP_ANIM activateAnimate() sets _frameTimingReady = true;
+				// deactivateAnimate() keeps _frameTimingReady true but stops frame advance.
+				_slotScrbFeatures[i]->deactivateAnimate();
+			}
+			(void)shapeOffset; // shapeOffset is derived on-the-fly in slotPreRenderShape
 		}
 	}
 
@@ -789,6 +982,9 @@ void ZoombiniPuzzleNet::updateAttrColumnOffset(int16 value, int16 columnGroup) {
 			loadScrbOntoFeature(_attrAnimScrbFeature, sortScrbId);
 			if (_attrAnimScrbFeature) {
 				_hotspotPositionFlag = 0;
+				// IDA: v10[5] = net_remapHotspotFramesByAttr
+				_attrAnimScrbFeature->setPreRenderShapeFunc(
+					reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleNet::remapHotspotFramesByAttr));
 				_attrAnimScrbFeature->setFrameInterval(6);
 				_sortAnimRunning = true;
 			}
@@ -806,6 +1002,9 @@ void ZoombiniPuzzleNet::updateAttrColumnOffset(int16 value, int16 columnGroup) {
 					loadScrbOntoFeature(_attrAnimScrbFeature, 7027);
 					if (_attrAnimScrbFeature) {
 						_hotspotPositionFlag = 0;
+						// IDA: v4[5] = net_remapHotspotFramesByAttr
+						_attrAnimScrbFeature->setPreRenderShapeFunc(
+							reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleNet::remapHotspotFramesByAttr));
 					}
 					if (!_submitCount)
 						loadScrbOntoFeature(_feedbackScrbFeature, 10018);
@@ -825,6 +1024,9 @@ void ZoombiniPuzzleNet::updateAttrColumnOffset(int16 value, int16 columnGroup) {
 				if (_attrAnimScrbFeature) {
 					_attrAnimScrbFeature->setFrameInterval(3);
 					_hotspotPositionFlag = 0;
+					// IDA: v7[5] = net_remapHotspotFramesByAttr
+					_attrAnimScrbFeature->setPreRenderShapeFunc(
+						reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleNet::remapHotspotFramesByAttr));
 				}
 				if (!_submitCount)
 					loadScrbOntoFeature(_feedbackScrbFeature, 10018);
@@ -843,6 +1045,9 @@ void ZoombiniPuzzleNet::updateAttrColumnOffset(int16 value, int16 columnGroup) {
 				loadScrbOntoFeature(_attrAnimScrbFeature, 7026);
 				if (_attrAnimScrbFeature) {
 					_hotspotPositionFlag = 0;
+					// IDA: v8[5] = net_remapHotspotFramesByAttr
+					_attrAnimScrbFeature->setPreRenderShapeFunc(
+						reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleNet::remapHotspotFramesByAttr));
 				}
 				if (!_submitCount)
 					loadScrbOntoFeature(_feedbackScrbFeature, 10018);
@@ -920,6 +1125,8 @@ void ZoombiniPuzzleNet::registerZmbAtSlot(int16 slotIndex) {
 			ZmbResource(ZmbArchiveKind::kPage, 7000), scrbId, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 			ZmbFeature::FLAG_04000000_OVERLAY);
+		if (_activeSlotFeatures[_slotRunnerCount])
+			_activeSlotFeatures[_slotRunnerCount]->setShapeRegs(_regsMap[7000]);
 	}
 
 	// Score tracking
@@ -967,12 +1174,17 @@ void ZoombiniPuzzleNet::spawnZmbAtSlot(int16 slotIndex) {
 	static const int16 kSortScrbLookup[3] = {1, 0, 2};
 	uint16 sortScrbId = 7020 + kSortScrbLookup[_sortAnimType];
 
+	// IDA: flags 0x04100000 = OVERLAY | PLAY_ONCE
 	_activeSlotFeatures[_slotRunnerCount] = loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, 7000), sortScrbId, 6,
-		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
+		ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_04000000_OVERLAY);
 
 	if (_activeSlotFeatures[_slotRunnerCount]) {
+		_activeSlotFeatures[_slotRunnerCount]->setShapeRegs(_regsMap[7000]);
 		_hotspotPositionFlag++;
+		// IDA: v2[5] = net_remapHotspotFramesByAttr
+		_activeSlotFeatures[_slotRunnerCount]->setPreRenderShapeFunc(
+			reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleNet::remapHotspotFramesByAttr));
 		_activeSlotFeatures[_slotRunnerCount]->setFrameInterval(3);
 	}
 }
@@ -982,7 +1194,8 @@ void ZoombiniPuzzleNet::spawnZmbAtSlot(int16 slotIndex) {
 // ---------------------------------------------------------------------------
 
 ZmbEventHandleResult ZoombiniPuzzleNet::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
-	// IDA: net_onClick (0x43747F)
+	// IDA: net_funcOnClick_43747F — original dispatches by hotspot IDs 1-19
+	// using CButtonRunner fixed click rects (word_4A2292, 36-byte stride).
 	ZmbEventHandleResult result = ZoombiniInteractive::onLButtonDown(absPos, relPos);
 	if (result == ZmbEventHandleResult::kConsumed)
 		return result;
@@ -990,41 +1203,20 @@ ZmbEventHandleResult ZoombiniPuzzleNet::onLButtonDown(const Common::Point &absPo
 	if (_inputLocked)
 		return ZmbEventHandleResult::kPassthrough;
 
-	// Check attribute column SCRB feature clicks
-	// Column 0 selector (hotspots 5-9, difficulty 2+ only)
-	if (_difficultyLevel > 1 && _attrColScrbFeatures[0] &&
-		_attrColScrbFeatures[0]->isPointInClickRect(absPos)) {
-		if (!_submitActiveFlag || _rejectedCount) {
-			// Determine which sub-value (0-4) was clicked based on position
-			// For now, cycle through values
-			int16 newVal = (_randAttrColOffset[0] + 1) % 5;
-			updateAttrColumnOffset(newVal, 1);
+	// Hit-test against fixed click rects (matching original button runner table)
+	int16 buttonIdx = -1;
+	for (int16 i = 0; i < 16; i++) {
+		if (kButtonClickRects[i].contains(absPos)) {
+			buttonIdx = i;
+			break;
 		}
-		return ZmbEventHandleResult::kConsumed;
 	}
 
-	// Column 1 selector (hotspots 10-14)
-	if (_attrColScrbFeatures[1] &&
-		_attrColScrbFeatures[1]->isPointInClickRect(absPos)) {
-		if (!_submitActiveFlag || _rejectedCount) {
-			int16 newVal = (_randAttrColOffset[1] + 1) % 5;
-			updateAttrColumnOffset(newVal, 2);
-		}
-		return ZmbEventHandleResult::kConsumed;
-	}
+	if (buttonIdx < 0)
+		return ZmbEventHandleResult::kPassthrough;
 
-	// Column 2 selector (hotspots 15-19)
-	if (_attrColScrbFeatures[2] &&
-		_attrColScrbFeatures[2]->isPointInClickRect(absPos)) {
-		if (!_submitActiveFlag || _rejectedCount) {
-			int16 newVal = (_randAttrColOffset[2] + 1) % 5;
-			updateAttrColumnOffset(newVal, 3);
-		}
-		return ZmbEventHandleResult::kConsumed;
-	}
-
-	// Submit button (hotspot 4) — check feedback feature area
-	if (_feedbackScrbFeature && _feedbackScrbFeature->isPointInClickRect(absPos)) {
+	if (buttonIdx == 0) {
+		// Submit button (hotspot 4)
 		if (!_submitCount && !_submitActiveFlag && !_rejectedCount) {
 			_submitCount++;
 			_submitActiveFlag++;
@@ -1034,7 +1226,20 @@ ZmbEventHandleResult ZoombiniPuzzleNet::onLButtonDown(const Common::Point &absPo
 		return ZmbEventHandleResult::kConsumed;
 	}
 
-	return ZmbEventHandleResult::kPassthrough;
+	// Column selector buttons (hotspots 5-19)
+	// buttonIdx 1-5 = column 0, 6-10 = column 1, 11-15 = column 2
+	int16 colIdx = (buttonIdx - 1) / 5;  // 0, 1, or 2
+	int16 value = (buttonIdx - 1) % 5;   // 0-4
+
+	// Column 0 only active at difficulty > 1
+	if (colIdx == 0 && _difficultyLevel <= 1)
+		return ZmbEventHandleResult::kPassthrough;
+
+	if (_submitActiveFlag && !_rejectedCount)
+		return ZmbEventHandleResult::kConsumed;
+
+	updateAttrColumnOffset(value, colIdx + 1);
+	return ZmbEventHandleResult::kConsumed;
 }
 
 // ---------------------------------------------------------------------------
@@ -1042,13 +1247,13 @@ ZmbEventHandleResult ZoombiniPuzzleNet::onLButtonDown(const Common::Point &absPo
 // ---------------------------------------------------------------------------
 
 void ZoombiniPuzzleNet::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+	// IDA: net_zmbAnimCallback (0x438EA1) — unified callback for all NET features.
+	// NOTE: The ASCII-event traversal callback (0x43105B, net_scrbAnimCallback) belongs
+	// to MAZE2 (Bubblewonder Abyss), NOT NET (Mudball Wall). NET uses only this callback.
 	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 		processSnoidAnimEvent(feature, eventCode);
-	} else if (feature == _attrAnimScrbFeature || feature == _entryScrbFeature) {
-		// These SCRB features use net_zmbAnimCallback routing for events 0, 2, 4, 20, 30
-		processZmbScrbAnimEvent(feature, eventCode);
 	} else {
-		processScrbAnimEvent(feature, eventCode);
+		processZmbScrbAnimEvent(feature, eventCode);
 	}
 }
 
@@ -1138,6 +1343,34 @@ void ZoombiniPuzzleNet::processSnoidAnimEvent(ZmbFeature *feature, int16 eventCo
 			_pendingBodyArrangement = 0;
 		}
 		break;
+
+	case 2:
+		// Spawn zoombini SCRB at the current slot.
+		// IDA: net_zmbAnimCallback case 2 — same handler for snoid and SCRB callers.
+		// Seating SCRS scripts (13016-13030) can fire this from snoid context.
+		spawnZmbAtSlot(_currentSlotIndex);
+		break;
+
+	case 4: {
+		// Start snoid travel to column — play entry SCRS.
+		// IDA: net_zmbAnimCallback case 4 — fires from seating SCRS (13016-13018)
+		// via 0xFF05 terminator (raw 5, adjusted 4) at the last frame.
+		// Operates on _activeZmbSnoidId (the column snoid), NOT the calling feature.
+		ZmbSnoid *activeSnoid = getSnoid(_activeZmbSnoidId);
+		if (activeSnoid) {
+			Common::Point entryPos = kEntryStartPositions[_activeColumnIdx];
+			uint16 scrsId = _activeColumnIdx + 14000;
+			Common::SeekableReadStream *scrsStream =
+				_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+					ZmbResource(ZmbArchiveKind::kPage, scrsId));
+			if (scrsStream) {
+				activeSnoid->setPointLoc(entryPos);
+				activeSnoid->startScrsPlayback(scrsStream, false, false);
+			}
+		}
+		// IDA: 4x runner_linkRelativeToParent chain (not implemented)
+		break;
+	}
 
 	case 30:
 		// Column exit: play exit SCRS at entry exit position
@@ -1260,48 +1493,6 @@ void ZoombiniPuzzleNet::processZmbScrbAnimEvent(ZmbFeature *feature, int16 event
 	}
 }
 
-void ZoombiniPuzzleNet::processScrbAnimEvent(ZmbFeature *feature, int16 eventCode) {
-	// IDA: net_scrbAnimCallback (0x43105B)
-	// Handles SCRB feature traversal events using ASCII char-based codes.
-	// The traversal system is complex (~30 functions) and handles grid-based
-	// pathfinding. For now, we handle the essential cases and log others.
-	switch (eventCode) {
-	case 50:  // '2': Load SCRB on row runner
-		// IDA: scrb_loadOnRunner(1, word_4A1D08[runnerPtr[69]], ...)
-		break;
-
-	case 61:  // '=': Play traversal script
-	case 71:  // 'G': Play traversal script
-	case 81:  // 'Q': Play traversal script
-		// IDA: net_playTraversalScript(0, callback, ...)
-		break;
-
-	case 62:  // '>': Setup traversal step
-	case 72:  // 'H': Setup traversal step (alt)
-	case 82:  // 'R': Setup traversal step (alt)
-		// IDA: net_setupTraversalStep(...)
-		break;
-
-	case 64:  // '@': Store runner data
-	case 74:  // 'J': Store + clear runner
-	case 84:  // 'T': Store runner data
-		break;
-
-	case 65:  // 'A': Spawn traversal runner (param=1)
-	case 75:  // 'K': Spawn traversal runner (param=0)
-	case 85:  // 'U': Spawn traversal runner (param=0)
-		break;
-
-	case 66:  // 'B': Set slot + clear
-	case 76:  // 'L': Set slot + clear
-	case 86:  // 'V': Set slot + clear
-		break;
-
-	default:
-		break;
-	}
-}
-
 // ---------------------------------------------------------------------------
 // onEveryFrame: Per-frame idle animation scheduling.
 // IDA: net_onFrameTick @ 0x43728B
@@ -1310,23 +1501,59 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 	// IDA: net_onFrameTick (0x436861) — main per-frame state machine.
 
 	// Phase 1: Exit animation sequence (opening animation)
-	if (_exitAnimActive && _exitRunnerActive && _exitScrbFeature->hasAnimEndCallbackFired()) {
-		_exitRunnerActive = false;
-		if (++_exitAnimStep >= _remainingExitSteps) {
-			_exitAnimActive = false;
-			_zmbQueueCount = 3;
-			_zmbReadyCount++;
-			assignNextZmbToColumn();
-			_pendingColumnSetup = 1;
-			_attrColumnsReady = true;
-		} else {
-			loadScrbOntoFeature(_exitScrbFeature, _exitAnimStep + 7000);
-			_exitRunnerActive = true;
+	// IDA: SCRB 7000 is loaded with DEFER_ANIM — never plays.
+	// On the first frame tick, hotspot_ownerRunnerArr[exitRunner]==0 (no render occurred),
+	// so exitAnimStep immediately advances from 0→1, loading SCRB 7001.
+	// Subsequent SCRBs play with PLAY_ONCE and advance when complete.
+	if (_exitAnimActive && _exitRunnerActive) {
+		if (getCurrentFrameCounter() % 60 == 0)
+			debugC(1, kZmbDebugAnimation, "NET Phase1: exitStep=%d/%d animEndFired=%d isAnimActivated=%d isRenderActivated=%d frameIdx=%d maxFrame=%d flags=0x%08X timingReady=%d curFrame=%u",
+				_exitAnimStep, _remainingExitSteps,
+				_exitScrbFeature->hasAnimEndCallbackFired() ? 1 : 0,
+				_exitScrbFeature->isAnimateActivated() ? 1 : 0,
+				_exitScrbFeature->isRenderActivated() ? 1 : 0,
+				_exitScrbFeature->getLastFrameIdx(),
+				_exitScrbFeature->getMaxFrameIdx(),
+				_exitScrbFeature->getFlags(),
+				_exitScrbFeature->isFrameTimingReady() ? 1 : 0,
+				getCurrentFrameCounter());
+	}
+	if (_exitAnimActive && _exitRunnerActive) {
+		// IDA: step 0 is deferred (SCRB 7000 placeholder), advance immediately.
+		// Steps >= 1 wait for PLAY_ONCE animation to complete.
+		bool shouldAdvance = (_exitAnimStep == 0) || _exitScrbFeature->hasAnimEndCallbackFired();
+
+		if (shouldAdvance) {
+			debugC(1, kZmbDebugAnimation, "NET Phase1 DONE step %d/%d, loading next SCRB %d",
+				_exitAnimStep, _remainingExitSteps, _exitAnimStep + 1 + 7000);
+			_exitRunnerActive = false;
+			if (++_exitAnimStep >= _remainingExitSteps) {
+				debugC(1, kZmbDebugAnimation, "NET Phase1 ALL DONE - exit animation complete");
+				_exitAnimActive = false;
+				_zmbQueueCount = 3;
+				_zmbReadyCount++;
+				assignNextZmbToColumn();
+				_pendingColumnSetup = 1;
+				_attrColumnsReady = true;
+			} else {
+				loadScrbOntoFeature(_exitScrbFeature, _exitAnimStep + 7000);
+				_exitRunnerActive = true;
+			}
 		}
 	}
 
 	// Phase 2: Label animation → generate rules
+	if (_labelAnimRunning) {
+		if (getCurrentFrameCounter() % 60 == 0)
+			debugC(1, kZmbDebugAnimation, "NET Phase2: animEndFired=%d isAnimActivated=%d isRenderActivated=%d frameIdx=%d maxFrame=%d",
+				_labelScrbFeature->hasAnimEndCallbackFired() ? 1 : 0,
+				_labelScrbFeature->isAnimateActivated() ? 1 : 0,
+				_labelScrbFeature->isRenderActivated() ? 1 : 0,
+				_labelScrbFeature->getLastFrameIdx(),
+				_labelScrbFeature->getMaxFrameIdx());
+	}
 	if (_labelAnimRunning && _labelScrbFeature->hasAnimEndCallbackFired()) {
+		debugC(1, kZmbDebugAnimation, "NET Phase2 DONE - generating rules");
 		_labelAnimRunning = false;
 		generateAttrRules();
 	}
@@ -1365,8 +1592,14 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 		else
 			allSet = (_randAttrColOffset[0] >= 0 && _randAttrColOffset[1] >= 0 && _randAttrColOffset[2] >= 0);
 
+		if (getCurrentFrameCounter() % 60 == 0)
+			debugC(1, kZmbDebugAnimation, "NET Phase4: pendingColumnSetup=%d rejectedCount=%d allSet=%d diff=%d offsets=[%d,%d,%d]",
+				_pendingColumnSetup, _rejectedCount, allSet ? 1 : 0, _difficultyLevel,
+				_randAttrColOffset[0], _randAttrColOffset[1], _randAttrColOffset[2]);
+
 		if (allSet) {
 			_pendingColumnSetup = 0;
+			debugC(1, kZmbDebugAnimation, "NET Phase4 DONE: loading SCRB %d, pendingAttrRunning=true", _exitScrbOffset + 7031);
 			loadScrbOntoFeature(_exitScrbFeature, _exitScrbOffset + 7031);
 			_pendingAttrRunning = true;
 			if (++_exitScrbOffset > 16)
@@ -1377,6 +1610,7 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 
 	// Phase 5: Pending attr runner (one-shot trigger)
 	if (_pendingAttrRunning) {
+		debugC(1, kZmbDebugAnimation, "NET Phase5: pendingAttrRunning -> loading 7018");
 		_pendingAttrRunning = false;
 		_prevAttrColOffset[1] = _randAttrColOffset[1];
 		_prevAttrColOffset[2] = -1;
@@ -1388,6 +1622,9 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 			if (_attrAnimScrbFeature) {
 				_hotspotPositionFlag = 0;
 				_attrAnimScrbFeature->setFrameInterval(3);
+				// IDA: v1->onPreRenderShapeFunc = net_remapHotspotFramesByAttr
+				_attrAnimScrbFeature->setPreRenderShapeFunc(
+					reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleNet::remapHotspotFramesByAttr));
 				_activeAttrRunning = true;
 			}
 		}
@@ -1396,7 +1633,13 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 
 	// Phase 6: Active attr animation
 	if (_activeAttrRunning) {
+		if (getCurrentFrameCounter() % 120 == 0)
+			debugC(1, kZmbDebugAnimation, "NET Phase6: waiting animEnd=%d frameIdx=%d maxFrame=%d",
+				_attrAnimScrbFeature->hasAnimEndCallbackFired() ? 1 : 0,
+				_attrAnimScrbFeature->getLastFrameIdx(),
+				_attrAnimScrbFeature->getMaxFrameIdx());
 		if (_attrAnimScrbFeature->hasAnimEndCallbackFired()) {
+			debugC(1, kZmbDebugAnimation, "NET Phase6 DONE: loading 7025");
 			_activeAttrRunning = false;
 			assignNextZmbToColumn();
 			loadScrbOntoFeature(_attrAnimScrbFeature, 7025);
@@ -1410,11 +1653,20 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 
 	// Phase 7: Attr anim 1
 	if (_activeAttrAnim1Running) {
+		if (getCurrentFrameCounter() % 120 == 0)
+			debugC(1, kZmbDebugAnimation, "NET Phase7: waiting animEnd=%d frameIdx=%d maxFrame=%d",
+				_attrAnimScrbFeature->hasAnimEndCallbackFired() ? 1 : 0,
+				_attrAnimScrbFeature->getLastFrameIdx(),
+				_attrAnimScrbFeature->getMaxFrameIdx());
 		if (_attrAnimScrbFeature->hasAnimEndCallbackFired()) {
+			debugC(1, kZmbDebugAnimation, "NET Phase7 DONE: loading 7026");
 			_activeAttrAnim1Running = false;
 			loadScrbOntoFeature(_attrAnimScrbFeature, 7026);
 			if (_attrAnimScrbFeature) {
 				_hotspotPositionFlag = 0;
+				// IDA: v3->onPreRenderShapeFunc = net_remapHotspotFramesByAttr
+				_attrAnimScrbFeature->setPreRenderShapeFunc(
+					reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleNet::remapHotspotFramesByAttr));
 				_attrAnimScrbFeature->setFrameInterval(6);
 				_activeAttrAnim2Running = true;
 			}
@@ -1424,7 +1676,13 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 
 	// Phase 8: Attr anim 2
 	if (_activeAttrAnim2Running) {
+		if (getCurrentFrameCounter() % 120 == 0)
+			debugC(1, kZmbDebugAnimation, "NET Phase8: waiting animEnd=%d frameIdx=%d maxFrame=%d",
+				_attrAnimScrbFeature->hasAnimEndCallbackFired() ? 1 : 0,
+				_attrAnimScrbFeature->getLastFrameIdx(),
+				_attrAnimScrbFeature->getMaxFrameIdx());
 		if (_attrAnimScrbFeature->hasAnimEndCallbackFired()) {
+			debugC(1, kZmbDebugAnimation, "NET Phase8 DONE: inputLocked=false");
 			_inputLocked = false;
 			_activeAttrAnim2Running = false;
 			if (_difficultyLevel > 1) {
@@ -1433,6 +1691,9 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 				if (_attrAnimScrbFeature) {
 					_activeAttrAnim3Running = true;
 					_hotspotPositionFlag = 0;
+					// IDA: v4->onPreRenderShapeFunc = net_remapHotspotFramesByAttr
+					_attrAnimScrbFeature->setPreRenderShapeFunc(
+						reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleNet::remapHotspotFramesByAttr));
 				}
 				goto label_postColumn;
 			}
@@ -1449,7 +1710,13 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 
 	// Phase 9: Attr anim 3 (difficulty 2+ only)
 	if (_activeAttrAnim3Running) {
+		if (getCurrentFrameCounter() % 120 == 0)
+			debugC(1, kZmbDebugAnimation, "NET Phase9: waiting animEnd=%d frameIdx=%d maxFrame=%d",
+				_attrAnimScrbFeature->hasAnimEndCallbackFired() ? 1 : 0,
+				_attrAnimScrbFeature->getLastFrameIdx(),
+				_attrAnimScrbFeature->getMaxFrameIdx());
 		if (_attrAnimScrbFeature->hasAnimEndCallbackFired()) {
+			debugC(1, kZmbDebugAnimation, "NET Phase9 DONE");
 			_activeAttrAnim3Running = false;
 			if (_firstRoundFlag) {
 label_firstRound:
@@ -1491,12 +1758,15 @@ label_postColumn:
 		else
 			colIdx = _currentSlotIndex % 5;
 		loadScrbOntoFeature(_columnScrbFeatures[colIdx], colIdx + 8000);
+		_columnAnimColIdx = colIdx;
 		_columnOpenAnimRunning = true;
 		_submitCount++;
 		_lastSubmitFrame = getCurrentFrameCounter();
 	} else if (_columnOpenAnimRunning) {
 		// Phase 11: Column open animation done → start entry
-		if (_columnScrbFeatures[0] && _columnScrbFeatures[0]->hasAnimEndCallbackFired()) {
+		// IDA: checks hotspot_ownerRunnerArr[net_columnOpenAnimRunner] — the specific
+		// column that was loaded in Phase 10, NOT always column 0.
+		if (_columnScrbFeatures[_columnAnimColIdx] && _columnScrbFeatures[_columnAnimColIdx]->hasAnimEndCallbackFired()) {
 			_columnOpenAnimRunning = false;
 			_activeColumnIdx = 0;
 			// Find first active column slot

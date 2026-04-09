@@ -70,18 +70,24 @@ private:
 	void spawnZmbAtSlot(int16 slotIndex);
 
 	// --- Animation event dispatch ---
+	// NOTE: All NET event dispatch uses net_zmbAnimCallback (0x438EA1).
+	// The ASCII-event traversal callback (0x43105B) belongs to MAZE2, not NET.
 
-	/** SCRB feature animation events. IDA: net_scrbAnimCallback (0x43105B) */
-	void processScrbAnimEvent(ZmbFeature *feature, int16 eventCode);
 	/** Zoombini snoid animation events. IDA: net_zmbAnimCallback (0x438EA1) */
 	void processSnoidAnimEvent(ZmbFeature *feature, int16 eventCode);
-	/** Events from SCRB features using the zmb callback. IDA: net_zmbAnimCallback routed via SCRB */
+	/** Events from SCRB features. IDA: net_zmbAnimCallback (0x438EA1) routed via SCRB */
 	void processZmbScrbAnimEvent(ZmbFeature *feature, int16 eventCode);
 
 	// --- Render callbacks ---
 
 	bool attrSlots_preRender(ZmbFeature *feature);
 	ZmbRenderResult attrSlots_render(ZmbFeature *feature);
+
+	/** Remap hotspot frames by attribute column offsets. IDA: net_remapHotspotFramesByAttr (0x438761) */
+	void remapHotspotFramesByAttr(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
+
+	/** Slot feature pre-render: adds column indicator shape. IDA: net_saveRunnerPosition (0x438736) */
+	void slotPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
 
 	// --- Static data tables ---
 
@@ -93,6 +99,18 @@ private:
 	static const Common::Point kEntryExitPositions[3];   ///< IDA: dword_4A28F4 (event 30)
 	static const int16 kColOffsets1[5];                  ///< IDA: unk_4A28D4: {2,3,0,1,4}
 	static const int16 kColOffsets2[5];                  ///< IDA: unk_4A28DE: {4,0,2,1,3}
+
+	/**
+	 * Fixed click rectangles for buttons 4-19.
+	 * IDA: word_4A2292 (button runner data, 36-byte stride, indices 4-19).
+	 *
+	 * Index mapping (matching net_funcOnClick hotspot IDs):
+	 *   [0]  = submit button (hotspot 4)
+	 *   [1-5]  = column 0 values 0-4 (hotspots 5-9, diff>=2 only)
+	 *   [6-10] = column 1 values 0-4 (hotspots 10-14)
+	 *   [11-15] = column 2 values 0-4 (hotspots 15-19)
+	 */
+	static const Common::Rect kButtonClickRects[16];
 
 	// --- Puzzle configuration ---
 
@@ -138,11 +156,14 @@ private:
 	ZmbFeature *_activeSlotFeatures[16] = {};      ///< IDA: net_activeSlotRunners
 	int16 _slotRunnerCount = 0;                    ///< IDA: net_slotRunnerCount
 
+
+
 	// --- Animation state machine ---
 
 	bool _exitAnimActive = false;      ///< IDA: net_exitAnimActive
 	int16 _exitAnimStep = 0;           ///< IDA: net_exitAnimStep
 	int16 _remainingExitSteps = 0;     ///< IDA: net_remainingExitSteps
+	int16 _totalExitSteps = 0;         ///< IDA: net_totalExitSteps (copy of initial remainingExitSteps)
 	bool _exitRunnerActive = false;    ///< Tracks exit SCRB animation completion
 	bool _labelAnimRunning = false;    ///< Tracks label SCRB animation completion
 	bool _sortAnimRunning = false;     ///< IDA: net_sortAnimRunner != 0
@@ -154,6 +175,7 @@ private:
 	bool _activeAttrAnim3Running = false;  ///< IDA: net_activeAttrAnim3
 	int16 _columnAnimDone = 0;         ///< IDA: net_columnAnimDone
 	bool _columnOpenAnimRunning = false;   ///< IDA: net_columnOpenAnimRunner
+	int16 _columnAnimColIdx = 0;       ///< Column index used in Phase 10, checked in Phase 11
 	bool _zmbEntryAnimRunning = false; ///< IDA: net_zmbEntryAnimRunner
 
 	// --- Column/walk tracking ---

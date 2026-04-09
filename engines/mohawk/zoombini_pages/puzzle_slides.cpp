@@ -186,6 +186,7 @@ void ZoombiniPuzzleSlides::onEveryFrame() {
 			_celebrationIndex = 0;
 		}
 	} else {
+		debugC(1, kZmbDebugAnimation, "Slides: celebration triggered, matchCount=%d", _matchCount);
 		_celebrationActive = true;
 		if (getCurrentFrameCounter() - _celebrationLastFrame > 30) {
 			_celebrationLastFrame = getCurrentFrameCounter();

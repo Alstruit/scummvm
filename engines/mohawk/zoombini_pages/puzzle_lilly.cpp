@@ -416,6 +416,9 @@ void ZoombiniPuzzleLilly::onEveryFrame() {
 	if (!_bPuzzleActive)
 		return;
 
+	debugC(2, kZmbDebugAnimation, "Lilly: frame tick enterQ=%d exitQ=%d rotateQ=%d crossQ=%d departQ=%d arriveQ=%d moveQ=%d",
+		_enterQueueSize, _exitQueueSize, _rotateQueueSize, _crossQueueSize, _departQueueSize, _arriveQueueSize, _moveQueueSize);
+
 	// Process animation queues in strict order (matching original)
 	processEnterQueue();
 	processExitQueue();

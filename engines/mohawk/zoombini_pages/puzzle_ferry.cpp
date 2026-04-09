@@ -725,6 +725,7 @@ void ZoombiniPuzzleFerry::onEveryFrame() {
 	// IDA: word_4AB17C && !word_4AB12A && !word_4AB118
 	// -----------------------------------------------------------------------
 	if (_goButtonPressed && !_rejectWalkPending && !_interactionLocked) {
+		debugC(1, kZmbDebugAnimation, "Ferry: Go departure triggered");
 		_goButtonPressed = false;
 
 		// Free landscape and approach runners
@@ -763,6 +764,7 @@ void ZoombiniPuzzleFerry::onEveryFrame() {
 	// IDA: word_4AB128 branch
 	// -----------------------------------------------------------------------
 	if (_pendingFrogmanScrb != 0) {
+		debugC(2, kZmbDebugAnimation, "Ferry: loading frogman SCRB %d", _pendingFrogmanScrb);
 		uint16 scrb = _pendingFrogmanScrb;
 		_pendingFrogmanScrb = 0;
 
@@ -775,6 +777,7 @@ void ZoombiniPuzzleFerry::onEveryFrame() {
 	// IDA: word_4AB12C branch
 	// -----------------------------------------------------------------------
 	else if (_departAnimPending) {
+		debugC(1, kZmbDebugAnimation, "Ferry: departure animation pending -> activating overlay");
 		_departAnimPending = false;
 
 		// Activate departure overlay runners
@@ -793,6 +796,7 @@ void ZoombiniPuzzleFerry::onEveryFrame() {
 	// IDA: word_4AB12A branch — waits for frogman animation to complete
 	// -----------------------------------------------------------------------
 	else if (_rejectWalkPending) {
+		debugC(2, kZmbDebugAnimation, "Ferry: reject walk pending, waiting for frogman anim");
 		// IDA: Wait for frogman hotspot group to clear before starting reject walk
 		// Check if frogman animation is no longer playing
 		if (_boatAnimFeature && !_boatAnimFeature->isAnimateActivated()) {

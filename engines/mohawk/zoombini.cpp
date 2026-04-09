@@ -77,7 +77,7 @@ MohawkEngine_Zoombini::MohawkEngine_Zoombini(OSystem *syst, const MohawkGameDesc
 	DebugMan.addDebugChannel(kZmbDebugSaveLoad, "SaveLoad", "Track Save/Load Function");
 	DebugMan.addDebugChannel(kZmbDebugPage, "Page", "Track Page Execution");
 	DebugMan.addDebugChannel(kZmbDebugResource, "Resource", "Track Resource Parsing");
-	DebugMan.addDebugChannel(kZmbDebugScript, "Script", "Track Script Execution");
+	DebugMan.addDebugChannel(kZmbDebugAnimation, "Animation", "Track Animation State");
 	DebugMan.addDebugChannel(kZmbDebugRender, "Render", "Track Rendering");
 }
 

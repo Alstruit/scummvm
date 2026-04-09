@@ -172,6 +172,23 @@ int16 ZoombiniPuzzleMaze::s_variantIdx1 = 0;
 int16 ZoombiniPuzzleMaze::s_variantIdx2 = 0;
 int16 ZoombiniPuzzleMaze::s_variantIdx3 = 0;
 
+// IDA: word_4A1FC4[2*i] / word_4A1FC6[2*i] — Attribute slot mapping tables
+// Maps path slot index (0-20) to (trait category offset, trait value).
+// Usage: traitCategory = kAttrSlotType[slotIdx] + 1 (1-4), traitValue = kAttrSlotValue[slotIdx] (0-5)
+const int16 ZoombiniPuzzleMaze::kAttrSlotType[21] = {
+	0, 0, 0, 0, 0, 0,     // 0-5: hair (category 0)
+	1, 1, 1, 1, 1,        // 6-10: eyes (category 1)
+	2, 2, 2, 2, 2,        // 11-15: nose (category 2)
+	3, 3, 3, 3, 3         // 16-20: feet (category 3)
+};
+
+const int16 ZoombiniPuzzleMaze::kAttrSlotValue[21] = {
+	0, 1, 2, 3, 4, 5,     // 0-5
+	1, 2, 3, 4, 5,        // 6-10
+	1, 2, 3, 4, 5,        // 11-15
+	1, 2, 3, 4, 5         // 16-20
+};
+
 // =================================================================
 // Construction / Lifecycle
 // =================================================================
@@ -181,6 +198,9 @@ ZoombiniPuzzleMaze::ZoombiniPuzzleMaze(MohawkEngine_Zoombini *vm) : ZoombiniPuzz
 	memset(_cellRunnerIdx, 0, sizeof(_cellRunnerIdx));
 	memset(_cellAttrType, 0, sizeof(_cellAttrType));
 	memset(_cellAttrValue, 0, sizeof(_cellAttrValue));
+	memset(_nodeDirFlags, 0, sizeof(_nodeDirFlags));
+	memset(_nodeDirection, 0, sizeof(_nodeDirection));
+	memset(_nodeCycleFlag, 0, sizeof(_nodeCycleFlag));
 	memset(_collisionCount, 0, sizeof(_collisionCount));
 	memset(_collisionRunnerIdx, 0, sizeof(_collisionRunnerIdx));
 	memset(_zmbRunnerSnoidIds, 0, sizeof(_zmbRunnerSnoidIds));
@@ -462,7 +482,7 @@ void ZoombiniPuzzleMaze::loadAndParseRegsData() {
 	for (int col = 1; col <= 9; col++)
 		_creatureSlots[col] = _regsData[col];
 	
-	debugC(1, kZmbDebugScript, "Maze REGS %d: count=%d, slots=[%d %d %d %d %d %d %d %d %d]",
+	debugC(1, kZmbDebugAnimation, "Maze REGS %d: count=%d, slots=[%d %d %d %d %d %d %d %d %d]",
 		_regsResourceId, _totalCreatureCount,
 		_creatureSlots[1], _creatureSlots[2], _creatureSlots[3],
 		_creatureSlots[4], _creatureSlots[5], _creatureSlots[6],
@@ -587,6 +607,9 @@ void ZoombiniPuzzleMaze::initGridAndSelectPaths() {
 	memset(_cellRunnerIdx, 0, sizeof(_cellRunnerIdx));
 	memset(_cellAttrType, 0, sizeof(_cellAttrType));
 	memset(_cellAttrValue, 0, sizeof(_cellAttrValue));
+	memset(_nodeDirFlags, 0, sizeof(_nodeDirFlags));
+	memset(_nodeDirection, 0, sizeof(_nodeDirection));
+	memset(_nodeCycleFlag, 0, sizeof(_nodeCycleFlag));
 	memset(_collisionCount, 0, sizeof(_collisionCount));
 	memset(_collisionRunnerIdx, 0, sizeof(_collisionRunnerIdx));
 
@@ -657,10 +680,6 @@ void ZoombiniPuzzleMaze::initGridAndSelectPaths() {
 
 	// Initialize grid runners from REGS data
 	initGridRunners();
-
-	// Apply grid transformation at difficulty > 2
-	if (_difficultyLevel > 2)
-		applyGridTransformation();
 
 	_puzzleReady = true;
 
@@ -1701,7 +1720,11 @@ void ZoombiniPuzzleMaze::initGridRunners() {
 
 void ZoombiniPuzzleMaze::registerGridRunner() {
 	// IDA: net_registerGridRunner (0x431D02)
-	// Read 10 words from REGS data per runner
+	// Read 10 words from REGS data per runner.
+	// REGS layout per runner (verified from IDA + hex dump):
+	//   [0]=cellType, [1]=row, [2]=col, [3]=waveGroup,
+	//   [4]=dirFlag0, [5]=dirFlag1, [6]=dirFlag2, [7]=dirFlag3,
+	//   [8]=direction, [9]=cycleFlag
 	if (_gridRegsReadIdx >= static_cast<int16>(_regsData.size()) / 10)
 		return;
 
@@ -1709,13 +1732,16 @@ void ZoombiniPuzzleMaze::registerGridRunner() {
 	if (baseOff + 10 > static_cast<int16>(_regsData.size()))
 		return;
 
-	int16 row = _regsData[baseOff + 0];
-	int16 col = _regsData[baseOff + 1];
-	int16 cellType = _regsData[baseOff + 2];
-	// Remaining words: direction, attr info, wave group, etc.
-	int16 attrType = _regsData[baseOff + 3];
-	int16 attrValue = _regsData[baseOff + 4];
-	int16 waveGroup = _regsData[baseOff + 5];
+	int16 cellType  = _regsData[baseOff + 0];
+	int16 row       = _regsData[baseOff + 1];
+	int16 col       = _regsData[baseOff + 2];
+	int16 waveGroup = _regsData[baseOff + 3];
+	int16 dirFlag0  = _regsData[baseOff + 4];
+	int16 dirFlag1  = _regsData[baseOff + 5];
+	int16 dirFlag2  = _regsData[baseOff + 6];
+	int16 dirFlag3  = _regsData[baseOff + 7];
+	int16 direction = _regsData[baseOff + 8];
+	int16 cycleFlag = _regsData[baseOff + 9];
 
 	_gridRegsReadIdx++;
 
@@ -1726,10 +1752,25 @@ void ZoombiniPuzzleMaze::registerGridRunner() {
 	_cellTypes[row][col] = cellType;
 	_cellRunnerIdx[row][col] = _runnerCount;
 
-	// Store attribute info for type-2 cells
+	// Store per-node direction data. IDA: core_word[34..39]
+	_nodeDirFlags[row][col][0] = dirFlag0;
+	_nodeDirFlags[row][col][1] = dirFlag1;
+	_nodeDirFlags[row][col][2] = dirFlag2;
+	_nodeDirFlags[row][col][3] = dirFlag3;
+	_nodeDirection[row][col] = direction;
+	_nodeCycleFlag[row][col] = cycleFlag;
+
+	// For type-2 cells (zmb start / attribute routing), assign trait from path selection output.
+	// IDA: hsArr[13].posY = word_4A1FC4[2*slotIdx] + 1; hsArr[14].shapeid = word_4A1FC6[2*slotIdx];
 	if (cellType == 2) {
-		_cellAttrType[row][col] = attrType;
-		_cellAttrValue[row][col] = attrValue;
+		if (_pathSlotReadIdx < _pathSlotWriteIdx) {
+			int16 slotIdx = _selectedPathSlots[_pathSlotReadIdx];
+			if (slotIdx >= 0 && slotIdx <= 20) {
+				_cellAttrType[row][col] = kAttrSlotType[slotIdx] + 1;   // 1=hair, 2=eyes, 3=nose, 4=feet
+				_cellAttrValue[row][col] = kAttrSlotValue[slotIdx];     // 1-5
+			}
+			_pathSlotReadIdx++;
+		}
 	}
 
 	// Create runner state
@@ -1744,87 +1785,9 @@ void ZoombiniPuzzleMaze::registerGridRunner() {
 		_runnerCount++;
 	}
 
-	debugC(2, kZmbDebugScript, "Maze: Registered grid runner row=%d col=%d type=%d wave=%d",
-	       row, col, cellType, waveGroup);
-}
-
-// =================================================================
-// Grid transformations (difficulty > 2)
-// =================================================================
-
-void ZoombiniPuzzleMaze::applyGridTransformation() {
-	int16 transformType = _vm->_rnd->getRandomNumber(0, 3);
-	switch (transformType) {
-	case 0: rotateGrid90(); break;
-	case 1: rotateGrid180(); break;
-	case 2: flipGridHorizontal(); break;
-	case 3: flipGridVertical(); break;
-	}
-}
-
-void ZoombiniPuzzleMaze::rotateGrid90() {
-	int16 tmpTypes[kGridRows][kGridCols];
-	int16 tmpAttrType[kGridRows][kGridCols];
-	int16 tmpAttrValue[kGridRows][kGridCols];
-
-	for (int r = 0; r < kGridRows; r++) {
-		for (int c = 0; c < kGridCols; c++) {
-			int16 nr = c;
-			int16 nc = kGridRows - 1 - r;
-			tmpTypes[nr][nc] = _cellTypes[r][c];
-			tmpAttrType[nr][nc] = _cellAttrType[r][c];
-			tmpAttrValue[nr][nc] = _cellAttrValue[r][c];
-		}
-	}
-
-	memcpy(_cellTypes, tmpTypes, sizeof(_cellTypes));
-	memcpy(_cellAttrType, tmpAttrType, sizeof(_cellAttrType));
-	memcpy(_cellAttrValue, tmpAttrValue, sizeof(_cellAttrValue));
-}
-
-void ZoombiniPuzzleMaze::rotateGrid180() {
-	for (int r = 0; r < kGridRows / 2; r++) {
-		for (int c = 0; c < kGridCols; c++) {
-			int16 nr = kGridRows - 1 - r;
-			int16 nc = kGridCols - 1 - c;
-			SWAP(_cellTypes[r][c], _cellTypes[nr][nc]);
-			SWAP(_cellAttrType[r][c], _cellAttrType[nr][nc]);
-			SWAP(_cellAttrValue[r][c], _cellAttrValue[nr][nc]);
-		}
-	}
-}
-
-void ZoombiniPuzzleMaze::flipGridHorizontal() {
-	for (int r = 0; r < kGridRows; r++) {
-		for (int c = 0; c < kGridCols / 2; c++) {
-			int16 nc = kGridCols - 1 - c;
-			SWAP(_cellTypes[r][c], _cellTypes[r][nc]);
-			SWAP(_cellAttrType[r][c], _cellAttrType[r][nc]);
-			SWAP(_cellAttrValue[r][c], _cellAttrValue[r][nc]);
-		}
-	}
-}
-
-void ZoombiniPuzzleMaze::flipGridVertical() {
-	for (int r = 0; r < kGridRows / 2; r++) {
-		for (int c = 0; c < kGridCols; c++) {
-			int16 nr = kGridRows - 1 - r;
-			SWAP(_cellTypes[r][c], _cellTypes[nr][c]);
-			SWAP(_cellAttrType[r][c], _cellAttrType[nr][c]);
-			SWAP(_cellAttrValue[r][c], _cellAttrValue[nr][c]);
-		}
-	}
-}
-
-void ZoombiniPuzzleMaze::swapGridCells(int16 row1, int16 col1, int16 row2, int16 col2) {
-	if (row1 < 0 || row1 >= kGridRows || col1 < 0 || col1 >= kGridCols)
-		return;
-	if (row2 < 0 || row2 >= kGridRows || col2 < 0 || col2 >= kGridCols)
-		return;
-
-	SWAP(_cellTypes[row1][col1], _cellTypes[row2][col2]);
-	SWAP(_cellAttrType[row1][col1], _cellAttrType[row2][col2]);
-	SWAP(_cellAttrValue[row1][col1], _cellAttrValue[row2][col2]);
+	debugC(2, kZmbDebugAnimation, "Maze: Registered grid runner row=%d col=%d type=%d dir=%d cycle=%d wave=%d attr=%d/%d",
+	       row, col, cellType, direction, cycleFlag, waveGroup,
+	       _cellAttrType[row][col], _cellAttrValue[row][col]);
 }
 
 // =================================================================
@@ -2618,16 +2581,8 @@ void ZoombiniPuzzleMaze::zmbArriveAtNodeAlt(int16 nodeRunnerIdx, int16 runnerIdx
 
 void ZoombiniPuzzleMaze::moveRunnerStep(int16 nodeRunnerIdx, int16 runnerIdx) {
 	// IDA: net_moveRunnerStep (0x435290)
-	// Intersection movement - continue in current direction
-	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
-		return;
-
-	moveZmbOnGrid(runnerIdx);
-}
-
-void ZoombiniPuzzleMaze::moveRunnerStepAlt(int16 nodeRunnerIdx, int16 runnerIdx) {
-	// IDA: net_moveRunnerStepAlt (0x4350B0)
-	// Attribute matching step - check if runner's trait matches cell attr
+	// Intersection movement (cell types 3/4).
+	// Sets zmb direction from node, then optionally cycles node direction for next zmb.
 	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
 		return;
 
@@ -2635,20 +2590,61 @@ void ZoombiniPuzzleMaze::moveRunnerStepAlt(int16 nodeRunnerIdx, int16 runnerIdx)
 	int16 row = rs.row;
 	int16 col = rs.col;
 
-	if (row >= 0 && row < kGridRows && col >= 0 && col < kGridCols) {
-		int16 attrType = _cellAttrType[row][col];
-		int16 attrValue = _cellAttrValue[row][col];
+	if (row < 0 || row >= kGridRows || col < 0 || col >= kGridCols)
+		return;
 
-		// Check if zoombini's trait matches
-		uint16 snoidId = _zmbRunnerSnoidIds[runnerIdx];
-		ZmbSnoid *snoid = getSnoid(snoidId);
-		if (snoid && attrType > 0 && attrType <= 4) {
-			byte traitVal = getTraitByCategory(snoid->_trait, attrType);
-			if (traitVal == attrValue) {
-				// Match! Play sound or special anim
-				_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 5101));
-			}
+	// Set zmb direction from node's current direction
+	rs.direction = _nodeDirection[row][col];
+
+	// Direction cycling (IDA: core[39] != 0)
+	if (_nodeCycleFlag[row][col]) {
+		// Play alternating click sound 5101/5102
+		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 5101 + _soundAlternator));
+		if (++_soundAlternator > 1)
+			_soundAlternator = 0;
+
+		// Advance node direction for next zmb, skip unavailable dirs
+		int16 &nodeDir = _nodeDirection[row][col];
+		if (++nodeDir > 3)
+			nodeDir = 0;
+		while (!_nodeDirFlags[row][col][nodeDir]) {
+			if (++nodeDir > 3)
+				nodeDir = 0;
 		}
+	}
+
+	moveZmbOnGrid(runnerIdx);
+}
+
+void ZoombiniPuzzleMaze::moveRunnerStepAlt(int16 nodeRunnerIdx, int16 runnerIdx) {
+	// IDA: net_moveRunnerStepAlt (0x4350B0)
+	// Attribute routing step (cell type 2).
+	// If zoombini's trait matches node's configured trait, route in node's direction.
+	// Otherwise keep current direction (continue straight).
+	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
+		return;
+
+	ZmbMazeRunnerState &rs = _runnerStates[runnerIdx];
+	int16 row = rs.row;
+	int16 col = rs.col;
+
+	if (row < 0 || row >= kGridRows || col < 0 || col >= kGridCols)
+		return;
+
+	// IDA: if (*(char*)(a3 + 48 + (int16)a1[41] + 187) == (int16)a1[42])
+	//         *(int16*)(a3 + 88) = a1[38];
+	int16 attrType = _cellAttrType[row][col];    // 1=hair, 2=eyes, 3=nose, 4=feet
+	int16 attrValue = _cellAttrValue[row][col];   // 1-5
+
+	uint16 snoidId = _zmbRunnerSnoidIds[runnerIdx];
+	ZmbSnoid *snoid = getSnoid(snoidId);
+	if (snoid && attrType >= 1 && attrType <= 4) {
+		byte traitVal = getTraitByCategory(snoid->_trait, attrType);
+		if (traitVal == attrValue) {
+			// Match: route in configured direction
+			rs.direction = _nodeDirection[row][col];
+		}
+		// No match: keep current direction (zmb continues straight)
 	}
 
 	moveZmbOnGrid(runnerIdx);
@@ -2855,6 +2851,7 @@ void ZoombiniPuzzleMaze::onEveryFrame() {
 		processQueues();
 
 	if (_activeObstacleCount > 0) {
+		debugC(2, kZmbDebugAnimation, "Maze: moving %d obstacles", _activeObstacleCount);
 		moveObstacles();
 		checkObstacleCollisions();
 	}

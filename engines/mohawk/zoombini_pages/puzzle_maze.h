@@ -266,15 +266,6 @@ private:
 	/** Check obstacle collision with runners. IDA: maze_projectileTickAndCollide (0x42DE69) */
 	void checkObstacleCollisions();
 
-	// --- Grid transformations (difficulty > 2) ---
-
-	void rotateGrid90();
-	void rotateGrid180();
-	void flipGridHorizontal();
-	void flipGridVertical();
-	void swapGridCells(int16 row1, int16 col1, int16 row2, int16 col2);
-	void applyGridTransformation();
-
 	// --- SCRB animation dispatch ---
 
 	/** SCRB animation event handler. IDA: net_scrbAnimCallback (0x43105B) */
@@ -364,6 +355,19 @@ private:
 	/** Seat flag value per seat. IDA: word_4A1C7C */
 	static const int16 kSeatFlagValue[14];
 
+	/**
+	 * Attribute slot mapping: maps slot index (0-20) to trait category offset.
+	 * Usage: traitCategory = kAttrSlotType[slotIdx] + 1 (1=hair,2=eyes,3=nose,4=feet).
+	 * IDA: word_4A1FC4[2*i]
+	 */
+	static const int16 kAttrSlotType[21];
+
+	/**
+	 * Attribute slot mapping: maps slot index (0-20) to trait value (1-5).
+	 * IDA: word_4A1FC6[2*i]
+	 */
+	static const int16 kAttrSlotValue[21];
+
 	// =================================================================
 	// Member variables
 	// =================================================================
@@ -398,6 +402,9 @@ private:
 	int16 _cellRunnerIdx[kGridRows][kGridCols];     // IDA: word_4AFB98[169]
 	int16 _cellAttrType[kGridRows][kGridCols];      // Per-cell attribute category (1-4), 0=none
 	int16 _cellAttrValue[kGridRows][kGridCols];     // Per-cell attribute value (1-5), 0=none
+	int16 _nodeDirFlags[kGridRows][kGridCols][4];   // Per-node direction availability (0/1 per dir 0-3). IDA: core_word[34..37]
+	int16 _nodeDirection[kGridRows][kGridCols];     // Per-node current direction output. IDA: core_word[38]
+	int16 _nodeCycleFlag[kGridRows][kGridCols];     // Per-node cycling flag (1=cycle on pass). IDA: core_word[39]
 	Common::Rect _gridCellRect[kGridRows][kGridCols];
 	Common::Point _gridCellPos[kGridRows][kGridCols];
 
@@ -524,6 +531,7 @@ private:
 
 	// --- Animation event state ---
 	int16 _pendingBodyArrangement = 0;
+	int16 _soundAlternator = 0;          // IDA: word_4A1AD6. Alternates 0/1 for 5101/5102 sounds
 
 	// --- Celebration state (IDA: maze2_onHover_frameUpdate @ 0x42FF46) ---
 	bool _celebrationTrigger = false;

@@ -1072,6 +1072,21 @@ ZmbRenderResult ZoombiniPage::blitShapes(ZmbFeature *feature) {
 	Common::Array<ZmbHotspot> hotspots = hsGroup->copyHotspots();
 	feature->onPreRenderShape(this, hsGroup, hotspots);
 
+	// IDA: runner_preRenderStandard 0x461F86 — apply per-tBMP REGS offsets.
+	// Subtracts REGS[shapeId].x/y from each hotspot position AFTER
+	// onPreRenderShapeFunc (which may have remapped shapeIdx).
+	ZmbRegs *shapeRegs = feature->getShapeRegs();
+	if (shapeRegs) {
+		for (uint32 i = 0; i < hotspots.size(); i++) {
+			ZmbHotspot &hs = hotspots[i];
+			if (hs._shapeIdx != ZmbHotspot::kShapeNone) {
+				const Common::Point delta = shapeRegs->getShapeDelta(hs._shapeIdx);
+				hs._x -= delta.x;
+				hs._y -= delta.y;
+			}
+		}
+	}
+
 	// Draw shapes to screen
 	feature->clearDrawRecords();
 	Common::Rect sortRect;

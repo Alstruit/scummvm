@@ -280,6 +280,8 @@ void ZoombiniPuzzleFleens::onEveryFrame() {
 	// --- Phase 1: Pending transition departure ---
 	// IDA @ 0x41C86B: if puzzle_pendingTransitionTarget set
 	if (_pendingTransitionTarget != 0) {
+		debugC(1, kZmbDebugAnimation, "Fleens: pending transition target=%d raftAnim=%d boarding=%d",
+			_pendingTransitionTarget, _bRaftAnimPlaying ? 1 : 0, _bBoardingInProgress ? 1 : 0);
 		// Departure has been initiated — wait for raft animation
 		if (!_bRaftAnimPlaying && !_bBoardingInProgress) {
 			// All animations finished — execute departure
@@ -292,6 +294,7 @@ void ZoombiniPuzzleFleens::onEveryFrame() {
 	// --- Phase 2: Raft boarding sequence ---
 	// IDA @ 0x41C9xx: if word_4AB1F8 (pending board snoid) set and no active raft anim
 	if (_pendingBoardSnoidId != 0 && !_bBoardingInProgress) {
+		debugC(1, kZmbDebugAnimation, "Fleens: starting boarding for snoid %d", _pendingBoardSnoidId);
 		startBoardingAnimation();
 	}
 
@@ -301,6 +304,7 @@ void ZoombiniPuzzleFleens::onEveryFrame() {
 	// their SCRS animations complete (event -1).
 
 	if (_bScriptDComplete) {
+		debugC(1, kZmbDebugAnimation, "Fleens: script D complete, departQueue=%d", _departQueueCount);
 		_bScriptDComplete = false;
 		// Script D complete — signal raft departure if queue has items
 		if (_departQueueCount > 0)
@@ -308,6 +312,7 @@ void ZoombiniPuzzleFleens::onEveryFrame() {
 	}
 
 	if (_bScriptEComplete) {
+		debugC(1, kZmbDebugAnimation, "Fleens: script E complete, departQueue=%d", _departQueueCount);
 		_bScriptEComplete = false;
 		// Script E complete — signal raft departure if queue has items
 		if (_departQueueCount > 0)
@@ -315,6 +320,7 @@ void ZoombiniPuzzleFleens::onEveryFrame() {
 	}
 
 	if (_bScriptAComplete) {
+		debugC(1, kZmbDebugAnimation, "Fleens: script A complete, departQueue=%d", _departQueueCount);
 		_bScriptAComplete = false;
 		// Script A complete — signal raft departure if queue has items
 		if (_departQueueCount > 0)
@@ -324,6 +330,7 @@ void ZoombiniPuzzleFleens::onEveryFrame() {
 	// --- Phase 4: Process raft departure queue ---
 	// IDA @ 0x41CA6F: if word_4AB1C8 set, call processRaftDeparture
 	if (_bRaftDepartPending) {
+		debugC(1, kZmbDebugAnimation, "Fleens: raft departure pending");
 		_bRaftDepartPending = false;
 		processRaftDeparture();
 	}

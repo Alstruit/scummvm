@@ -1198,6 +1198,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 	// Fires after counter animation during rejection. If overflow happened (word_4AB76E > 0)
 	// and diff != 3, load SCRB 7503+rand on guide → registers as word_4AB77E.
 	if (_bCounterStepDone) {
+		debugC(1, kZmbDebugAnimation, "Hotel: counter step done, overflow=%d diff=%d", _overflowCounter, _difficultyLevel);
 		_bCounterStepDone = false;
 		uint16 guideScrb = (uint16)(_vm->_rnd->getRandomNumber(0, 2) + 7503);
 		if (_difficultyLevel != 3 && _overflowCounter > 0) {
@@ -1218,6 +1219,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 	// [Priority 2] Win/cheer hotspot: word_4AB77E
 	// Fires when guide celebration SCRB or counter-overflow SCRB completes.
 	if (_bWinAnimDone) {
+		debugC(1, kZmbDebugAnimation, "Hotel: win anim done -> puzzle complete");
 		_bWinAnimDone = false;
 		// IDA 0x41f89f-0x41f8a8: hotel_bPuzzleComplete = 1
 		_bPuzzleComplete = true;
@@ -1228,6 +1230,8 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 	// [Priority 3] Intro room anim done OR guide skip → (re)setup board
 	// IDA: word_4AB77A (hotspot on room anim) fires, OR word_4AB7C4 (user clicked skip)
 	if (_bBatchWalkDone || _bGuideSkipped) {
+		debugC(1, kZmbDebugAnimation, "Hotel: batch walk done=%d guideSkipped=%d -> setupGameBoard",
+			_bBatchWalkDone ? 1 : 0, _bGuideSkipped ? 1 : 0);
 		_bBatchWalkDone = false;
 		setupGameBoard();
 		return;
@@ -1242,6 +1246,8 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 
 	// [Priority 4a] Guide prompt done (word_4AB77C) → start counter
 	if (_bPromptAnimDone || _bGuideSkipped) {
+		debugC(1, kZmbDebugAnimation, "Hotel: prompt done=%d guideSkipped=%d -> start counter",
+			_bPromptAnimDone ? 1 : 0, _bGuideSkipped ? 1 : 0);
 		_bPromptAnimDone = false;
 		_bClickToSkipEnabled = false;
 		if (!_vm->isGameVariant(GF_ZMB_TLC))
@@ -1281,6 +1287,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 
 	// [Priority 4b] Counter animation step done → advance counter
 	if (_bCounterAnimDone && _counterFeature) {
+		debugC(2, kZmbDebugAnimation, "Hotel: counter anim step=%d/%d", _stepCounter, _maxStepsPerRound);
 		_bCounterAnimDone = false;
 		if (_stepCounter <= _maxStepsPerRound) {
 			loadScrbOntoFeature(_counterFeature, (uint16)(_stepCounter + 6000));
@@ -1291,6 +1298,8 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 
 	// [Priority 4d] Pending placement → animate accept or reject
 	if (_pendingPlacementSnoid) {
+		debugC(1, kZmbDebugAnimation, "Hotel: pending placement, accepted=%d slot=%d placed=%d/%d",
+			_pendingAccepted ? 1 : 0, _targetRoomSlot, _placedCount, _totalZmbCount);
 		ZmbSnoid *snoid = _pendingPlacementSnoid;
 		_pendingPlacementSnoid = nullptr;
 
@@ -1398,6 +1407,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 
 	// [Priority 4e] Placed-zmb SCRS animation done → finalise position + check win
 	if (_bPlacedZmbAnimDone) {
+		debugC(1, kZmbDebugAnimation, "Hotel: placed zmb anim done, placedCount=%d/%d", _placedCount, _totalZmbCount);
 		_bPlacedZmbAnimDone = false;
 		ZmbSnoid *snoid = _placedZmbSnoid;
 		_placedZmbSnoid = nullptr;

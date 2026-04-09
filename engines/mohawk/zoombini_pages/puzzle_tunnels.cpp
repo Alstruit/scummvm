@@ -1846,6 +1846,7 @@ void ZoombiniPuzzleTunnels::onEveryFrame() {
 
 	// Countdown voice management (IDA: word_4B7AE4, word_4B7AE2)
 	if (_countdownVoiceId > 0) {
+		debugC(2, kZmbDebugAnimation, "Tunnels: countdown voice id=%d playing=%d", _countdownVoiceId, _countdownVoicePlaying ? 1 : 0);
 		if (_countdownVoicePlaying) {
 			// Check if finished
 			if (!_vm->_system->getMixer()->isSoundHandleActive(_activeSndHandle)) {
@@ -1857,6 +1858,8 @@ void ZoombiniPuzzleTunnels::onEveryFrame() {
 
 	// Pending sound runner (IDA: word_4B7A28, word_4B7A2A, word_4B7A2C)
 	if (_pendingSoundRunner > 0) {
+		debugC(2, kZmbDebugAnimation, "Tunnels: pending sound runner=%d scrbId=%d gateSnd=%d ambientSnd=%d",
+			_pendingSoundRunner, _pendingSoundScrbId, isGateSoundPlaying ? 1 : 0, isAmbientSoundPlaying ? 1 : 0);
 		if (!isGateSoundPlaying && !isAmbientSoundPlaying) {
 			int16 runner = _pendingSoundRunner;
 			_pendingSoundRunner = 0;
@@ -1889,6 +1892,8 @@ void ZoombiniPuzzleTunnels::onEveryFrame() {
 
 	// Animation queue processing
 	if (_remainingCount > 0) {
+		debugC(2, kZmbDebugAnimation, "Tunnels: animQueue=%d locked=%d remaining=%d",
+			_animQueueCount, _animLocked ? 1 : 0, _remainingCount);
 		if (_countdownVoicePlaying || !_animQueueCount || _animLocked)
 			goto postAnimQueue;
 
@@ -1948,6 +1953,7 @@ void ZoombiniPuzzleTunnels::onEveryFrame() {
 	} else {
 		// All zoombinis placed — post-game phase
 		if (!_postGameStarted && !_animLocked) {
+			debugC(1, kZmbDebugAnimation, "Tunnels: all placed, starting post-game");
 			if (!isGateSoundPlaying) {
 				_postGameStarted = true;
 				spawnPendingZoombinis();
@@ -1972,6 +1978,7 @@ postAnimQueue:
 
 	// Setup phase: load SCRB onto mainPathFeature (IDA: word_4B7A42)
 	if (_setupPhase == 2) {
+		debugC(1, kZmbDebugAnimation, "Tunnels: setup phase 2 -> 3, loading SCRB 7000");
 		_setupPhase = 3;
 		if (_mainPathFeature) {
 			loadScrbOntoFeature(_mainPathFeature, 7000);

@@ -537,7 +537,7 @@ void ZoombiniInteractive::routeNonOccupiedToRestingPack() {
 				f._routePerfectCounters[routeIdx - 1] = 0;
 				f._routeLevels[routeIdx - 1]++;
 				_vm->_state->_routeLevelJustAdvanced = true;
-				debugC(1, kZmbDebugScript, "Route %d level advanced to %d",
+				debugC(1, kZmbDebugAnimation, "Route %d level advanced to %d",
 					routeIdx, f._routeLevels[routeIdx - 1]);
 			}
 		}

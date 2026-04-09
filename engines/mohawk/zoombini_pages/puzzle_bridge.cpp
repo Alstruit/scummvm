@@ -897,6 +897,7 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 	// IDA: word_4AAE6E check → start entrance anim on trollLane1
 	// -----------------------------------------------------------------------
 	if (_trollAnimPending) {
+		debugC(1, kZmbDebugAnimation, "Bridge: troll entrance animation triggered");
 		_trollAnimPending = 0;
 
 		// Hide the lane-2 troll feature (it's offscreen during entrance)
@@ -918,6 +919,7 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 	// IDA: word_4AAE88 && !word_4AAE72 branch
 	// -----------------------------------------------------------------------
 	if (_trailLength > 0 && !_isRejectPlaying) {
+		debugC(2, kZmbDebugAnimation, "Bridge: trail queue processing, trailLength=%d", _trailLength);
 		// Determine the snoid to cross
 		uint16 trailRunnerId = _trailRunnerIdx[0];
 
@@ -985,6 +987,7 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 	// IDA: word_4AAE7A branch
 	// -----------------------------------------------------------------------
 	if (_pendingLaneEvent) {
+		debugC(2, kZmbDebugAnimation, "Bridge: pending lane event, runner=%d match=%d", _pendingLaneEvent, _currentMatchResult);
 		ZmbFeature *lane = _scrbFeatures.find(_pendingLaneEvent);
 		if (lane && _currentMatchResult) {
 			// Load the appropriate troll animation SCRB on the lane feature

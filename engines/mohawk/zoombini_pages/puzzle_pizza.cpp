@@ -553,6 +553,7 @@ void ZoombiniPuzzlePizza::onEveryFrame() {
 
 	// Check if all deliveries are done
 	if (_allOrdersReady && !_allDeliveriesDone && _remainingDeliveries <= 0) {
+		debugC(1, kZmbDebugAnimation, "Pizza: all deliveries done -> enabling Go button");
 		_allDeliveriesDone = true;
 		setGoButtonsEnabled(true);
 	}

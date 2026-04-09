@@ -25,6 +25,7 @@
 #include "mohawk/zoombini_random.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
+#include "mohawk/graphics.h"
 
 namespace Mohawk {
 
@@ -77,6 +78,23 @@ const Common::Point ZoombiniPuzzleCaves::kCaveEntrancePositions[20] = {
 	Common::Point(554, 359),
 };
 
+// IDA: unk_4A0B24 + unk_4A0B38 — per-slot glyph Y positions (11 entries)
+const int16 ZoombiniPuzzleCaves::kGlyphYPositions[11] = {
+	0, 326, 348, 375, 397, 423, 324, 347, 373, 395, 422
+};
+
+// IDA: unk_4A0B3A + unk_4A0B4E — per-slot glyph X positions (11 entries)
+const int16 ZoombiniPuzzleCaves::kGlyphXPositions[11] = {
+	0, 36, 39, 42, 44, 46, 77, 80, 83, 86, 90
+};
+
+// IDA: byte_4A0AC8 (16-bit stride) — entrance type per 0-based entrance index.
+// Type 1 or 2, giving SCRS ID = kEntranceType[idx] + 12999.
+// Original uses 1-based indexing; these are shifted to 0-based.
+const uint8 ZoombiniPuzzleCaves::kEntranceType[20] = {
+	2, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2, 1
+};
+
 ZoombiniPuzzleCaves::ZoombiniPuzzleCaves(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kCaves) {
 }
 
@@ -119,6 +137,22 @@ void ZoombiniPuzzleCaves::loadFeatures() {
 	_vm->_gfx->preloadImage(8200);
 	_vm->_gfx->preloadImage(9000);
 	_vm->_gfx->preloadImage(9025);
+
+	// IDA: getHieroglyphsSprites_418559 — load hieroglyph sprite resource (tBMP 10000)
+	// and per-slot X adjustment data (REGS 201)
+	_vm->_gfx->preloadImage(10000);
+
+	// Load per-slot glyph X adjustments from REGS 201.
+	// IDA: dword_4AB0F4 — REGS resource 201 (big-endian uint16 array, byteswapped to LE)
+	{
+		Common::SeekableReadStream *regsStream =
+			_vm->getResource(MKTAG('R', 'E', 'G', 'S'), ZmbResource(ZmbArchiveKind::kPage, 201));
+		if (regsStream) {
+			for (int i = 0; i < 11 && regsStream->pos() < regsStream->size(); i++)
+				_glyphXAdj[i] = regsStream->readSint16BE();
+			delete regsStream;
+		}
+	}
 
 	// Load terrain barrier bitmap (tBMP 100)
 	// IDA: rmap_loadTerrainArchive(0x64u)
@@ -304,11 +338,16 @@ void ZoombiniPuzzleCaves::loadFeatures() {
 	setupEntranceGlyphs();
 
 	// IDA 0x4170e7: unk_4A090C — virtual glyph renderer with custom callbacks
-	// caves_clearAndInvalidateRect as preRender, caves_renderAllEntranceGlyphs as render
-	// For now, create a placeholder loop animation feature
-	_virtualGlyphRenderer = loadScrbFeature(
-		ZmbResource(ZmbArchiveKind::kPage, 6000), 6000, 0,
-		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00020000_SKIP_RENDER);
+	// caves_clearAndInvalidateRect as preRender, caves_renderAllEntranceGlyphs_41846A as render
+	{
+		ZmbFeature::EventHooks hooks;
+		hooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(
+			&ZoombiniPuzzleCaves::renderEntranceGlyphs));
+		_virtualGlyphRenderer = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 6000), 6000, 0,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY,
+			hooks);
+	}
 
 	// Load Zoombinis from active pack at 20 pedestal positions
 	// IDA: zmb_assignPedestalPositions(1, posTable, 20)
@@ -343,14 +382,31 @@ void ZoombiniPuzzleCaves::loadFeatures() {
 	}
 
 	_puzzleActive = true;
-	_successCount = 0;
-	_consecutiveCorrect = 0;
-	_rejectAnimActive = false;
+	_placedZmbCount = 0;
+	_pendingWalkInSnoid = nullptr;
+	_pendingWalkInScrsId = 0;
+	_outOfZoneDrop = false;
 	_interactionLocked = false;
-	_hintFlashEnabled = false;
-	_nextCelebrationFrame = getCurrentFrameCounter() + 120;
-	_celebrationsPlayed = 0;
-	_celebrationTarget = 3;
+	_hintFlashCounter = 0;
+
+	// IDA: caves_funcInit global initialization
+	_rejectScrsBaseId = 12004;
+	_glyphScrbBaseId = 8200;
+	_entranceAnimCounter = 0;
+	_activeDoorFeature = nullptr;
+	_selectedDoorOverlay = nullptr;
+	_matchingDoorOverlay = nullptr;
+	_bTransitionPending = false;
+	_entranceCompletionFlag = false;
+	_nActiveEntranceAnimCount = 0;
+	_phaseState = 0;
+	_activeDropSnoid = nullptr;
+	_selectedEntranceIdx = 0;
+	_matchingEntranceIdx = 0;
+	_bWrongPlacement = false;
+	_bDoorAnimPending = false;
+	_bAdvanceClicked = false;
+	_bAdvanceEnabled = false;
 }
 
 void ZoombiniPuzzleCaves::onGoButtonActivated() {
@@ -707,6 +763,45 @@ void ZoombiniPuzzleCaves::distributeEntranceAttributes() {
 }
 
 // =========================================================================
+// Glyph rendering
+// =========================================================================
+
+ZmbRenderResult ZoombiniPuzzleCaves::renderEntranceGlyphs(ZmbFeature *feature) {
+	// IDA: caves_renderAllEntranceGlyphs_41846A
+	// Iterates entrance slots 1-10, drawing hieroglyph shapes at each active entrance.
+	// At difficulty 1 with hoveredSlot < 6, skip the hovered entrance (hide its glyph).
+	ZmbResource glyphRes(ZmbArchiveKind::kPage, 10000);
+	bool skipHovered = (_difficultyLevel == 1 && _hoveredEntranceSlot < 6);
+
+	for (int slot = 1; slot < 11; slot++) {
+		if (!_entranceAttrReq[slot])
+			continue;
+
+		if (skipHovered && slot == _hoveredEntranceSlot)
+			continue;
+
+		uint8 shapeIdx = _entranceAttrOffset[slot]; // 1-based shape index into tBMP 10000
+		if (shapeIdx == 0)
+			continue;
+
+		// IDA: caves_renderGlyphHotspot_41837D
+		// Get sub-image height for vertical centering.
+		MohawkSurface *ms = _vm->_gfx->findShape(glyphRes, shapeIdx);
+		if (!ms || !ms->getSurface())
+			continue;
+
+		int16 halfHeight = static_cast<int16>(ms->getSurface()->h) / 2;
+		int16 x = kGlyphXPositions[slot] - _glyphXAdj[slot];
+		int16 y = kGlyphYPositions[slot] - halfHeight;
+
+		_vm->_gfx->drawShape(ZoombiniGraphics::kShapeScreen, glyphRes, shapeIdx,
+							 Common::Point(x, y));
+	}
+
+	return ZmbRenderResult::kRendered;
+}
+
+// =========================================================================
 // Gameplay methods
 // =========================================================================
 
@@ -761,75 +856,71 @@ int16 ZoombiniPuzzleCaves::findMatchingGlyphSlot(const ZmbTrait &traits) const {
 }
 
 void ZoombiniPuzzleCaves::handleCorrectPlacement(ZmbSnoid *snoid, int16 entranceSlot) {
-	// IDA: caves correct placement handler
-	// Zoombini enters the correct cave.
+	// IDA: caves_funcOnClick_417CDB — MATCH branch (hoverIdx == selectedIdx)
+	// Correct match: queue walk-in, do NOT set _activeDropSnoid.
 
-	_successCount++;
-	_consecutiveCorrect++;
+	_placedZmbCount++;
+	snoid->_packIsOccupied = false;
 
-	// Play walk-into-cave animation via SCRS 13000+ (normal pool)
-	uint16 scrsIdx = 13000 + (entranceSlot % 5);
-	Common::SeekableReadStream *scrsStream =
-		_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsIdx));
-	if (scrsStream) {
-		snoid->startScrsPlayback(scrsStream, true, false);
+	// IDA: priority = 0 — correct match clears activeDropSnoid
+	// The walk-in is handled by the queue, not the door animation chain.
+
+	if (_placedZmbCount == 1) {
+		// IDA: First placement — enable advance button, merge dirty rect
+		_bAdvanceEnabled = true;
+		// TODO: dirty_mergeDrawnRectIntoRMap for advance button rect
 	}
 
-	// Play entrance door animation — load door open SCRB onto the door feature
-	if (entranceSlot < 20 && _doorDrawOnRegFeatures[entranceSlot]) {
-		loadScrbOntoFeature(_doorDrawOnRegFeatures[entranceSlot], 7000 + entranceSlot);
+	if (_placedZmbCount == _loadedZmbCount) {
+		// IDA: All Zoombinis placed — trigger mass walk-in
+		_bDoorAnimPending = true;
+		_entranceCompletionFlag = true;
+		// IDA: nextRand_410705(20055, 20063) — random cheer sound
+		uint16 soundId = static_cast<uint16>(_vm->_rnd->getRandomNumber(20055, 20063));
+		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, soundId));
 	}
 
-	// Play positive sound
-	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20066));
-
-	// Check if all Zoombinis have been placed
-	int16 remainingCount = 0;
-	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if ((*it)->getId() < 10000)
-			continue;
-		ZmbSnoid *s = *it;
-		if (s->getAnimState() == kSnoidAnimIdle && s->_packIsOccupied)
-			remainingCount++;
-	}
-
-	if (remainingCount <= 0) {
-		// All Zoombinis placed — enable Go button
-		setGoButtonsEnabled(true);
-	}
+	// Queue walk-in for processing in onEveryFrame.
+	// IDA: caves_entranceAnimStates_4AB01E[caves_bHoverEnabled_4AB046++] = runnerIdx
+	// IDA: pInitPos = &off_4A09BC + selectedIdx
+	// SCRS ID from entrance type table: kEntranceType[idx] + 12999
+	_pendingWalkInSnoid = snoid;
+	_pendingWalkInScrsId = kEntranceType[entranceSlot] + 12999;
 }
 
 void ZoombiniPuzzleCaves::handleWrongPlacement(ZmbSnoid *snoid, int16 droppedSlot, int16 correctSlot) {
-	// IDA: caves wrong placement handler
-	// Door rejects the Zoombini and optionally shows a hint.
+	// IDA: caves_funcOnClick_417CDB — MISMATCH branch (hoverIdx != selectedIdx)
+	// Door animation chain: setupDoorAnimation(0) → event 1 (reject SCRS) → event 5 →
+	// setupDoorAnimation(1) → event 2 (redirect SCRS) → event 4 (complete).
 
-	_interactionLocked = true;
-	_rejectAnimActive = true;
-	_rejectSnoid = snoid;
-	_rejectTargetSlot = droppedSlot;
-	_consecutiveCorrect = 0;
+	// IDA: word_4AB04A = runnerIdx
+	_activeDropSnoid = snoid;
+	_selectedEntranceIdx = droppedSlot;
+	_matchingEntranceIdx = correctSlot;
 
-	// Play reject SCRS from reject pool (12000+)
-	uint16 scrsIdx = 12000 + _vm->_rnd->getRandomNumber(0, 13);
-	Common::SeekableReadStream *scrsStream =
-		_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsIdx));
-	if (scrsStream) {
-		snoid->startScrsPlayback(scrsStream, false, true);
-	}
+	// IDA: word_4AAF62 = caves_entranceSCRBRunnerArr[selectedIdx]
+	// IDA: word_4AAF64 = caves_entranceSCRBRunnerArr[hoverIdx]
+	_selectedDoorOverlay = getEntranceOverlayFeature(droppedSlot);
+	_matchingDoorOverlay = getEntranceOverlayFeature(correctSlot);
 
-	// Play door rejection animation — reload door panel feature showing rejection
-	if (droppedSlot < 4 && _doorPanelFeatures[droppedSlot]) {
-		loadScrbOntoFeature(_doorPanelFeatures[droppedSlot], 9011 + droppedSlot);
-	}
+	// IDA: ++HIWORD(caves_nTotalSlotCount)
+	_placedZmbCount++;
+	// IDA: unk_4A08E0 = 1
+	_entranceCompletionFlag = true;
+	// IDA: word_4AAEFE = 1 — triggers setupDoorAnimation(0) in onEveryFrame
+	_bWrongPlacement = true;
 
-	// Play rejection sound
-	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 20067));
+	// IDA: clearPendingRunnerSlot_45354C()
+	// In ScummVM, pending runner slot is N/A with per-frame sorted rendering.
 
-	// Enable hint flash at difficulty level 1
-	if (_difficultyLevel == 1 && correctSlot >= 0) {
-		_hintFlashEnabled = true;
-		_hintFlashSlot = correctSlot;
-		_hintFlashStartFrame = getCurrentFrameCounter();
+	if (_placedZmbCount == 1) {
+		// IDA: First placement — enable advance button
+		_bAdvanceEnabled = true;
+		// TODO: dirty_mergeDrawnRectIntoRMap for advance button rect
+	} else if (_placedZmbCount == _loadedZmbCount) {
+		// IDA: All Zoombinis placed — random cheer sound
+		uint16 soundId = static_cast<uint16>(_vm->_rnd->getRandomNumber(20055, 20063));
+		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, soundId));
 	}
 }
 
@@ -855,12 +946,14 @@ void ZoombiniPuzzleCaves::endDrag(const Common::Point &dropPos) {
 			handleWrongPlacement(snoid, droppedSlot, correctSlot);
 		}
 	} else {
-		// Dropped outside any entrance — return to idle
-		if (!validateTerrainDrop(snoid)) {
-			snoid->setPointLoc(_dragOrigPos);
-		}
-		snoid->setAnimState(kSnoidAnimIdle);
-		snoid->setupIdleHotspots();
+		// Dropped outside any entrance.
+		// IDA: caves_funcOnClick_417CDB — out-of-zone branch.
+		// Sets entranceCompletionFlag and activeDropSnoid, then calls setupDoorAnimation(2)
+		// to play SCRS 12012 (walk-back script) on the snoid.
+		_entranceCompletionFlag = true;
+		_activeDropSnoid = snoid;
+		_outOfZoneDrop = true;
+		setupDoorAnimation(2);
 	}
 }
 
@@ -876,8 +969,8 @@ ZmbEventHandleResult ZoombiniPuzzleCaves::onLButtonDown(const Common::Point &abs
 	if (result == ZmbEventHandleResult::kConsumed)
 		return result;
 
-	// Don't allow interaction while locked (reject animation playing)
-	if (_interactionLocked || !_puzzleActive)
+	// IDA: !unk_4A08E0 — don't allow drag during door animation / entrance completion.
+	if (_entranceCompletionFlag || !_puzzleActive)
 		return ZmbEventHandleResult::kPassthrough;
 
 	// Don't allow drag if already dragging
@@ -922,55 +1015,100 @@ void ZoombiniPuzzleCaves::onEveryFrame() {
 		return;
 	}
 
-	// [1] Process reject animation completion
-	if (_rejectAnimActive && _rejectSnoid) {
-		SnoidAnimState state = _rejectSnoid->getAnimState();
-		if (state == kSnoidAnimIdle) {
-			// Reject animation finished — return snoid to idle position
-			_rejectSnoid->setupIdleHotspots();
-			_rejectSnoid = nullptr;
-			_rejectAnimActive = false;
-			_interactionLocked = false;
-			_rejectTargetSlot = -1;
+	// [0.5] Process entrance callback state flags.
+	// IDA: caves_funcMain_41732B — processes nActiveEntranceAnimCount, bWrongPlacement, bTransitionPending.
+
+	// Process nActiveEntranceAnimCount (set by entrance door event 4).
+	// IDA: if (caves_nActiveEntranceAnimCount) { load entrance overlay SCRBs, update snoid }
+	if (_nActiveEntranceAnimCount > 0) {
+		debugC(1, kZmbDebugAnimation, "Caves: entrance anim callback, selectedIdx=%d matchIdx=%d",
+			_selectedEntranceIdx, _matchingEntranceIdx);
+		_nActiveEntranceAnimCount = 0;
+
+		// IDA: Load SCRB (9000 + selectedIdx) onto word_4AAF62 runner, enable render.
+		// scrb_loadOnRunner(0, selectedIdx + 8999, runner); runner->wBoolDoRender = 1;
+		if (_selectedDoorOverlay) {
+			loadScrbOntoFeature(_selectedDoorOverlay,
+				static_cast<uint16>(9000 + _selectedEntranceIdx), false);
+			_selectedDoorOverlay->activateRender();
+		}
+
+		// IDA: Load SCRB (9000 + hoverIdx) onto word_4AAF64 runner, enable render.
+		if (_matchingDoorOverlay) {
+			loadScrbOntoFeature(_matchingDoorOverlay,
+				static_cast<uint16>(9000 + _matchingEntranceIdx), false);
+			_matchingDoorOverlay->activateRender();
+		}
+
+		// IDA: Update snoid entrance tracking data from byte_4A0AC8 / word_4A0AF2 tables.
+		// These tables map entrance indices to entrance type bytes and walk position IDs.
+		// In ScummVM, the snoid positioning is handled by the SCRS playback system, so
+		// the raw byte/word writes to the snoid runner struct are not needed.
+	}
+
+	// Process wrong placement flag (set by click handler).
+	// IDA: if (word_4AAEFE) { setInteractionLock(0); caves_setupDoorAnimation(doorIdx=0) }
+	if (_bWrongPlacement) {
+		debugC(1, kZmbDebugAnimation, "Caves: wrong placement -> setupDoorAnimation(0)");
+		_bWrongPlacement = false;
+		_interactionLocked = false;
+		setupDoorAnimation(0);
+	}
+
+	// Process transition pending (set by entrance door event 5).
+	// IDA: if (bTransitionPending) { caves_setupDoorAnimation(doorIdx=1) }
+	if (_bTransitionPending) {
+		debugC(1, kZmbDebugAnimation, "Caves: transition pending -> setupDoorAnimation(1)");
+		_bTransitionPending = false;
+		setupDoorAnimation(1);
+	}
+
+	// Process advance button click.
+	// IDA: if (word_4AAEF8 && !priority) { word_4AAEFA=1, load SCRB 6002 }
+	if (_bAdvanceClicked && !_activeDropSnoid) {
+		debugC(1, kZmbDebugAnimation, "Caves: advance clicked -> phaseState=1, loading SCRB 6002");
+		_bAdvanceClicked = false;
+		_phaseState = 1;
+		_interactionLocked = false;
+		// Load SCRB 6002 onto the success animation feature with glyph panel callback.
+		if (_entranceAnimFeatures[2]) {
+			loadScrbOntoFeature(_entranceAnimFeatures[2], 6002);
 		}
 	}
 
-	// [2] Hint flash timeout (level 1 only)
-	if (_hintFlashEnabled) {
-		uint32 elapsed = getCurrentFrameCounter() - _hintFlashStartFrame;
-		if (elapsed > 90) {
-			_hintFlashEnabled = false;
-			_hintFlashSlot = -1;
-		}
+	// Process walk-in queue for correct placements.
+	// IDA: while (caves_bHoverEnabled_4AB046) { play SCRS on queued snoid }
+	if (_pendingWalkInSnoid) {
+		debugC(1, kZmbDebugAnimation, "Caves: walk-in queue, scrsId=%d", _pendingWalkInScrsId);
+		ZmbSnoid *walkSnoid = _pendingWalkInSnoid;
+		int16 walkScrsId = _pendingWalkInScrsId;
+		_pendingWalkInSnoid = nullptr;
+		_pendingWalkInScrsId = 0;
+
+		// IDA: runner->bitmask = OVERLAY | SNOID (0x04000001)
+		// IDA: snoidScript_initAndPlay(0, pInitPos, scrsId, &core)
+		// scriptType=0 → normal (hideOnComplete=true, rejectState=false)
+		// IDA: runner->onHotspotShapeOrFrameFunc = caves_noop_incrReturn
+		Common::SeekableReadStream *scrsStream =
+			_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+							 ZmbResource(ZmbArchiveKind::kPage, static_cast<uint16>(walkScrsId)));
+		if (scrsStream)
+			walkSnoid->startScrsPlayback(scrsStream, true, false);
 	}
 
-	// [3] Celebration scheduling (hoorah fidget) for idle Zoombinis
-	if (_celebrationsPlayed < _celebrationTarget &&
-		getCurrentFrameCounter() > _nextCelebrationFrame) {
-
-		_nextCelebrationFrame = getCurrentFrameCounter() + _vm->_rnd->getRandomNumber(60, 180);
-		bool triggered = false;
-		int16 attempts = 0;
-
-		do {
-			attempts++;
-			uint16 poolIdx = _vm->_rnd->getRandomNumber(0, 19);
-			uint16 snoidId = 10000 + poolIdx;
-
-			ZmbSnoid *snoid = getSnoid(snoidId);
-			if (snoid && snoid->getAnimState() == kSnoidAnimIdle &&
-				snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
-				Common::SeekableReadStream *scrsStream =
-					_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
-									 ZmbResource(ZmbArchiveKind::kPage, 13000 + _vm->_rnd->getRandomNumber(0, 4)));
-				if (scrsStream) {
-					snoid->startScrsPlayback(scrsStream, false, true);
-					_celebrationsPlayed++;
-					triggered = true;
-				}
-			}
-		} while (!triggered && attempts < 16);
+	// Process completion flag to trigger phase transition.
+	// IDA: caves_funcMain phase management (word_4AAEFA states)
+	if (_phaseState == 2) {
+		debugC(1, kZmbDebugAnimation, "Caves: phaseState 2 -> 3, playing SND 996");
+		_phaseState = 3;
+		// IDA: scrb_enqueueSoundResource(0, SND_00996_MOVE_LONG_SFX)
+		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, 996));
 	}
+
+	// [1] Glyph hint blink at difficulty 1.
+	// IDA: word_4AAEF4 toggling with 30-frame timer on glyphRenderRunner.
+	// At difficulty 1 with hoveredSlot < 6, the glyph renderer toggles visibility.
+	// TODO: Implement full glyph blink system matching IDA 0x4175DF-0x41767F.
 
 	_processingFrame = false;
 }
@@ -986,6 +1124,16 @@ void ZoombiniPuzzleCaves::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCod
 				// Reject script finished — return to idle
 				snoid->setAnimState(kSnoidAnimIdle);
 				snoid->setupIdleHotspots();
+
+				// IDA: For out-of-zone walk-back (setupDoorAnimation phase 2),
+				// clear tracking when the walk-back SCRS (12012) completes.
+				// Door-chain rejects (SCRS 12004) are followed by event 5 → setupDoorAnimation(1),
+				// so _activeDropSnoid is NOT cleared here for those.
+				if (_outOfZoneDrop && snoid == _activeDropSnoid) {
+					_outOfZoneDrop = false;
+					_activeDropSnoid = nullptr;
+					_entranceCompletionFlag = false;
+				}
 			} else if (state == kSnoidAnimScriptNormal) {
 				// Normal script (walk into cave) finished — hide snoid
 				snoid->deactivateRender();
@@ -996,10 +1144,317 @@ void ZoombiniPuzzleCaves::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCod
 		// are intentionally ignored — the original caves page does not
 		// register intermediate event callbacks for snoid features.
 	} else {
-		// SCRB feature events.
-		// IDA: caves_scrbEntranceCallback (0x417A98) handles events 1, 2, 4, 5, 10, 20, 21
-		//      for door entrance/rejection animations.
-		// TODO: Implement entrance callback events when door animation system is added.
+		// SCRB feature events — dispatch based on which feature fired the event.
+		// IDA: Two different callbacks exist:
+		//   caves_scrbEntranceCallback (0x417A98) — door entrance/rejection SCRB animations
+		//   caves_handleScriptEvent_417BF2 — glyph panel SCRB animations
+		if (feature == _glyphPanelRegionFeature || feature == _entranceAnimFeatures[2]) {
+			handleGlyphPanelEvent(feature, eventCode);
+		} else {
+			handleEntranceDoorEvent(feature, eventCode);
+		}
+	}
+}
+
+// =========================================================================
+// Entrance callback helpers
+// =========================================================================
+
+void ZoombiniPuzzleCaves::playEntranceScript(bool isReject, int16 scrsResId) {
+	// IDA: caves_playEntranceScript_417A4E
+	// Loads SCRS onto the active drop snoid and starts script playback.
+	// In the original, this loads SCRS onto the runner found via priority (= word_4AB04A = snoid runner).
+	if (!_activeDropSnoid)
+		return;
+
+	Common::SeekableReadStream *scrsStream =
+		_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, static_cast<uint16>(scrsResId)));
+	if (scrsStream) {
+		// IDA: snoidScript_initAndPlay(scriptType, dword_4AAF6C, scrsResId, &runner->core188)
+		// scriptType=1 → reject (hideOnComplete=false, rejectState=true)
+		// scriptType=0 → normal (hideOnComplete=true, rejectState=false)
+		_activeDropSnoid->startScrsPlayback(scrsStream, !isReject, isReject);
+	}
+}
+
+void ZoombiniPuzzleCaves::loadGlyphPanelFrame(int16 frameIdx) {
+	// IDA: caves_loadScrbFrameOnRunner_4186C2
+	// Loads SCRB (frameIdx + _glyphPanelScrbId) onto the glyph panel region feature.
+	// Validates: feature exists, not currently rendering, frameIdx within bounds.
+	if (!_glyphPanelRegionFeature)
+		return;
+	if (_glyphPanelRegionFeature->isRenderActivated())
+		return;
+	if (frameIdx > _entranceCount)
+		return;
+
+	// IDA: scrb_loadOnRunner(1, runnerIdx + caves_buttonResIdBase_4A08F0, runner)
+	loadScrbOntoFeature(_glyphPanelRegionFeature, static_cast<uint16>(frameIdx + _glyphPanelScrbId));
+	// The original sets onHotspotShapeOrFrameFunc = caves_handleScriptEvent_417BF2.
+	// In ScummVM, onFeatureAnimEvent handles dispatch to handleGlyphPanelEvent.
+}
+
+ZmbFeature *ZoombiniPuzzleCaves::getEntranceOverlayFeature(int16 idx) const {
+	// Maps 0-based entrance slot index to the corresponding glyph overlay feature.
+	// IDA: caves_entranceSCRBRunnerArr_4AAFF2[slotIdx+1]
+	//
+	// In the original, the overlay runners exist for 1-based slot indices 5-11 and 16-20.
+	// ScummVM uses 0-based indexing: 4-10 → _glyphOverlayFeatures[idx-4],
+	//                                 15-19 → _extraGlyphOverlayFeatures[idx-15].
+	if (4 <= idx && idx <= 10)
+		return _glyphOverlayFeatures[idx - 4];
+	if (15 <= idx && idx <= 19)
+		return _extraGlyphOverlayFeatures[idx - 15];
+	return nullptr;
+}
+
+void ZoombiniPuzzleCaves::setupDoorAnimation(int16 doorIdx) {
+	// IDA: caves_setupDoorAnimation_4177FB
+	// Sets up door opening/closing animations for the caves entrance sequence.
+	// doorIdx: 0 = open selected entrance, 1 = open matching entrance, 2 = close/reset
+
+	if (!_activeDropSnoid)
+		return;
+
+	// Determine which entrance overlay feature to operate on.
+	// IDA: doorIdx 0 → runner_findByIndex(word_4AAF62), selects the dropped-on entrance
+	//      doorIdx 1 → runner_findByIndex(word_4AAF64), selects the correct entrance
+	//      doorIdx 2 → runner_findByIndex(priority),    selects the snoid itself
+	ZmbFeature *doorFeature = nullptr;
+	if (doorIdx == 0) {
+		doorFeature = _selectedDoorOverlay;
+	} else if (doorIdx == 1) {
+		doorFeature = _matchingDoorOverlay;
+	}
+	// doorIdx == 2 operates directly on the snoid (no feature needed)
+
+	if (doorIdx < 2 && !doorFeature)
+		return;
+
+	if (doorIdx == 0) {
+		// Phase 0: Door opening animation for SELECTED entrance (where the snoid was dropped).
+		// IDA: 0x41787E..0x417921
+
+		// IDA: dword_4AAF6C = 0
+		// Clear position override — no initial position for script playback.
+
+		// Load door-open SCRB onto the entrance overlay feature.
+		// IDA: scrb_loadOnRunner(1, glyphBaseId + 4*selectedIdx - 4, doorData)
+		// With 0-based idx: glyphBaseId + 4 * idx
+		uint16 doorScrbId = static_cast<uint16>(_glyphScrbBaseId + 4 * _selectedEntranceIdx);
+		loadScrbOntoFeature(doorFeature, doorScrbId);
+		// The callback for this feature is handled by onFeatureAnimEvent → handleEntranceDoorEvent.
+
+		// IDA: runner_freeByIndex(caves_doorScrbId) — destroy old door overlay
+		if (_activeDoorFeature) {
+			unloadScrbFeature(_activeDoorFeature);
+			_activeDoorFeature = nullptr;
+		}
+
+		// IDA: runner_linkRelativeToParent(entranceRunnerArr[selectedIdx], 1, priority)
+		// NO-OP in ScummVM: Z-ordering is handled by per-frame sorted rendering.
+
+		// Create new door overlay sub-feature with SCRB: glyphBaseId + 4*selectedIdx + 1
+		// IDA: runner_registerAndAllocate(priority, 1, 0, 6, glyphBaseId + 4*selectedIdx - 3,
+		//       preRenderStandard, postRenderStandard, LOOP_ANIM|PLAY_ONCE|OVERLAY)
+		uint16 overlayScrbId = static_cast<uint16>(_glyphScrbBaseId + 4 * _selectedEntranceIdx + 1);
+		_activeDoorFeature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, static_cast<uint16>(_glyphScrbBaseId)),
+			overlayScrbId, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+				ZmbFeature::FLAG_04000000_OVERLAY);
+
+		// IDA: scrb_registerHotspotGroup(0, 0, 0, 0, doorScrbId, doorData->wFeatureRunnerIdx)
+		// In ScummVM, hotspot groups are parsed from the SCRB data during loadScrbFeature.
+		// The overlay and door feature share rendering dispatch via onFeatureAnimEvent.
+
+	} else if (doorIdx == 1) {
+		// Phase 1: Door opening animation for MATCHING entrance (redirect after wrong placement).
+		// IDA: 0x417932..0x4179E3
+
+		// IDA: caves_setKeyRunnerSlot(hoverEntranceIdx, priority)
+		// Sets the snoid's target key position for the walk-to script.
+		// NOTE: In ScummVM, snoid position targeting is handled by SCRS data.
+		// The original uses input_getKeyPositionFromTable to get the walk target.
+
+		// IDA: dword_4AAF6C = word_4AAF68
+		// Set position override for the matching entrance walk script.
+
+		// Load door-open SCRB onto the matching entrance overlay feature.
+		// IDA: scrb_loadOnRunner(1, glyphBaseId + 4*hoverIdx - 2, doorData)
+		// With 0-based idx: glyphBaseId + 4 * idx + 2
+		uint16 doorScrbId = static_cast<uint16>(_glyphScrbBaseId + 4 * _matchingEntranceIdx + 2);
+		loadScrbOntoFeature(doorFeature, doorScrbId);
+
+		// IDA: runner_freeByIndex(caves_doorScrbId) — destroy old door overlay
+		if (_activeDoorFeature) {
+			unloadScrbFeature(_activeDoorFeature);
+			_activeDoorFeature = nullptr;
+		}
+
+		// IDA: runner_linkRelativeToParent(entranceRunnerArr[hoverIdx], 1, priority)
+		// NO-OP in ScummVM.
+
+		// Create new door overlay: glyphBaseId + 4*hoverIdx + 3
+		// IDA: runner_registerAndAllocate(priority, 1, 0, 6, glyphBaseId + 4*hoverIdx - 1,
+		//       preRenderStandard, postRenderStandard, LOOP_ANIM|PLAY_ONCE|OVERLAY)
+		uint16 overlayScrbId = static_cast<uint16>(_glyphScrbBaseId + 4 * _matchingEntranceIdx + 3);
+		_activeDoorFeature = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, static_cast<uint16>(_glyphScrbBaseId)),
+			overlayScrbId, 6,
+			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+				ZmbFeature::FLAG_04000000_OVERLAY);
+
+		// IDA: scrb_registerHotspotGroup(0, 0, 0, 0, doorScrbId, doorData->wFeatureRunnerIdx)
+		// Hotspot groups parsed from SCRB data in ScummVM.
+
+	} else if (doorIdx == 2) {
+		// Phase 2: Door close/reset — snoid walks back after out-of-zone drop.
+		// IDA: 0x4179EC..0x417A43
+
+		// IDA: setInteractionLock(0) — unlock interaction
+		_interactionLocked = false;
+
+		// IDA: dword_4AAF6C = 0
+		// IDA: doorData[1].core188.u.h.hsArr[1].shapeid = 0
+		// Clear snoid entrance tracking state.
+
+		// IDA: doorData->onHotspotShapeOrFrameFunc = caves_scrbEntranceCallback
+		// In ScummVM, the callback is handled by onFeatureAnimEvent dispatch.
+
+		// IDA: snoidScript_initAndPlay(1, dword_4AAF6C=0, 12012, &doorData->core188)
+		// Play SCRS 12012 (door close / walk-back script) on the active snoid.
+		Common::SeekableReadStream *scrsStream =
+			_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, 12012));
+		if (scrsStream)
+			_activeDropSnoid->startScrsPlayback(scrsStream, false, true);
+
+		// IDA: scrb_registerHotspotGroup(0, 0, 0, 0, doorData->idx, doorData->idx)
+		// IDA: runner_linkRelativeToParent(caves_buttonOverlayRunner, 0, doorData->idx)
+		// NO-OP in ScummVM: hotspot and Z-ordering handled by the framework.
+	}
+}
+
+void ZoombiniPuzzleCaves::handleEntranceDoorEvent(ZmbFeature *feature, int16 eventCode) {
+	// IDA: caves_scrbEntranceCallback (0x417A98)
+	// Events fired from door entrance/rejection SCRB animations.
+	switch (eventCode) {
+	case 1:
+		// Play reject entrance SCRS on the snoid.
+		// IDA: caves_playEntranceScript(1, callback, caves_rejectScrbBaseId, endFrame)
+		// This event fires from the door SCRB (loaded by setupDoorAnimation phase 0)
+		// to trigger the reject walk at the correct animation frame.
+		if (_activeDropSnoid)
+			playEntranceScript(true, _rejectScrsBaseId);
+		break;
+
+	case 2:
+		// Play normal walk-into-cave SCRS on the snoid.
+		// IDA: caves_playEntranceScript(0, callback, caves_rejectScrbBaseId + 1, endFrame)
+		// This event fires from the door SCRB (loaded by setupDoorAnimation phase 1)
+		// to trigger the walk-into-correct-entrance animation.
+		if (_activeDropSnoid)
+			playEntranceScript(false, _rejectScrsBaseId + 1);
+		break;
+
+	case 4:
+		// Door transition complete.
+		// IDA: setRunnerUpdateNeeded(), nActiveEntranceAnimCount=1,
+		//      ++entranceAnimCounter, loadGlyphPanelFrame(counter), freeRunner(doorId)
+		_nActiveEntranceAnimCount = 1;
+		++_entranceAnimCounter;
+		loadGlyphPanelFrame(_entranceAnimCounter);
+		// IDA: runner_freeByIndex(caves_doorScrbId) — destroy the door overlay feature.
+		if (_activeDoorFeature) {
+			unloadScrbFeature(_activeDoorFeature);
+			_activeDoorFeature = nullptr;
+		}
+		break;
+
+	case 5:
+		// Set transition pending — processed in onEveryFrame.
+		// IDA: caves_bTransitionPending_4A08F6 = 1
+		_bTransitionPending = true;
+		break;
+
+	case 10:
+		// Position adjustment: play SCRS 12013 (walk to position script).
+		// IDA: dword_4AAF6C = &dword_4AB09C[--word_4AB0EC];
+		//      caves_playEntranceScript(0, callback, 12013, endFrame)
+		playEntranceScript(false, 12013);
+		break;
+
+	case 20:
+		// Completion check: all entrances used?
+		// IDA: priority = 0; unk_4A08E0 = (caves_entranceAnimCounter == unk_4A08F2)
+		_activeDropSnoid = nullptr;
+		_entranceCompletionFlag = (_entranceAnimCounter == _entranceCount);
+		break;
+
+	case 21:
+		// Force completion.
+		// IDA: priority = 0; unk_4A08E0 = 1
+		_activeDropSnoid = nullptr;
+		_entranceCompletionFlag = true;
+		break;
+
+	default:
+		break;
+	}
+}
+
+void ZoombiniPuzzleCaves::handleGlyphPanelEvent(ZmbFeature *feature, int16 eventCode) {
+	// IDA: caves_handleScriptEvent_417BF2
+	// Events fired from glyph panel SCRB animations (loaded by loadGlyphPanelFrame or advance button).
+	switch (eventCode) {
+	case 10:
+		// Phase change to animating state.
+		// IDA: word_4AAEFA = 2
+		_phaseState = 2;
+		break;
+
+	case 20: {
+		// Check whether all entrances have been used.
+		// IDA: if (entranceAnimCounter == entranceCount) → play sound, set completion
+		if (_entranceAnimCounter == _entranceCount) {
+			// Count active snoids to check if more remain.
+			// IDA: getLoadedZmbRunnerCount_452402() < caves_nLoadedZmbCount
+			int16 activeSnoidCount = 0;
+			for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+				ZmbSnoid *s = *it;
+				if (s->getId() >= 10000 && s->isAnimateActivated())
+					++activeSnoidCount;
+			}
+			// IDA: if (count < nLoadedZmb && (rand(4,0) > diffLevel-1 || puzzleFlag <= 3))
+			if (activeSnoidCount < _loadedZmbCount) {
+				int16 rollThreshold = _difficultyLevel - 1;
+				if (_vm->_rnd->getRandomNumber(0, 4) > rollThreshold ||
+					(_vm->_state->_f._pageFlagCaves & 0xFFFu) <= 3) {
+					uint16 soundId = static_cast<uint16>(_vm->_rnd->getRandomNumber(20045, 20048));
+					_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, soundId));
+				}
+			}
+			_entranceCompletionFlag = true;
+		} else {
+			_entranceCompletionFlag = false;
+		}
+		break;
+	}
+
+	case 21:
+		// Force completion + handle practice level drag lock.
+		// IDA: unk_4A08E0 = 1; if (wPracticeLevel) { dragLock=0, dragLockCounter=1 }
+		_entranceCompletionFlag = true;
+		if (_vm->_state->inPracticeMode()) {
+			// IDA: ui_bDragLockActive = 0; ui_dragLockCounter = 1
+			// In ScummVM, the drag lock is managed via the walk-in progress counter.
+			// Setting walkersInProgress to 0 re-enables dragging.
+			_vm->_walkersInProgress = 0;
+		}
+		break;
+
+	default:
+		break;
 	}
 }
 

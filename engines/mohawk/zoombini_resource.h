@@ -34,7 +34,7 @@ enum {
 	kZmbDebugPage,
 	kZmbDebugResource,
 	kZmbDebugRender,
-	kZmbDebugScript,
+	kZmbDebugAnimation,
 	kZmbDebugHelp,
 };
 

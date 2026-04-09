@@ -551,6 +551,14 @@ public:
 	void setEventHooks(const EventHooks &hooks);
 
 	/**
+	 * Set the pre-render shape callback on an existing feature.
+	 * IDA: runner->onPreRenderShapeFunc = funcPtr
+	 * Used when a callback needs to be set after feature construction.
+	 * @param func The pre-render shape callback
+	 */
+	void setPreRenderShapeFunc(OnPreRenderShapeFunc func) { _eventHooks._preRenderShapeFunc = func; }
+
+	/**
 	 * Pre-render pass: animation logic.
 	 * IDA: runner_preRenderStandard (0x4619A1) — runs BEFORE Z-sort.
 	 * Calls custom preRender callback, advances frame selection, handles
@@ -644,6 +652,14 @@ public:
 	uint16 getId() const { return _id; }
 	ZmbResource getResource() const { return _imgResource; }
 	void setResource(ZmbResource res) { _imgResource = res; }
+
+	/**
+	 * Set per-tBMP REGS for shape registration-point offsets.
+	 * IDA: runner_preRenderStandard 0x461F86 subtracts REGS[shapeId].
+	 * @param regs Weak (non-owning) pointer to the REGS data
+	 */
+	void setShapeRegs(ZmbRegs *regs) { _shapeRegs = regs; }
+	ZmbRegs *getShapeRegs() const { return _shapeRegs; }
 
 	ZmbHotspotGroup *getHotspotGroup(int32 frameid);
 	/**
@@ -876,6 +892,13 @@ private:
 	uint32 _flags = 0;
 	uint32 _registrationIndex = 0;
 	ZmbResource _imgResource;
+	/**
+	 * Per-tBMP REGS: shape registration-point offsets loaded for this feature's
+	 * image resource. IDA: preRenderStandard (0x461F86) subtracts REGS[shapeId]
+	 * from each hotspot position after onPreRenderShapeFunc callback.
+	 * Weak (non-owning) pointer; lifetime managed by ZoombiniPage::_regsMap.
+	 */
+	ZmbRegs *_shapeRegs = nullptr;
 	/**
 	 * (FLAG_00800000_POS_DELTA or FLAG_00000001_TYPE_SNOID only)
 	 * The position of the feature script, which can be changed when animating.

@@ -1831,6 +1831,7 @@ void ZoombiniPuzzleSmoke::onEveryFrame() {
 
 	// Reload main runner
 	if (_bReloadMainRunner) {
+		debugC(1, kZmbDebugAnimation, "Smoke: reload main runner SCRB 11017");
 		_bReloadMainRunner = false;
 		if (_mainAnimFeature) {
 			_mainAnimFeature->addFlag(
@@ -1847,6 +1848,7 @@ void ZoombiniPuzzleSmoke::onEveryFrame() {
 
 	// Reload overlay SCRB
 	if (_bReloadScrb) {
+		debugC(1, kZmbDebugAnimation, "Smoke: reload overlay SCRB %d", _scrbOverlayResId);
 		_bReloadScrb = false;
 		if (_overlayAnimFeature) {
 			loadScrbOntoFeature(_overlayAnimFeature, _scrbOverlayResId, false);
@@ -1859,6 +1861,7 @@ void ZoombiniPuzzleSmoke::onEveryFrame() {
 
 	// Reset level
 	if (_bResetLevel) {
+		debugC(1, kZmbDebugAnimation, "Smoke: reset level, diff=%d", _difficultyLevel);
 		_bResetLevel = false;
 		if (_difficultyLevel <= 2) {
 			_bShowAnswer = false;
@@ -1872,6 +1875,8 @@ void ZoombiniPuzzleSmoke::onEveryFrame() {
 
 	// Place zoombini
 	if (_bPlaceZmb) {
+		debugC(1, kZmbDebugAnimation, "Smoke: place zmb, placed=%d/%d cliffCount=%d",
+			_placedZmbCount, _zmbCount, _loadedOnCliffCount);
 		_bPlaceZmb = false;
 
 		uint16 columnScrbId = 11071 - _placedZmbCount;

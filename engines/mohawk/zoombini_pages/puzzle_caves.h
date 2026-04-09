@@ -113,10 +113,80 @@ private:
 	/** Get entrance slot from screen position. */
 	int16 getEntranceSlotAtPoint(const Common::Point &pos) const;
 
+	/**
+	 * Custom render callback for the virtual glyph renderer feature.
+	 * Draws hieroglyph symbols on each active cave entrance.
+	 * IDA: caves_renderAllEntranceGlyphs_41846A
+	 */
+	ZmbRenderResult renderEntranceGlyphs(ZmbFeature *feature);
+
+	/**
+	 * Play an entrance SCRS script on the active drop snoid.
+	 * IDA: caves_playEntranceScript_417A4E
+	 * @param isReject true for reject type (SCRS sets snoid to reject state)
+	 * @param scrsResId SCRS resource ID to play
+	 */
+	void playEntranceScript(bool isReject, int16 scrsResId);
+
+	/**
+	 * Load a glyph panel frame SCRB onto the glyph panel region feature.
+	 * IDA: caves_loadScrbFrameOnRunner_4186C2
+	 * @param frameIdx Index added to _glyphPanelScrbId for the SCRB to load
+	 */
+	void loadGlyphPanelFrame(int16 frameIdx);
+
+	/**
+	 * Set up door animation for entrance sequences.
+	 * IDA: caves_setupDoorAnimation_4177FB
+	 *
+	 * @param doorIdx Phase index:
+	 *   0 = Door opening for SELECTED entrance (correct/wrong drop target)
+	 *   1 = Door opening for MATCHING entrance (redirect on wrong placement)
+	 *   2 = Door close/reset (walking back after out-of-zone drop)
+	 */
+	void setupDoorAnimation(int16 doorIdx);
+
+	/**
+	 * Get the glyph overlay feature for a given entrance slot index (0-based).
+	 * Maps ScummVM entrance index to the appropriate overlay feature.
+	 * IDA: caves_entranceSCRBRunnerArr_4AAFF2[slotIdx]
+	 *
+	 * @param idx 0-based entrance slot index
+	 * @return Overlay feature, or nullptr if none exists for this slot
+	 */
+	ZmbFeature *getEntranceOverlayFeature(int16 idx) const;
+
+	/**
+	 * Handle events from entrance door SCRB animations.
+	 * IDA: caves_scrbEntranceCallback (0x417A98)
+	 * Events: 1(reject SCRS), 2(normal SCRS), 4(transition), 5(pending), 10(position), 20/21(completion)
+	 */
+	void handleEntranceDoorEvent(ZmbFeature *feature, int16 eventCode);
+
+	/**
+	 * Handle events from glyph panel SCRB animations.
+	 * IDA: caves_handleScriptEvent_417BF2
+	 * Events: 10(phase change), 20(completion check), 21(force completion)
+	 */
+	void handleGlyphPanelEvent(ZmbFeature *feature, int16 eventCode);
+
 	static const Common::Point kSnoidPositions[20];
 
 	/** DRAW_ON_REG positions for cave entrance features (SCRB 7000-7019). IDA: off_4A09BC+1..+20 */
 	static const Common::Point kCaveEntrancePositions[20];
+
+	/**
+	 * Entrance type per 0-based entrance index (20 entries).
+	 * Type 1 or 2, giving SCRS ID = kEntranceType[idx] + 12999.
+	 * IDA: byte_4A0AC8 (16-bit stride, indexed by 1-based entrance index)
+	 */
+	static const uint8 kEntranceType[20];
+
+	/** Glyph Y positions per slot (0-10). IDA: unk_4A0B24 + unk_4A0B38 */
+	static const int16 kGlyphYPositions[11];
+
+	/** Glyph X positions per slot (0-10). IDA: unk_4A0B3A + unk_4A0B4E */
+	static const int16 kGlyphXPositions[11];
 
 	/** Route difficulty level + 1 (1-4). IDA: word_4AAF00 */
 	int16 _difficultyLevel = 0;
@@ -140,6 +210,9 @@ private:
 	
 	/** Current hovered entrance slot. IDA: word_4AAEF4 */
 	int16 _hoveredEntranceSlot = 0;
+
+	/** Per-slot glyph X half-width adjustments for centering. IDA: dword_4AB0F4 (from REGS 201) */
+	int16 _glyphXAdj[11] = {};
 	
 	// --- Extended glyph system state (IDA: caves_initEntranceAttrPattern globals) ---
 	
@@ -199,11 +272,71 @@ private:
 	// --- Gameplay state ---
 	bool _puzzleActive = false;
 	bool _processingFrame = false;
-	bool _rejectAnimActive = false;
 	bool _interactionLocked = false;
 
-	/** Number of successful cave entries. */
-	int16 _successCount = 0;
+	// --- Entrance callback state (IDA: caves_scrbEntranceCallback globals) ---
+
+	/** Base SCRS resource ID for entrance scripts. IDA: caves_rejectScrbBaseId_4A08EE = 12004 */
+	int16 _rejectScrsBaseId = 12004;
+
+	/** Base SCRB ID for glyph door animations. IDA: caves_glyphScrbBaseId_4A08EC = 8200 */
+	int16 _glyphScrbBaseId = 8200;
+
+	/** Number of entrances that have completed transition. IDA: caves_entranceAnimCounter_4A08F4 */
+	int16 _entranceAnimCounter = 0;
+
+	/** Currently active door animation overlay feature. IDA: caves_doorScrbId_4A08EA (runner index) */
+	ZmbFeature *_activeDoorFeature = nullptr;
+
+	/** Entrance overlay feature for the selected (dropped) slot. IDA: word_4AAF62 */
+	ZmbFeature *_selectedDoorOverlay = nullptr;
+
+	/** Entrance overlay feature for the matching (correct) slot. IDA: word_4AAF64 */
+	ZmbFeature *_matchingDoorOverlay = nullptr;
+
+	/** Flag set by event 5; triggers reject door animation in onEveryFrame. IDA: caves_bTransitionPending_4A08F6 */
+	bool _bTransitionPending = false;
+
+	/** Set by events 20/21 when entrance sequence completes. IDA: unk_4A08E0 */
+	bool _entranceCompletionFlag = false;
+
+	/** Set to 1 by event 4; processed in onEveryFrame. IDA: caves_nActiveEntranceAnimCount_4AB01C */
+	int16 _nActiveEntranceAnimCount = 0;
+
+	/** Glyph panel animation phase. IDA: word_4AAEFA (0=idle, 1=transitioning, 2=animating, 3=success) */
+	int16 _phaseState = 0;
+
+	/** Snoid currently involved in door animation. IDA: word_4AB04A (runner index → snoid pointer) */
+	ZmbSnoid *_activeDropSnoid = nullptr;
+
+	/** Entrance index where Zoombini was dropped (1-based). IDA: caves_selectedEntranceIdx_4A0900 */
+	int16 _selectedEntranceIdx = 0;
+
+	/** Entrance index that matches Zoombini's traits (1-based). IDA: caves_hoverEntranceIdx_4A0902 */
+	int16 _matchingEntranceIdx = 0;
+
+	/** Flag set on wrong placement; triggers correct door animation in onEveryFrame. IDA: word_4AAEFE */
+	bool _bWrongPlacement = false;
+
+	/** All Zoombinis placed; mass walk-in pending. IDA: caves_bDoorAnimPending_4AB090 */
+	bool _bDoorAnimPending = false;
+
+	/** Advance button clicked; transition pending. IDA: word_4AAEF8 */
+	bool _bAdvanceClicked = false;
+
+	/** Advance button enabled. IDA: caves_bAdvanceButtonEnabled_4A08D8 */
+	bool _bAdvanceEnabled = false;
+
+	/** Number of Zoombinis placed (correct or redirected). IDA: HIWORD(caves_nTotalSlotCount_4A08FC) */
+	int16 _placedZmbCount = 0;
+
+	/** Snoid pending walk-in from correct match. Processed in onEveryFrame. IDA: caves_entranceAnimStates_4AB01E */
+	ZmbSnoid *_pendingWalkInSnoid = nullptr;
+	/** SCRS resource ID for the pending walk-in. IDA: byte_4A0AC8[idx] + 12999 */
+	int16 _pendingWalkInScrsId = 0;
+
+	/** True when snoid was dropped outside all zones, setupDoorAnimation(2) is active. */
+	bool _outOfZoneDrop = false;
 
 	/** Per-entrance hit rects (computed from kCaveEntrancePositions). */
 	Common::Rect _entranceHitRects[20];
@@ -211,22 +344,8 @@ private:
 	/** Click rects for each entrance slot (radius ~30 around entrance pos). */
 	static const int16 kEntranceHitRadius = 30;
 
-	/** Consecutive correct placements. */
-	int16 _consecutiveCorrect = 0;
-
-	/** Reject walk snoid. IDA: caves reject walk tracking. */
-	ZmbSnoid *_rejectSnoid = nullptr;
-	int16 _rejectTargetSlot = -1;
-
-	/** Hint flash flags for level 1. */
-	bool _hintFlashEnabled = false;
-	int16 _hintFlashSlot = -1;
-	uint32 _hintFlashStartFrame = 0;
-
-	/** Celebration scheduling (hoorah fidget). */
-	uint32 _nextCelebrationFrame = 0;
-	int16 _celebrationsPlayed = 0;
-	int16 _celebrationTarget = 3;
+	/** Hint flash counter for glyph blink at difficulty 1. IDA: word_4AAEF6 */
+	int16 _hintFlashCounter = 0;
 };
 
 } // End of namespace Mohawk
