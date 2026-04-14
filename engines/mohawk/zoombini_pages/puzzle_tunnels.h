@@ -123,7 +123,7 @@ private:
 	// Core State Variables
 	// ========================================
 
-	int16 _difficultyLevel = 0;      ///< IDA: word_4B7A12
+	ZmbPuzzleDifficultyLevel _difficultyLevel = kPuzzleDiffLevel1;      ///< Puzzle difficulty level (1-4, 1-based). IDA: word_4B7A12
 	bool _puzzleActive = false;      ///< IDA: word_4B7A0C
 	bool _processingFrame = false;   ///< IDA: word_4A768C
 	int16 _enteredCount = 0;         ///< IDA: word_4B7A0E

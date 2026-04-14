@@ -52,118 +52,118 @@ void ZoombiniTransitionXfer::setBackgroundMusic() {
 void ZoombiniTransitionXfer::computeXferRoute() {
 	// IDA: puzzleXfer_465FEE — determine xfer view (0-5) from source SI page.
 	// Source SI page set by each page before calling setNextPage(kXfer).
-	ZMB_SI_PAGE src = _vm->_xferSrcSiPage;
+	ZMB_SI_PAGE src = _vm->_xferSrcPage;
 
 	switch (src) {
 	case ZMB_SI_PICKER_01: // Picker -> Bridge (Route from Picker)
 		_xferView = XFER_ROUTE0_FROM_ISLE;
 		_nextPageType = ZoombiniPageType::kBridge;
-		_xferBgId = kResBackground5000_FromIsle;
+		_xferBackgroundResId = kResBackground5000_FromIsle;
 		_xferShapesId = kResShapes5100_FromIsle;
 		_xferScrbCount = 9;
 		break;
 	case ZMB_SI_BRIDGE_02: // Bridge -> Tunnels (Route 1 Path 2)
 		_xferView = XFER_ROUTE1_BIG_BAD_HUNGRY;
 		_nextPageType = ZoombiniPageType::kTunnels;
-		_xferBgId = kResBackground1000_BigBadHungry;
+		_xferBackgroundResId = kResBackground1000_BigBadHungry;
 		_xferShapesId = kResShapes1100_BigBadHungry;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_TUNNELS_03: // Tunnels -> Pizza (Route 1 Path 3)
 		_xferView = XFER_ROUTE1_BIG_BAD_HUNGRY;
 		_nextPageType = ZoombiniPageType::kPizza;
-		_xferBgId = kResBackground1000_BigBadHungry;
+		_xferBackgroundResId = kResBackground1000_BigBadHungry;
 		_xferShapesId = kResShapes1100_BigBadHungry;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_PIZZA_04: // Pizza -> Basecamp 1 (Route 1 Path 4)
 		_xferView = XFER_ROUTE1_BIG_BAD_HUNGRY;
 		_nextPageType = ZoombiniPageType::kBasecamp1;
-		_xferBgId = kResBackground1000_BigBadHungry;
+		_xferBackgroundResId = kResBackground1000_BigBadHungry;
 		_xferShapesId = kResShapes1100_BigBadHungry;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_BC1_NORTH_05: // Basecamp 1 north exit -> Ferry (Route 2 Path 1)
 		_xferView = XFER_ROUTE2_WHOS_BAYOU;
 		_nextPageType = ZoombiniPageType::kFerry;
-		_xferBgId = kResBackground2000_WhosBayou;
+		_xferBackgroundResId = kResBackground2000_WhosBayou;
 		_xferShapesId = kResShapes2100_WhosBayou;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_FERRY_06: // Ferry -> Lilly (Route 2 Path 2)
 		_xferView = XFER_ROUTE2_WHOS_BAYOU;
 		_nextPageType = ZoombiniPageType::kLilly;
-		_xferBgId = kResBackground2000_WhosBayou;
+		_xferBackgroundResId = kResBackground2000_WhosBayou;
 		_xferShapesId = kResShapes2100_WhosBayou;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_LILLY_07: // Lilly -> Slides (Route 2 Path 3)
 		_xferView = XFER_ROUTE2_WHOS_BAYOU;
 		_nextPageType = ZoombiniPageType::kSlides;
-		_xferBgId = kResBackground2000_WhosBayou;
+		_xferBackgroundResId = kResBackground2000_WhosBayou;
 		_xferShapesId = kResShapes2100_WhosBayou;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_SLIDES_08: // Slides -> Basecamp 2 (Route 2 Path 4)
 		_xferView = XFER_ROUTE2_WHOS_BAYOU;
 		_nextPageType = ZoombiniPageType::kBasecamp2;
-		_xferBgId = kResBackground2000_WhosBayou;
+		_xferBackgroundResId = kResBackground2000_WhosBayou;
 		_xferShapesId = kResShapes2100_WhosBayou;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_BC1_SOUTH_09: // Basecamp 1 south exit -> Fleens (Route 3 Path 1)
 		_xferView = XFER_ROUTE3_DEEP_DARK_FOREST;
 		_nextPageType = ZoombiniPageType::kFleens;
-		_xferBgId = kResBackground3000_DeepDarkForest;
+		_xferBackgroundResId = kResBackground3000_DeepDarkForest;
 		_xferShapesId = kResShapes3100_DeepDarkForest;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_FLEENS_10: // Fleens -> Hotel (Route 3 Path 2)
 		_xferView = XFER_ROUTE3_DEEP_DARK_FOREST;
 		_nextPageType = ZoombiniPageType::kHotel;
-		_xferBgId = kResBackground3000_DeepDarkForest;
+		_xferBackgroundResId = kResBackground3000_DeepDarkForest;
 		_xferShapesId = kResShapes3100_DeepDarkForest;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_HOTEL_11: // Hotel -> Net (Route 3 Path 3)
 		_xferView = XFER_ROUTE3_DEEP_DARK_FOREST;
 		_nextPageType = ZoombiniPageType::kNet;
-		_xferBgId = kResBackground3000_DeepDarkForest;
+		_xferBackgroundResId = kResBackground3000_DeepDarkForest;
 		_xferShapesId = kResShapes3100_DeepDarkForest;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_NET_12: // Net -> Basecamp 2 (Route 3 Path 4)
 		_xferView = XFER_ROUTE3_DEEP_DARK_FOREST;
 		_nextPageType = ZoombiniPageType::kBasecamp2;
-		_xferBgId = kResBackground3000_DeepDarkForest;
+		_xferBackgroundResId = kResBackground3000_DeepDarkForest;
 		_xferShapesId = kResShapes3100_DeepDarkForest;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_BASECAMP2_13: // Basecamp 2 -> Caves (Route 4 Path 1)
 		_xferView = XFER_ROUTE4_MOUNTAIN_OF_DESPAIR;
 		_nextPageType = ZoombiniPageType::kCaves;
-		_xferBgId = kResBackground4000_MountainOfDespair;
+		_xferBackgroundResId = kResBackground4000_MountainOfDespair;
 		_xferShapesId = kResShapes4100_MountainOfDespair;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_CAVES_14: // Caves -> Smoke (Route 4 Path 2)
 		_xferView = XFER_ROUTE4_MOUNTAIN_OF_DESPAIR;
 		_nextPageType = ZoombiniPageType::kSmoke;
-		_xferBgId = kResBackground4000_MountainOfDespair;
+		_xferBackgroundResId = kResBackground4000_MountainOfDespair;
 		_xferShapesId = kResShapes4100_MountainOfDespair;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_SMOKE_15: // Smoke -> Maze (Route 4 Path 3)
 		_xferView = XFER_ROUTE4_MOUNTAIN_OF_DESPAIR;
 		_nextPageType = ZoombiniPageType::kMaze;
-		_xferBgId = kResBackground4000_MountainOfDespair;
+		_xferBackgroundResId = kResBackground4000_MountainOfDespair;
 		_xferShapesId = kResShapes4100_MountainOfDespair;
 		_xferScrbCount = 3;
 		break;
 	case ZMB_SI_MAZE_16: // Maze -> Town (Route to Town)
 		_xferView = XFER_ROUTE5_TO_TOWN;
 		_nextPageType = ZoombiniPageType::kTown;
-		_xferBgId = kResBackground6000_ToTown;
+		_xferBackgroundResId = kResBackground6000_ToTown;
 		_xferShapesId = kResShapes6100_ToTown;
 		_xferScrbCount = 9;
 		break;
@@ -560,8 +560,8 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 
 void ZoombiniTransitionXfer::setBackgroundBitmap() {
 	computeXferRoute();
-	_vm->_gfx->setPalette(_xferBgId);
-	_vm->_gfx->drawBackground(_xferBgId);
+	_vm->_gfx->setPalette(_xferBackgroundResId);
+	_vm->_gfx->drawBackground(_xferBackgroundResId);
 }
 
 void ZoombiniTransitionXfer::loadFeatures() {
@@ -653,7 +653,7 @@ void ZoombiniTransitionXfer::loadFeatures() {
 		// Sub-feature SCRB at bgId+200 (e.g. 1200, 2200, …) — route path overlay.
 		// IDA: loadSubFeatureSCRB_45FE2C(0, 1, bgId+200) with overlay flags.
 		// Callbacks: selectBand (preRenderShape) + flood-fill render (renderFunc).
-		computeRoutePathLevel();
+		computeRoutePathBand();
 		computeRoutePathColorLevel();
 		buildPuzzleCompletionArray();
 		_routePathCounter = 0;
@@ -668,7 +668,7 @@ void ZoombiniTransitionXfer::loadFeatures() {
 				&ZoombiniTransitionXfer::routeView_updateSlots));
 		loadScrbFeature(xferShapes, _xferShapesId, 6, kMainScrbFlags, mainScrbHooks);
 
-		const uint16 subId = _xferBgId + 200;
+		const uint16 subId = _xferBackgroundResId + 200;
 		ZmbFeature::EventHooks routePathHooks;
 		routePathHooks.setPreRenderShapeFunc(
 			reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(
@@ -1129,11 +1129,9 @@ void ZoombiniTransitionXfer::buildPuzzleCompletionArray() {
 	// First loop (IDA: 0x467894-0x4679A8): read per-SI-page completion level.
 	for (int i = 0; i <= 16; i++) {
 		if (_vm->_state->inPracticeMode()) {
-			_puzzleCompletionArr[i] = static_cast<int8>(
-				CLIP<uint16>(_vm->_state->_practiceLevel, 0, 4));
+			_puzzleCompletionArr[i] = static_cast<int8>(CLIP<uint16>(_vm->_state->_practiceLevel, 0, 4));
 		} else {
-			_puzzleCompletionArr[i] = static_cast<int8>(
-				readPuzzleLevelFlag(state, static_cast<ZMB_SI_PAGE>(i)));
+			_puzzleCompletionArr[i] = static_cast<int8>(readPuzzleLevelFlag(state, static_cast<ZMB_SI_PAGE>(i)));
 		}
 	}
 
@@ -1161,7 +1159,7 @@ void ZoombiniTransitionXfer::buildPuzzleCompletionArray() {
 		_routeSlotIndex = 7;
 		break;
 	case ZoombiniPageType::kBasecamp2:
-		_routeSlotIndex = (_vm->_xferSrcSiPage == ZMB_SI_SLIDES_08) ? 11 : 16;
+		_routeSlotIndex = (_vm->_xferSrcPage == ZMB_SI_SLIDES_08) ? 11 : 16;
 		break;
 	case ZoombiniPageType::kFleens:
 		_routeSlotIndex = 8;
@@ -1194,8 +1192,7 @@ void ZoombiniTransitionXfer::buildPuzzleCompletionArray() {
 
 	// IDA: pPuzzleLevelArr[v4] = puzzleFlag - 1; then check < 1.
 	// puzzleFlag = _routePathColorLevel (word_4B97FA), already computed.
-	_puzzleCompletionArr[_routeSlotIndex] =
-		static_cast<int8>(_routePathColorLevel - 1);
+	_puzzleCompletionArr[_routeSlotIndex] = static_cast<int8>(_routePathColorLevel - 1);
 	if (_puzzleCompletionArr[_routeSlotIndex] < 1) {
 		if (_routeProgressLevel < 0)
 			_routeProgressLevel = static_cast<int16>(_routePathColorLevel - 1);
@@ -1209,7 +1206,7 @@ void ZoombiniTransitionXfer::buildPuzzleCompletionArray() {
 	// Values from IDA: wShuffledPuzzleId in xfer_initAndRunTransition caller
 	// switch (adjusted for ScummVM's SI enum: Tunnels=03, Caves=14).
 	int16 shuffledId = -1;
-	switch (_vm->_xferSrcSiPage) {
+	switch (_vm->_xferSrcPage) {
 	case ZMB_SI_PICKER_01:
 		shuffledId = 0;
 		break;
@@ -1262,10 +1259,8 @@ void ZoombiniTransitionXfer::buildPuzzleCompletionArray() {
 		break;
 	}
 
-	if (shuffledId >= 0 && shuffledId < 17 &&
-		_puzzleCompletionArr[shuffledId] < 0) {
+	if (0 <= shuffledId && shuffledId < 17 && _puzzleCompletionArr[shuffledId] < 0)
 		_puzzleCompletionArr[shuffledId] = 1;
-	}
 
 	// IDA: xfer_wRouteProgressLevel = xfer_puzzleCompletionArr[xferParam];
 	//      xfer_puzzleCompletionArr[xferParam] = -1;
@@ -1277,56 +1272,56 @@ void ZoombiniTransitionXfer::buildPuzzleCompletionArray() {
 // position 1-4) by matching the destination puzzle slot against the
 // word_4A7E7A route slot table.  We compute the same result directly from
 // the source SI page that started this xfer transition.
-void ZoombiniTransitionXfer::computeRoutePathLevel() {
-	switch (_vm->_xferSrcSiPage) {
+void ZoombiniTransitionXfer::computeRoutePathBand() {
+	switch (_vm->_xferSrcPage) {
 	// Route 1 — Big Bad Hungry
 	case ZMB_SI_BRIDGE_02:
-		_routePathLevel = 2;
+		_routePathBand = 2;
 		break; // dest Tunnels
 	case ZMB_SI_TUNNELS_03:
-		_routePathLevel = 3;
+		_routePathBand = 3;
 		break; // dest Pizza
 	case ZMB_SI_PIZZA_04:
-		_routePathLevel = 4;
+		_routePathBand = 4;
 		break; // dest BC1
 	// Route 2 — Who's Bayou
 	case ZMB_SI_BC1_NORTH_05:
-		_routePathLevel = 1;
+		_routePathBand = 1;
 		break; // dest Ferry
 	case ZMB_SI_FERRY_06:
-		_routePathLevel = 2;
+		_routePathBand = 2;
 		break; // dest Lilly
 	case ZMB_SI_LILLY_07:
-		_routePathLevel = 3;
+		_routePathBand = 3;
 		break; // dest Slides
 	case ZMB_SI_SLIDES_08:
-		_routePathLevel = 4;
+		_routePathBand = 4;
 		break; // dest BC2
 	// Route 3 — Deep Dark Forest
 	case ZMB_SI_BC1_SOUTH_09:
-		_routePathLevel = 1;
+		_routePathBand = 1;
 		break; // dest Fleens
 	case ZMB_SI_FLEENS_10:
-		_routePathLevel = 2;
+		_routePathBand = 2;
 		break; // dest Hotel
 	case ZMB_SI_HOTEL_11:
-		_routePathLevel = 3;
+		_routePathBand = 3;
 		break; // dest Net
 	case ZMB_SI_NET_12:
-		_routePathLevel = 4;
+		_routePathBand = 4;
 		break; // dest BC2
 	// Route 4 — Mountain of Despair
 	case ZMB_SI_BASECAMP2_13:
-		_routePathLevel = 1;
+		_routePathBand = 1;
 		break; // dest Caves
 	case ZMB_SI_CAVES_14:
-		_routePathLevel = 2;
+		_routePathBand = 2;
 		break; // dest Smoke
 	case ZMB_SI_SMOKE_15:
-		_routePathLevel = 3;
+		_routePathBand = 3;
 		break; // dest Maze
 	default:
-		_routePathLevel = 1;
+		_routePathBand = 1;
 		break;
 	}
 }
@@ -1473,34 +1468,34 @@ void ZoombiniTransitionXfer::computeRoutePathColorLevel() {
 
 	// ---------------------------------------------------------------
 	// WB route: predecessor puzzle's completion level.
-	// Lilly ← BC1N, Slides ← Ferry, BC2 ← Lilly (via Slides) or Fleens (via Net)
+	// Lilly ← BC1N, Slides ← BC1S, BC2 ← Ferry (via Slides) or Fleens (via Net)
 	// ---------------------------------------------------------------
 	case ZoombiniPageType::kLilly:
 		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_BC1_NORTH_05);
 		break;
 	case ZoombiniPageType::kSlides:
-		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_FERRY_06);
-		break;
-
-	// ---------------------------------------------------------------
-	// DDF route: predecessor puzzle's completion level.
-	// Hotel ← Slides, Net ← BC1S
-	// ---------------------------------------------------------------
-	case ZoombiniPageType::kHotel:
-		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_SLIDES_08);
-		break;
-	case ZoombiniPageType::kNet:
 		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_BC1_SOUTH_09);
 		break;
 
 	// ---------------------------------------------------------------
-	// BC2: Slides → BC2 reads Lilly's flag, Net → BC2 reads Fleens's flag.
+	// DDF route: predecessor puzzle's completion level.
+	// Hotel ← Lilly, Net ← Slides
+	// ---------------------------------------------------------------
+	case ZoombiniPageType::kHotel:
+		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_LILLY_07);
+		break;
+	case ZoombiniPageType::kNet:
+		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_SLIDES_08);
+		break;
+
+	// ---------------------------------------------------------------
+	// BC2: Slides → BC2 reads Ferry's flag, Net → BC2 reads Fleens's flag.
 	// IDA: wLastRouteVal_4B0428 == 12 distinguishes the two paths.
 	// In xfer, v3=12 only for source=Slides(SI 8).
 	// ---------------------------------------------------------------
 	case ZoombiniPageType::kBasecamp2:
-		if (_vm->_xferSrcSiPage == ZMB_SI_SLIDES_08)
-			colorLevel = readPuzzleLevelFlag(state, ZMB_SI_LILLY_07);
+		if (_vm->_xferSrcPage == ZMB_SI_SLIDES_08)
+			colorLevel = readPuzzleLevelFlag(state, ZMB_SI_FERRY_06);
 		else
 			colorLevel = readPuzzleLevelFlag(state, ZMB_SI_FLEENS_10);
 		break;
@@ -1647,10 +1642,10 @@ void ZoombiniTransitionXfer::routeView_updateSlots(
 void ZoombiniTransitionXfer::routePath_selectBand(
 	ZmbFeature *feature, ZmbHotspotGroup *hsGroup,
 	Common::Array<ZmbHotspot> &hotspots) {
-	if (hotspots.empty() || _routePathLevel < 1 || _routePathLevel > 4)
+	if (hotspots.empty() || _routePathBand < 1 || _routePathBand > 4)
 		return;
 
-	uint16 targetIdx = _routePathLevel - 1;
+	uint16 targetIdx = _routePathBand - 1;
 	if (targetIdx >= hotspots.size())
 		return;
 
@@ -1678,7 +1673,7 @@ ZmbRenderResult ZoombiniTransitionXfer::routePath_onPostRender(ZmbFeature *featu
 		if (_routePathCounter == 0) {
 			// First active frame: initialize flood-fill grid from shape pixels.
 			MohawkSurface *mohawkSurf = _vm->_gfx->findShape(
-				feature->getResource(), _routePathLevel);
+				feature->getResource(), _routePathBand);
 			if (mohawkSurf) {
 				Graphics::Surface *surf = mohawkSurf->getSurface();
 				_routePathPixels = (byte *)surf->getPixels();
@@ -1687,7 +1682,7 @@ ZmbRenderResult ZoombiniTransitionXfer::routePath_onPostRender(ZmbFeature *featu
 				_routePathPitch = surf->pitch;
 
 				// Seed index: band + 4 * view - 5.
-				uint16 seedIdx = _routePathLevel + 4 * _xferView - 5;
+				uint16 seedIdx = _routePathBand + 4 * _xferView - 5;
 				if (seedIdx >= 16)
 					seedIdx = 0;
 				int16 seedX = kRoutePathSeeds[seedIdx * 2];
@@ -1701,6 +1696,12 @@ ZmbRenderResult ZoombiniTransitionXfer::routePath_onPostRender(ZmbFeature *featu
 				using Clr = ZoombiniGraphics::XferRoutePathLevelColor;
 				byte mark1, mark2, replace1, replace2;
 				switch (_routePathColorLevel) {
+				case 1:
+					mark1 = Clr::kRoutePathColor2E_LevelOneBack1;
+					mark2 = Clr::kRoutePathColor2F_LevelOneBack2;
+					replace1 = Clr::kRoutePathColor30_LevelOneColor1;
+					replace2 = Clr::kRoutePathColor31_LevelOneColor2;
+					break;
 				case 2:
 					mark1 = Clr::kRoutePathColor30_LevelOneColor1;
 					mark2 = Clr::kRoutePathColor31_LevelOneColor2;
@@ -1719,11 +1720,8 @@ ZmbRenderResult ZoombiniTransitionXfer::routePath_onPostRender(ZmbFeature *featu
 					replace1 = Clr::kRoutePathColor36_LevelFourColor1;
 					replace2 = Clr::kRoutePathColor37_LevelFourColor2;
 					break;
-				default: // Level 1
-					mark1 = Clr::kRoutePathColor2E_LevelOneBack1;
-					mark2 = Clr::kRoutePathColor2F_LevelOneBack2;
-					replace1 = Clr::kRoutePathColor30_LevelOneColor1;
-					replace2 = Clr::kRoutePathColor31_LevelOneColor2;
+				default:
+					error("Invalid route path color level: %u", _routePathColorLevel);
 					break;
 				}
 
@@ -1889,7 +1887,7 @@ void ZoombiniTransitionXfer::routePath_reserveSlot(int16 y, int16 x, byte *pixel
 void ZoombiniTransitionXfer::close() {
 	_routePathPixels = nullptr;
 	_routePathFeature = nullptr;
-	_vm->_xferSrcSiPage = ZMB_SI_MINUS1; // Reset for next xfer
+	_vm->_xferSrcPage = ZMB_SI_MINUS1; // Reset for next xfer
 
 	// IDA: puzzleXfer_onExit (0x46746B) restores word_4A4764 = 64 to
 	// re-enable fidget/idle animations after the transition.

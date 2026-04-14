@@ -512,7 +512,7 @@ void ZoombiniText::initEnglishStrings() {
 	_strMap[kTown] = U"zoombiniville";
 	_strMap[kPicker] = U"zoombini isle";
 	_strMap[kBridge] = U"allergic cliffs";
-	_strMap[kCaves] = U"the lion's lair";
+	_strMap[kTunnels] = U"stone cold caves";
 	_strMap[kPizza] = U"pizza pass";
 	_strMap[kBasecamp1] = U"shelter rock";
 	_strMap[kFerry] = U"captain cajun's ferryboat";
@@ -522,7 +522,7 @@ void ZoombiniText::initEnglishStrings() {
 	_strMap[kHotel] = U"hotel dimensia";
 	_strMap[kNet] = U"mudball wall";
 	_strMap[kBasecamp2] = U"shade tree";
-	_strMap[kTunnels] = U"stone cold caves";
+	_strMap[kCaves] = U"the lion's lair";
 	_strMap[kSmoke] = U"mirror machine";
 	_strMap[kMaze] = U"bubblewonder abyss";
 	_strMap[kNewGame] = U"NEW GAME";

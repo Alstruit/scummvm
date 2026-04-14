@@ -84,10 +84,10 @@ void ZoombiniPuzzlePizza::setBackgroundBitmap() {
 // ---------------------------------------------------------------------------
 void ZoombiniPuzzlePizza::setDifficultyParams() {
 	// IDA: pizza_init sets these per-level parameters
-	// Level 0: slots=5, target=2, threshold=500, min=1, extra=0, deliveries=6
-	// Level 1: slots=7, target=3, threshold=800, min=2, extra=0, deliveries=7
-	// Level 2: slots=7, target=3, threshold=1000, min=2, extra=1, deliveries=7
-	// Level 3: slots=8, target=4, threshold=1000, min=3, extra=2, deliveries=7
+	// Level 1: slots=5, target=2, threshold=500, min=1, extra=0, deliveries=6
+	// Level 2: slots=7, target=3, threshold=800, min=2, extra=0, deliveries=7
+	// Level 3: slots=7, target=3, threshold=1000, min=2, extra=1, deliveries=7
+	// Level 4: slots=8, target=4, threshold=1000, min=3, extra=2, deliveries=7
 	static const int16 kSlots[4] = {5, 7, 7, 8};
 	static const int16 kTarget[4] = {2, 3, 3, 4};
 	static const int16 kThreshold[4] = {500, 800, 1000, 1000};
@@ -95,23 +95,23 @@ void ZoombiniPuzzlePizza::setDifficultyParams() {
 	static const int16 kExtraTier[4] = {0, 0, 1, 2};
 	static const int16 kDelivery[4] = {6, 7, 7, 7};
 
-	_totalToppingSlots = kSlots[_difficultyLevel];
-	_targetToppingCount = kTarget[_difficultyLevel];
-	_toppingPlaceThreshold = kThreshold[_difficultyLevel];
-	_minToppingsPerOrder = kMinPerOrd[_difficultyLevel];
-	_extraToppingTiers = kExtraTier[_difficultyLevel];
-	_remainingDeliveries = kDelivery[_difficultyLevel];
-	_initialDeliveryCount = kDelivery[_difficultyLevel];
+	_totalToppingSlots = kSlots[_difficultyLevel - 1];
+	_targetToppingCount = kTarget[_difficultyLevel - 1];
+	_toppingPlaceThreshold = kThreshold[_difficultyLevel - 1];
+	_minToppingsPerOrder = kMinPerOrd[_difficultyLevel - 1];
+	_extraToppingTiers = kExtraTier[_difficultyLevel - 1];
+	_remainingDeliveries = kDelivery[_difficultyLevel - 1];
+	_initialDeliveryCount = kDelivery[_difficultyLevel - 1];
 
 	// Order line activation (IDA: §6)
-	_orderState[0] = 1;                               // Arno always active
-	_orderState[1] = (_difficultyLevel >= 1) ? 1 : 0; // Willa at level 1+
-	_orderState[2] = (_difficultyLevel >= 2) ? 1 : 0; // Shyler at level 2+
+	_orderState[0] = 1;                                    // Arno always active
+	_orderState[1] = (_difficultyLevel >= kPuzzleDiffLevel2) ? 1 : 0; // Willa at level 2+
+	_orderState[2] = (_difficultyLevel >= kPuzzleDiffLevel3) ? 1 : 0; // Shyler at level 3+
 }
 
 void ZoombiniPuzzlePizza::loadFeatures() {
 	// IDA: puzzlePizza_43B394
-	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
+	_difficultyLevel = static_cast<ZmbPuzzleDifficultyLevel>(_vm->_state->readActivePageRouteLevel() + 1);
 
 	// Apply per-level constants
 	setDifficultyParams();
@@ -163,7 +163,7 @@ void ZoombiniPuzzlePizza::loadFeatures() {
 	}
 
 	// Conditional feature groups for difficulty levels 1+
-	if (_difficultyLevel >= 1) {
+	if (_difficultyLevel >= kPuzzleDiffLevel2) {
 		// IDA: scrb_loadSubFeatureSet(0, 35, 9000)
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 35; i++) {
@@ -172,7 +172,7 @@ void ZoombiniPuzzlePizza::loadFeatures() {
 		}
 	}
 
-	if (_difficultyLevel >= 2) {
+	if (_difficultyLevel >= kPuzzleDiffLevel3) {
 		// IDA: scrb_loadSubFeatureSet(0, 39, 10000)
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 39; i++) {
@@ -218,7 +218,7 @@ void ZoombiniPuzzlePizza::loadFeatures() {
 	// IDA: topping display features (difficulty-dependent count and base SCRB)
 	{
 		_toppingCount = _totalToppingSlots;
-		uint16 scrbBase = kToppingScrbBase[_difficultyLevel];
+		uint16 scrbBase = kToppingScrbBase[_difficultyLevel - 1];
 		for (uint16 i = 0; i < _toppingCount; i++) {
 			_toppingFeatures[i] = loadScrbFeature(
 				ZmbResource(ZmbArchiveKind::kPage, 7000), scrbBase + i * 2, 6,
@@ -230,14 +230,14 @@ void ZoombiniPuzzlePizza::loadFeatures() {
 	// IDA: order display runners (conditional on difficulty)
 	// Z-order (back→front): Shyler → Willa → Arno.
 	// LOOP_ANIM features are unsorted; registration order = draw order.
-	if (_difficultyLevel >= 2) {
+	if (_difficultyLevel >= kPuzzleDiffLevel3) {
 		_order2Feature = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 10000), 10038, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 				ZmbFeature::FLAG_00100000_PLAY_ONCE);
 	}
 
-	if (_difficultyLevel >= 1) {
+	if (_difficultyLevel >= kPuzzleDiffLevel2) {
 		_order1Feature = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 9000), 9034, 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
@@ -285,7 +285,7 @@ void ZoombiniPuzzlePizza::loadFeatures() {
 	loadHelpButtonFeature();
 
 	_vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagPizza);
-	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, (_difficultyLevel > 0) ? 20072 : 20071);
+	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, (_difficultyLevel > kPuzzleDiffLevel1) ? 20072 : 20071);
 
 	// IDA 0x43bdd5: Register answer display at init — makes button visible from start.
 	// This is called BEFORE the intro sequence, matching the original engine.
@@ -349,8 +349,8 @@ void ZoombiniPuzzlePizza::loadZoombinisFromPack() {
 void ZoombiniPuzzlePizza::generateToppingSet() {
 	memset(_toppingSet, 0, sizeof(_toppingSet));
 
-	// At level 1, forbid topping slot 4
-	int16 forbiddenSlot = (_difficultyLevel == 1) ? 4 : -1;
+	// At level 2, forbid topping slot 4
+	int16 forbiddenSlot = (_difficultyLevel == kPuzzleDiffLevel2) ? 4 : -1;
 
 	int16 remaining = _targetToppingCount;
 
@@ -390,12 +390,12 @@ void ZoombiniPuzzlePizza::distributeToppings() {
 	memset(_wrongToppingsA, 0, sizeof(_wrongToppingsA));
 	memset(_wrongToppingsB, 0, sizeof(_wrongToppingsB));
 
-	if (_difficultyLevel == 0) {
-		// Level 0: All toppings are correct
+	if (_difficultyLevel == kPuzzleDiffLevel1) {
+		// Level 1: All toppings are correct
 		for (int16 i = 0; i < _totalToppingSlots; i++) {
 			_correctToppings[i] = _toppingSet[i];
 		}
-		debugC(kZmbDebugPage, "Pizza Level 0: All toppings correct");
+		debugC(kZmbDebugPage, "Pizza Level 1: All toppings correct");
 		return;
 	}
 
@@ -403,8 +403,8 @@ void ZoombiniPuzzlePizza::distributeToppings() {
 	int16 wrongACount = 0;
 	int16 wrongBCount = 0;
 
-	if (_difficultyLevel == 1) {
-		// Level 1: Binary distribution — 50/50 correct or wrong
+	if (_difficultyLevel == kPuzzleDiffLevel2) {
+		// Level 2: Binary distribution — 50/50 correct or wrong
 		for (int16 i = 0; i < _totalToppingSlots; i++) {
 			if (_toppingSet[i]) {
 				if (_vm->_rnd->getRandomNumber(0, 1) == 0) {
@@ -971,11 +971,11 @@ void ZoombiniPuzzlePizza::handleIngredientToggle(int16 ingredientIdx) {
 
 	// Level-based restrictions on higher ingredients
 	// IDA: case 9 (ingredient 4) blocked at level 1 (forbidden slot)
-	if (ingredientIdx == 4 && _difficultyLevel == 1)
+	if (ingredientIdx == 4 && _difficultyLevel == kPuzzleDiffLevel2)
 		return;
-	if (ingredientIdx >= 5 && ingredientIdx <= 6 && _difficultyLevel < 1)
+	if (ingredientIdx >= 5 && ingredientIdx <= 6 && _difficultyLevel < kPuzzleDiffLevel2)
 		return;
-	if (ingredientIdx == 7 && _difficultyLevel < 3)
+	if (ingredientIdx == 7 && _difficultyLevel < kPuzzleDiffLevel4)
 		return;
 
 	// XOR toggle the flag
@@ -986,7 +986,7 @@ void ZoombiniPuzzlePizza::handleIngredientToggle(int16 ingredientIdx) {
 
 	// Swap topping SCRB to on/off visual
 	// IDA: Each topping has 2 SCRBs: base+0 = off, base+1 = on
-	uint16 scrbBase = kToppingScrbBase[_difficultyLevel];
+	uint16 scrbBase = kToppingScrbBase[_difficultyLevel - 1];
 	uint16 targetScrb = scrbBase + ingredientIdx * 2 + (_ingredientFlags[ingredientIdx] ? 1 : 0);
 
 	if (_toppingFeatures[ingredientIdx]) {
@@ -1424,7 +1424,7 @@ void ZoombiniPuzzlePizza::advanceToNextDeliverySlot() {
 	}
 
 	// Reset topping visuals to "off" state
-	uint16 scrbBase = kToppingScrbBase[_difficultyLevel];
+	uint16 scrbBase = kToppingScrbBase[_difficultyLevel - 1];
 	for (uint16 i = 0; i < _toppingCount; i++) {
 		if (_toppingFeatures[i]) {
 			loadScrbOntoFeature(_toppingFeatures[i], scrbBase + i * 2);
@@ -1492,33 +1492,33 @@ void ZoombiniPuzzlePizza::advanceIntroSequence() {
 		_introSequenceStep = 2;
 		break;
 	case 2:
-		if (_difficultyLevel >= 1) {
-			// Step 2 (diff>=1): Load intro SCRB 9034 on order 1 runner (Willa)
+		if (_difficultyLevel >= kPuzzleDiffLevel2) {
+			// Step 2 (diff>=2): Load intro SCRB 9034 on order 1 runner (Willa)
 			if (_order1Feature) {
 				loadScrbOntoFeature(_order1Feature, 9034);
 				_order1Phase = kPhaseIntro;
 			}
 			_introSequenceStep = 3;
 		} else {
-			// Step 2 (diff==0): Arno's SCRB finished, intro done
+			// Step 2 (diff==1): Arno's SCRB finished, intro done
 			_introSequenceStep = 0;
 		}
 		break;
 	case 3:
-		if (_difficultyLevel >= 2) {
-			// Step 3 (diff>=2): Load intro SCRB 10038 on order 2 runner (Shyler)
+		if (_difficultyLevel >= kPuzzleDiffLevel3) {
+			// Step 3 (diff>=3): Load intro SCRB 10038 on order 2 runner (Shyler)
 			if (_order2Feature) {
 				loadScrbOntoFeature(_order2Feature, 10038);
 				_order2Phase = kPhaseIntro;
 			}
 			_introSequenceStep = 4;
 		} else {
-			// Step 3 (diff==1): Willa's SCRB finished, intro done
+			// Step 3 (diff==2): Willa's SCRB finished, intro done
 			_introSequenceStep = 0;
 		}
 		break;
 	case 4:
-		// Step 4 (diff>=2): Shyler's SCRB finished, intro done
+		// Step 4 (diff>=3): Shyler's SCRB finished, intro done
 		_introSequenceStep = 0;
 		break;
 	default:
@@ -1543,18 +1543,18 @@ void ZoombiniPuzzlePizza::advanceIntroSequence() {
 // Loads an ambient idle SCRB on the last active troll feature after the intro
 // sequence completes.  This reactivates render (scrb_loadOnRunner sets
 // wBoolDoRender=1) so the troll plays a short idle animation.
-//   diff 0: SCRB 8014 on orderBase (Arno)
-//   diff 1: random SCRB 9019-9020 on order1 (Willa)
-//   diff>=2: random SCRB 10001-10008 on order2 (Shyler)
+//   diff 1: SCRB 8014 on orderBase (Arno)
+//   diff 2: random SCRB 9019-9020 on order1 (Willa)
+//   diff>=3: random SCRB 10001-10008 on order2 (Shyler)
 // ---------------------------------------------------------------------------
 void ZoombiniPuzzlePizza::triggerOrderFeatureAmbientAnim() {
 	// IDA: After ambient SCRB finishes, wUnk002C[40] handler fires to clear
 	// isDeliveryInProgress and call advanceToNextDeliverySlot (auto-pick snoid).
 	// Set kPhasePostIntroAmbient so onFeatureAnimEvent can trigger that flow.
-	if (_difficultyLevel == 0) {
+	if (_difficultyLevel == kPuzzleDiffLevel1) {
 		loadScrbOntoFeature(_orderBaseFeature, 8014);
 		_orderBasePhase = kPhasePostIntroAmbient;
-	} else if (_difficultyLevel == 1) {
+	} else if (_difficultyLevel == kPuzzleDiffLevel2) {
 		int16 variant = _vm->_rnd->getRandomNumber(1); // 0 or 1
 		loadScrbOntoFeature(_order1Feature, 9019 + variant);
 		_order1Phase = kPhasePostIntroAmbient;
@@ -1614,8 +1614,8 @@ void ZoombiniPuzzlePizza::handleSubmit() {
 		return;
 
 	// IDA: handleIngredientToggle case 4
-	// Load the answer display SCRB (7057 at level 0, 7058 at level 1+)
-	uint16 answerScrbId = (_difficultyLevel == 0) ? 7057 : 7058;
+	// Load the answer display SCRB (7057 at level 1, 7058 at level 2+)
+	uint16 answerScrbId = (_difficultyLevel == kPuzzleDiffLevel1) ? 7057 : 7058;
 	loadScrbOntoFeature(_drawOnRegFeature, answerScrbId);
 
 	// Load SCRB 7066 on the question runner to start the exit callback chain
@@ -1940,7 +1940,7 @@ void ZoombiniPuzzlePizza::onToppingDelivered() {
 // registerAnswerDisplay: IDA 0x43D615
 // ---------------------------------------------------------------------------
 void ZoombiniPuzzlePizza::registerAnswerDisplay() {
-	uint16 scrbId = 7001 + _difficultyLevel;
+	uint16 scrbId = 7001 + (_difficultyLevel - 1);
 	loadScrbOntoFeature(_drawOnRegFeature, scrbId);
 	debugC(kZmbDebugPage, "Pizza: Answer display registered (SCRB %d)", scrbId);
 }
@@ -1979,7 +1979,7 @@ void ZoombiniPuzzlePizza::spawnAnswerZmb() {
 
 	// IDA: if delivery index < max count → spawn; else → mark done
 	if (!_allDeliveriesDone) {
-		uint16 scrbId = (_difficultyLevel == 0) ? 7067 : 7068;
+		uint16 scrbId = (_difficultyLevel == kPuzzleDiffLevel1) ? 7067 : 7068;
 		loadScrbOntoFeature(_drawOnRegFeature, scrbId);
 		// IDA: wUnk002C[40] = scrb_registerHotspotGroup(…) — track
 		// answer display SCRB completion to unlock delivery button
@@ -2079,8 +2079,8 @@ void ZoombiniPuzzlePizza::animateAnswerZmb() {
 // ---------------------------------------------------------------------------
 void ZoombiniPuzzlePizza::setupQuestionRunners() {
 	bool has0 = (_orderState[0] >= 2);
-	bool has1 = (_difficultyLevel >= 1) && (_orderState[1] >= 2);
-	bool has2 = (_difficultyLevel >= 2) && (_orderState[2] >= 2);
+bool has1 = (_difficultyLevel >= kPuzzleDiffLevel2) && (_orderState[1] >= 2);
+		bool has2 = (_difficultyLevel >= kPuzzleDiffLevel3) && (_orderState[2] >= 2);
 
 	// Select question SCRBs based on which order lines are ready
 	if (has0 && has1 && has2) {
@@ -2411,13 +2411,13 @@ void ZoombiniPuzzlePizza::toppingRunner_preRenderShape(ZmbFeature *feature, ZmbH
 		} else if (shapeIdx >= 21 && shapeIdx <= 24) {
 			keep = _ingredientFlags[0] != 0;
 		} else if (shapeIdx >= 25 && shapeIdx <= 28) {
-			keep = _difficultyLevel >= 1;
+			keep = _difficultyLevel >= kPuzzleDiffLevel2;
 		} else if (shapeIdx >= 29 && shapeIdx <= 32) {
-			keep = (_ingredientFlags[7] != 0) && (_difficultyLevel == 3);
+			keep = (_ingredientFlags[7] != 0) && (_difficultyLevel == kPuzzleDiffLevel4);
 		} else if (shapeIdx >= 33 && shapeIdx <= 36) {
-			keep = (_ingredientFlags[6] != 0) && (_difficultyLevel >= 1);
+			keep = (_ingredientFlags[6] != 0) && (_difficultyLevel >= kPuzzleDiffLevel2);
 		} else if (shapeIdx >= 37 && shapeIdx <= 40) {
-			keep = (_ingredientFlags[5] != 0) && (_difficultyLevel >= 1);
+			keep = (_ingredientFlags[5] != 0) && (_difficultyLevel >= kPuzzleDiffLevel2);
 		}
 
 		if (!keep)

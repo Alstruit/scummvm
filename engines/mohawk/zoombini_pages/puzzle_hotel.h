@@ -121,8 +121,8 @@ private:
 	// -----------------------------------------------------------------------
 	// Difficulty / setup
 	// -----------------------------------------------------------------------
-	/** Difficulty level (0–3). IDA: hotel_difficultyLevel */
-	int16 _difficultyLevel = 0;
+	/** Difficulty level (1–4). IDA: hotel_difficultyLevel */
+	ZmbPuzzleDifficultyLevel _difficultyLevel = kPuzzleDiffLevel1;
 	/** Max rejection steps per round. IDA: hotel_maxStepsPerRound */
 	int16 _maxStepsPerRound = 5;
 	/** Total room slot count (25 for diff 0–2, 125 for diff 3). IDA: word_4AB776 */

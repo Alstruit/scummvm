@@ -33,6 +33,9 @@ ZoombiniSound::~ZoombiniSound() {
 }
 
 Audio::SoundHandle *ZoombiniSound::playZmbSound(ZmbResource resource, Audio::Mixer::SoundType soundType, bool loop) {
+	// Check SFX mute flag (used by Smoke puzzle during question phase)
+	if (_sfxMuted && soundType == Audio::Mixer::kSFXSoundType)
+		return nullptr;
 	if (_stopMidiOnSfx && soundType == Audio::Mixer::kSFXSoundType)
 		_vm->_midi->stopMidi();
 	ZmbArchiveKind lastKind = _vm->setActiveResourceKind(resource._archiveKind);
@@ -42,6 +45,9 @@ Audio::SoundHandle *ZoombiniSound::playZmbSound(ZmbResource resource, Audio::Mix
 }
 
 Audio::SoundHandle *ZoombiniSound::playZmbSound(ZmbResource resource, Audio::Mixer::SoundType soundType, byte volume, bool loop) {
+	// Check SFX mute flag (used by Smoke puzzle during question phase)
+	if (_sfxMuted && soundType == Audio::Mixer::kSFXSoundType)
+		return nullptr;
 	if (_stopMidiOnSfx && soundType == Audio::Mixer::kSFXSoundType)
 		_vm->_midi->stopMidi();
 	ZmbArchiveKind lastKind = _vm->setActiveResourceKind(resource._archiveKind);

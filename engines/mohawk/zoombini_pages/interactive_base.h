@@ -211,7 +211,7 @@ protected:
 	 * Execute the page departure transition.
 	 * Called by base class onAnimFrame() when departure SFX finishes.
 	 * Default: saves snoid runners back to active pack, routes non-occupied
-	 * snoids to the resting pack, sets _vm->_xferSrcSiPage, navigates to
+	 * snoids to the resting pack, sets _vm->_xferSrcPage, navigates to
 	 * kXfer, and closes the page.
 	 * Override for custom departure logic (e.g. BC1/BC2 save pack state).
 	 */

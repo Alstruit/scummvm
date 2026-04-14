@@ -76,18 +76,18 @@ void ZoombiniPuzzleHotel::setBackgroundBitmap() {
 
 void ZoombiniPuzzleHotel::loadFeatures() {
 	// IDA: hotel_initAndSetupPuzzle (0x41ede4)
-	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
+	_difficultyLevel = static_cast<ZmbPuzzleDifficultyLevel>(_vm->_state->readActivePageRouteLevel() + 1);
 
 	// IDA 0x41ef17-0x41ef46: Initialize maxStepsPerRound based on difficulty
-	// Level 0: 5, Level 1: 2, Level 2: 4, Level 3: 2
+	// Level 1: 5, Level 2: 2, Level 3: 4, Level 4: 2
 	switch (_difficultyLevel) {
-	case 0:
+	case kPuzzleDiffLevel1:
 		_maxStepsPerRound = 5;
 		break;
-	case 2:
+	case kPuzzleDiffLevel3:
 		_maxStepsPerRound = 4;
 		break;
-	default: // Levels 1 and 3
+	default: // Levels 2 and 4
 		_maxStepsPerRound = 2;
 		break;
 	}
@@ -109,17 +109,17 @@ void ZoombiniPuzzleHotel::loadFeatures() {
 	_vm->_gfx->preloadImage(11800);
 
 	// Level-dependent extra shapes
-	if (_difficultyLevel == 2) {
+	if (_difficultyLevel == kPuzzleDiffLevel3) {
 		// IDA: shape_loadSubShapesFromArchive(stru_4AB7CC, 0x2AF8u) — tBMP 11000
 		_vm->_gfx->preloadImage(11000);
 	}
-	if (_difficultyLevel == 3) {
+	if (_difficultyLevel == kPuzzleDiffLevel4) {
 		// IDA: shape_loadSubShapesFromArchive(stru_4AB7CC, 0x2EE0u) — tBMP 12000
 		_vm->_gfx->preloadImage(12000);
 	}
 
 	// Feature groups — main SCRB depends on difficulty
-	if (_difficultyLevel == 3) {
+	if (_difficultyLevel == kPuzzleDiffLevel4) {
 		// IDA: scrb_useFeatureGroup(0, 0, 9000)
 		// IDA: scrb_loadMainFeatureSet(12, 9000)
 	} else {
@@ -147,8 +147,8 @@ void ZoombiniPuzzleHotel::loadFeatures() {
 
 	// IDA: scrb_loadSubFeatureSet — subs at 10000 (25 or 125 depending on diff)
 	{
-		uint16 subCount = (_difficultyLevel == 3) ? 125 : 25;
-		uint16 subStart = (_difficultyLevel == 3) ? 10025 : 10000;
+		uint16 subCount = (_difficultyLevel == kPuzzleDiffLevel4) ? 125 : 25;
+		uint16 subStart = (_difficultyLevel == kPuzzleDiffLevel4) ? 10025 : 10000;
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < subCount; i++) {
 			parent = loadSubFeature(parent,
@@ -173,7 +173,7 @@ void ZoombiniPuzzleHotel::loadFeatures() {
 	}
 
 	// IDA: scrb_loadSubFeatureSet(2, 10, 0x1D4C) — 10 subs at 7500 (not at diff 3)
-	if (_difficultyLevel != 3) {
+	if (_difficultyLevel != kPuzzleDiffLevel4) {
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 10; i++) {
 			parent = loadSubFeature(parent,
@@ -181,8 +181,8 @@ void ZoombiniPuzzleHotel::loadFeatures() {
 		}
 	}
 
-	// Load reject/normal pools — different sets at diff 3
-	if (_difficultyLevel >= 3) {
+	// Load reject/normal pools — different sets at diff 4
+	if (_difficultyLevel >= kPuzzleDiffLevel4) {
 		// IDA: scrs_loadRejectPool(5, 25, 14025)
 		for (uint16 i = 0; i < 25; i++) {
 			loadSnoid(ZmbResource(ZmbArchiveKind::kPage, 8000),
@@ -214,10 +214,10 @@ void ZoombiniPuzzleHotel::loadFeatures() {
 
 	// IDA 0x41f24f-0x41f27c: Intro overlay feature (SCRB 11500+adj_diff)
 	// Decompiler showed "v0+5750" but assembly reveals: add esi, 0x2CEC (=11500)
-	// diff 0→11500, diff 1→11501, diff 2→11501 (dec'd), diff 3→11502 (dec'd)
+	// diff 1→11500, diff 2→11501, diff 3→11501 (dec'd), diff 4→11502 (dec'd)
 	{
-		int16 introScrb = _difficultyLevel;
-		if (_difficultyLevel >= 2)
+		int16 introScrb = _difficultyLevel - 1;
+		if (_difficultyLevel >= kPuzzleDiffLevel3)
 			introScrb--;
 		introScrb += 11500;
 		_introFeature = loadScrbFeature(
@@ -234,11 +234,11 @@ void ZoombiniPuzzleHotel::loadFeatures() {
 	{
 		_introAnimType = 0;
 		switch (_difficultyLevel) {
-		case 1: _introAnimType = 4; break;
-		case 2: _introAnimType = 5; break;
-		case 3: _introAnimType = 6; break;
+		case kPuzzleDiffLevel2: _introAnimType = 4; break;
+		case kPuzzleDiffLevel3: _introAnimType = 5; break;
+		case kPuzzleDiffLevel4: _introAnimType = 6; break;
 		default: {
-			// IDA 0x41f2c3: diff=0, type 0 on first play, random on subsequent plays
+			// IDA 0x41f2c3: diff=1, type 0 on first play, random on subsequent plays
 			uint16 hotelPF = _vm->_state->_f._pageFlagHotel;
 			if ((hotelPF & ZMB_PAGE_MASK_0FFF) > 1)
 				_introAnimType = _vm->_rnd->getRandomNumber(1, (hotelPF & ZMB_PAGE_MASK_0FFF) - 1);
@@ -261,7 +261,7 @@ void ZoombiniPuzzleHotel::loadFeatures() {
 		ZmbFeature::FLAG_00100000_PLAY_ONCE);
 
 	// Set total room count based on difficulty
-	_totalRoomCount = (_difficultyLevel == 3) ? 125 : 25;
+	_totalRoomCount = (_difficultyLevel == kPuzzleDiffLevel4) ? 125 : 25;
 
 	// Load Zoombinis from active pack at 20 pedestal positions
 	// IDA: zmb_assignPedestalPositions(1, posData, 20)
@@ -388,7 +388,7 @@ void ZoombiniPuzzleHotel::generateRoomRules() {
 		_attrAxis2 = _vm->_rnd->getRandomNumber(0, 3);
 		_attrAxis3 = _vm->_rnd->getRandomNumber(0, 3);
 
-		if (_difficultyLevel <= 1) {
+		if (_difficultyLevel <= kPuzzleDiffLevel2) {
 			// IDA: variant counts must be 5 for both axes; fallback if < 3 axes have full coverage
 			int limitedCount = countLimitedAxes(5);
 			if (_traitVariantCounts[_attrAxis1] == 5 && _traitVariantCounts[_attrAxis2] == 5 && _attrAxis1 != _attrAxis2) {
@@ -399,7 +399,7 @@ void ZoombiniPuzzleHotel::generateRoomRules() {
 			} else if (limitedCount >= 3 && _attrAxis1 != _attrAxis2) {
 				v4 = 1;
 			}
-		} else if (_difficultyLevel == 2) {
+		} else if (_difficultyLevel == kPuzzleDiffLevel3) {
 			int limitedCount = countLimitedAxes(4);
 			if (limitedCount >= 3) {
 				if (_attrAxis1 != _attrAxis2)
@@ -419,7 +419,7 @@ void ZoombiniPuzzleHotel::generateRoomRules() {
 
 	// IDA 0x420B7D: For diff 2, generate forbidden rooms based on which cells
 	// have no matching zoombinis in the pre-filled constraint grid.
-	if (_difficultyLevel == 2) {
+	if (_difficultyLevel == kPuzzleDiffLevel3) {
 		// IDA 0x420B91-0x420BB1: Build a temporary 5×5 constraint grid
 		int16 tempGrid[25] = {};
 		int16 usedRows[5] = {};
@@ -539,23 +539,23 @@ void ZoombiniPuzzleHotel::setupGameBoard() {
 	}
 
 	// Redraw background for main gameplay (IDA: gfx_drawBackgroundFromResId(5001 or 5002))
-	int16 bgId = (_difficultyLevel >= 3) ? 5002 : 5001;
+	int16 bgId = (_difficultyLevel >= kPuzzleDiffLevel4) ? 5002 : 5001;
 	_vm->_gfx->drawBackground(bgId);
 
 	// IDA: fill opaque rects on the background per difficulty (binary data at 0x4A136C)
 	switch (_difficultyLevel) {
-	case 0:
+	case kPuzzleDiffLevel1:
 		_vm->_gfx->fillArea(ZoombiniGraphics::kBackScreen,
 			Common::Rect(138, 293, 345, 351));
 		_vm->_gfx->fillArea(ZoombiniGraphics::kBackScreen,
 			Common::Rect(386, 309, 516, 362));
 		break;
-	case 1:
-	case 2:
+	case kPuzzleDiffLevel2:
+	case kPuzzleDiffLevel3:
 		_vm->_gfx->fillArea(ZoombiniGraphics::kBackScreen,
 			Common::Rect(120, 45, 526, 362));
 		break;
-	case 3:
+	case kPuzzleDiffLevel4:
 		_vm->_gfx->fillArea(ZoombiniGraphics::kBackScreen,
 			Common::Rect(11, 1, 638, 396));
 		break;
@@ -569,8 +569,8 @@ void ZoombiniPuzzleHotel::setupGameBoard() {
 	registerDisplayScrbs();
 
 	// IDA 0x41fa8c-0x41fc82: Complex branching for guide/counter setup
-	if (_difficultyLevel == 3) {
-		// IDA 0x41fc76-0x41fca1: diff 3 — reset counters, play sound
+	if (_difficultyLevel == kPuzzleDiffLevel4) {
+		// IDA 0x41fc76-0x41fca1: diff 4 — reset counters, play sound
 		_bGuideSkipped = false;
 		_stepCounter = 1;
 		_bPromptAnimDone = false;
@@ -580,7 +580,7 @@ void ZoombiniPuzzleHotel::setupGameBoard() {
 			_roomAnimFeature = nullptr;
 		}
 		if (!_vm->isGameVariant(GF_ZMB_TLC))
-			_vm->_midi->playZmbMidi(ZmbResource(ZmbArchiveKind::kPage, (uint16)(30020 + _difficultyLevel)));
+			_vm->_midi->playZmbMidi(ZmbResource(ZmbArchiveKind::kPage, (uint16)(30020 + (_difficultyLevel - 1))));
 	} else if (_bGuideSkipped) {
 		// IDA 0x41faa4-0x41fb0e: Guide-skipped reset
 		_bIntroNeedsGuide = false;
@@ -602,16 +602,16 @@ void ZoombiniPuzzleHotel::setupGameBoard() {
 			loadScrbOntoFeature(_counterFeature, (uint16)(_maxStepsPerRound + 6000));
 		}
 		if (!_vm->isGameVariant(GF_ZMB_TLC))
-			_vm->_midi->playZmbMidi(ZmbResource(ZmbArchiveKind::kPage, (uint16)(30020 + _difficultyLevel)));
+			_vm->_midi->playZmbMidi(ZmbResource(ZmbArchiveKind::kPage, (uint16)(30020 + (_difficultyLevel - 1))));
 	} else if (!_introAnimType || (_introAnimType == 4 && _bIntroNeedsGuide)) {
 		// IDA 0x41fb34-0x41fb7b: Type 0 or (type 4 + needs guide) → play guide prompt
 		if (!_roomAnimFeature) {
 			_roomAnimFeature = loadScrbFeature(
-				ZmbResource(ZmbArchiveKind::kPage, 7500), (uint16)(7500 + _difficultyLevel), 6,
+				ZmbResource(ZmbArchiveKind::kPage, 7500), (uint16)(7500 + (_difficultyLevel - 1)), 6,
 				ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00080000_DEFER_ANIM |
 				ZmbFeature::FLAG_00100000_PLAY_ONCE | ZmbFeature::FLAG_08000000_REGION_TRACK);
 		} else {
-			loadScrbOntoFeature(_roomAnimFeature, (uint16)(7500 + _difficultyLevel));
+			loadScrbOntoFeature(_roomAnimFeature, (uint16)(7500 + (_difficultyLevel - 1)));
 		}
 		_guideAnimPurpose = 1; // prompt
 		_bPromptAnimDone = false;
@@ -626,7 +626,7 @@ void ZoombiniPuzzleHotel::setupGameBoard() {
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE);
 		_bCounterAnimDone = true; // IDA: word_4AB784 = scrb_registerHotspotGroup(...)
 		if (!_vm->isGameVariant(GF_ZMB_TLC))
-			_vm->_midi->playZmbMidi(ZmbResource(ZmbArchiveKind::kPage, (uint16)(30020 + _difficultyLevel)));
+			_vm->_midi->playZmbMidi(ZmbResource(ZmbArchiveKind::kPage, (uint16)(30020 + (_difficultyLevel - 1))));
 	} else {
 		// IDA 0x41fb9a-0x41fbfc: Type > 4, no guide needed — play guide with sounds
 		if (_roomAnimFeature) {
@@ -635,7 +635,7 @@ void ZoombiniPuzzleHotel::setupGameBoard() {
 			_roomAnimFeature = nullptr;
 		}
 		_roomAnimFeature = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 7500), (uint16)(7500 + _difficultyLevel), 6,
+			ZmbResource(ZmbArchiveKind::kPage, 7500), (uint16)(7500 + (_difficultyLevel - 1)), 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 			ZmbFeature::FLAG_08000000_REGION_TRACK);
 		_guideAnimPurpose = 1; // prompt
@@ -717,7 +717,7 @@ void ZoombiniPuzzleHotel::registerDisplayScrbs() {
 	static const uint32 kForbiddenFlags =
 		ZmbFeature::FLAG_00800000_POS_DELTA | ZmbFeature::FLAG_00008000_LOOP_ANIM;
 
-	if (_difficultyLevel == 0) {
+	if (_difficultyLevel == kPuzzleDiffLevel1) {
 		// IDA: stride-5 room display (jj=4,9,14,19,24)
 		for (int jj = 4; jj < _totalRoomCount; jj += 5) {
 			_roomDisplayFeatures[jj] = loadScrbFeature(
@@ -734,15 +734,15 @@ void ZoombiniPuzzleHotel::registerDisplayScrbs() {
 				kRoomIconFlags);
 		}
 
-	} else if (_difficultyLevel <= 2) {
+	} else if (_difficultyLevel <= kPuzzleDiffLevel3) {
 		// IDA: ALL 25 room display features (including forbidden slots)
 		for (int m = 0; m < _totalRoomCount; m++) {
 			_roomDisplayFeatures[m] = loadScrbFeature(
 				ZmbResource(ZmbArchiveKind::kPage, 6000), (uint16)(m + 6013), 6,
 				kRoomDisplayFlags);
 		}
-		// IDA: diff 2 forbidden obstacle runners
-		if (_difficultyLevel == 2) {
+		// IDA: diff 3 forbidden obstacle runners
+		if (_difficultyLevel == kPuzzleDiffLevel3) {
 			int fi = 0;
 			for (int n = 0; n < _totalRoomCount; n++) {
 				if (_roomGrid[n] == -1) {
@@ -763,7 +763,7 @@ void ZoombiniPuzzleHotel::registerDisplayScrbs() {
 				kRoomIconFlags);
 		}
 
-	} else { // diff 3
+	} else { // diff 4
 		// IDA: register 125 position runners (SCRB col%5+9002)
 		// Flags: 0x04980000 = OVERLAY | POS_DELTA | PLAY_ONCE | DEFER_ANIM
 		static const uint32 kPosFlags =
@@ -992,12 +992,12 @@ void ZoombiniPuzzleHotel::setCellAttrsIn3Grids(int16 cellIdx, int16 attrType, in
 // IDA: hotel_setupRoomSlotScrb_422534 (0x422534)
 // ---------------------------------------------------------------------------
 void ZoombiniPuzzleHotel::placeZoombiniInRoom(int16 roomSlot, ZmbSnoid *snoid) {
-	const Common::Point *posTable = (_difficultyLevel == 3) ? kRoomPositions125 : kRoomPositions25;
+	const Common::Point *posTable = (_difficultyLevel == kPuzzleDiffLevel4) ? kRoomPositions125 : kRoomPositions25;
 	Common::Point basePos = posTable[roomSlot];
 	Common::Point finalPos;
 	int16 depth = _roomGrid[roomSlot]; // depth (already incremented before this call)
 
-	if (_difficultyLevel == 3) {
+	if (_difficultyLevel == kPuzzleDiffLevel4) {
 		// IDA 0x422731-0x42274D: base offset + packed DWORD subtract 0x20000
 		// 0x20000 = LOWORD:0, HIWORD:2 → x unchanged, y -= 2
 		basePos.x += 5;
@@ -1016,7 +1016,7 @@ void ZoombiniPuzzleHotel::placeZoombiniInRoom(int16 roomSlot, ZmbSnoid *snoid) {
 		finalPos.y = basePos.y - 2;
 
 		// IDA 0x4225A2-0x422684: X offset depends on difficulty and slot
-		if (_difficultyLevel == 0) {
+		if (_difficultyLevel == kPuzzleDiffLevel1) {
 			// IDA 0x4225A8: switch on targetRoomSlot (only 4,9,14,19,24)
 			switch (roomSlot) {
 			case 4:  finalPos.x = basePos.x - 5; break;
@@ -1065,7 +1065,7 @@ void ZoombiniPuzzleHotel::placeZoombiniInRoom(int16 roomSlot, ZmbSnoid *snoid) {
 	// IDA: v7 = SHIBYTE(traitDword) + roomIdx - 1  (SHIBYTE = eye = axis index 2)
 	int16 eyeVal = snoid->_trait._eye;
 	int16 scrsBase;
-	if (_difficultyLevel == 3) {
+	if (_difficultyLevel == kPuzzleDiffLevel4) {
 		scrsBase = (int16)(5 * (roomSlot % 5) + 13045);
 	} else {
 		if (roomSlot < 10)
@@ -1077,8 +1077,8 @@ void ZoombiniPuzzleHotel::placeZoombiniInRoom(int16 roomSlot, ZmbSnoid *snoid) {
 	}
 	uint16 scrsId = (uint16)(eyeVal + scrsBase - 1);
 
-	// Move to initial position (diff 3 uses specified pos; diff 0-2 stays where dropped)
-	if (_difficultyLevel == 3)
+	// Move to initial position (diff 4 uses specified pos; diff 1-3 stays where dropped)
+	if (_difficultyLevel == kPuzzleDiffLevel4)
 		snoid->setPointLoc(basePos);
 
 	// Play SCRS normal animation
@@ -1091,7 +1091,7 @@ void ZoombiniPuzzleHotel::placeZoombiniInRoom(int16 roomSlot, ZmbSnoid *snoid) {
 	} else {
 		// If SCRS resource not available, finalise directly
 		snoid->setPointLoc(finalPos);
-		if (_difficultyLevel >= 3) {
+		if (_difficultyLevel >= kPuzzleDiffLevel4) {
 			snoid->setAnimState(kSnoidAnimIdle);
 			snoid->setupIdleHotspots();
 		} else {
@@ -1111,9 +1111,9 @@ void ZoombiniPuzzleHotel::placeZoombiniInRoom(int16 roomSlot, ZmbSnoid *snoid) {
 // ---------------------------------------------------------------------------
 void ZoombiniPuzzleHotel::dimPaletteOnError() {
 	uint8 scalePercent = 92;
-	if (_difficultyLevel == 0)
+	if (_difficultyLevel == kPuzzleDiffLevel1)
 		scalePercent = 88;
-	else if (_difficultyLevel == 2)
+	else if (_difficultyLevel == kPuzzleDiffLevel3)
 		scalePercent = 90;
 	// Scale palette entries 10..245 (236 entries) — IDA: entries 10..246
 	_vm->_gfx->scalePalettePartial(10, 236, scalePercent);
@@ -1124,21 +1124,21 @@ void ZoombiniPuzzleHotel::dimPaletteOnError() {
 // IDA: maze_registerCheckpointRunners_422A61 (0x422A61)
 // ---------------------------------------------------------------------------
 void ZoombiniPuzzleHotel::registerWinCheckpoints() {
-	// IDA: diff 0 → stride-5 (j=4,9,14,19,24); diff 1-2 → all 25; diff 3 → nothing
-	if (_difficultyLevel == 0) {
+	// IDA: diff 1 → stride-5 (j=4,9,14,19,24); diff 2-3 → all 25; diff 4 → nothing
+	if (_difficultyLevel == kPuzzleDiffLevel1) {
 		for (int16 j = 4; j < _totalRoomCount; j += 5) {
 			if (_roomIconFeatures[j]) {
 				loadScrbOntoFeature(_roomIconFeatures[j], (uint16)(j + 6063));
 			}
 		}
-	} else if (_difficultyLevel <= 2) {
+	} else if (_difficultyLevel <= kPuzzleDiffLevel3) {
 		for (int16 i = 0; i < _totalRoomCount; i++) {
 			if (_roomIconFeatures[i]) {
 				loadScrbOntoFeature(_roomIconFeatures[i], (uint16)(i + 6063));
 			}
 		}
 	}
-	// diff 3: no win checkpoints registered (IDA falls through with no action)
+	// diff 4: no win checkpoints registered (IDA falls through with no action)
 }
 
 // ---------------------------------------------------------------------------
@@ -1201,7 +1201,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 		debugC(1, kZmbDebugAnimation, "Hotel: counter step done, overflow=%d diff=%d", _overflowCounter, _difficultyLevel);
 		_bCounterStepDone = false;
 		uint16 guideScrb = (uint16)(_vm->_rnd->getRandomNumber(0, 2) + 7503);
-		if (_difficultyLevel != 3 && _overflowCounter > 0) {
+		if (_difficultyLevel != kPuzzleDiffLevel4 && _overflowCounter > 0) {
 			// IDA 0x41f80d-0x41f875: Reload guide with SCRB 7503+rand
 			if (_roomAnimFeature) {
 				loadScrbOntoFeature(_roomAnimFeature, guideScrb);
@@ -1251,7 +1251,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 		_bPromptAnimDone = false;
 		_bClickToSkipEnabled = false;
 		if (!_vm->isGameVariant(GF_ZMB_TLC))
-			_vm->_midi->playZmbMidi(ZmbResource(ZmbArchiveKind::kPage, (uint16)(30020 + _difficultyLevel)));
+			_vm->_midi->playZmbMidi(ZmbResource(ZmbArchiveKind::kPage, (uint16)(30020 + (_difficultyLevel - 1))));
 
 		if (_bGuideSkipped) {
 			// IDA 0x41fe3c-0x41fe85: Guide was skipped by user click
@@ -1261,7 +1261,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 				_roomAnimFeature->deactivateRender();
 				_roomAnimFeature = nullptr;
 			}
-			if (_difficultyLevel != 3) {
+			if (_difficultyLevel != kPuzzleDiffLevel4) {
 				// Create counter feature (SCRB maxSteps+6000)
 				if (!_counterFeature) {
 					_counterFeature = loadScrbFeature(
@@ -1271,7 +1271,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 					loadScrbOntoFeature(_counterFeature, (uint16)(_maxStepsPerRound + 6000));
 				}
 			}
-		} else if (_difficultyLevel != 3) {
+		} else if (_difficultyLevel != kPuzzleDiffLevel4) {
 			// IDA 0x41feeb-0x41fedc: Normal prompt done, start counter
 			if (!_counterFeature) {
 				_counterFeature = loadScrbFeature(
@@ -1322,7 +1322,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 
 			// First placement in this room → reload display SCRB
 			if (_roomGrid[_targetRoomSlot] == 0) {
-				if (_difficultyLevel < 3 && _roomDisplayFeatures[_targetRoomSlot]) {
+				if (_difficultyLevel < kPuzzleDiffLevel4 && _roomDisplayFeatures[_targetRoomSlot]) {
 					loadScrbOntoFeature(_roomDisplayFeatures[_targetRoomSlot],
 						(uint16)(_targetRoomSlot + 6013));
 				}
@@ -1340,9 +1340,9 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 			_bRejectAnimActive = true;
 
 			// IDA 0x4200D1: Rejection icon/checkpoint handling
-			if (_difficultyLevel >= 3) {
+			if (_difficultyLevel >= kPuzzleDiffLevel4) {
 				if (_stepCounter >= 11) {
-					// IDA 0x420111+0x420125: diff3 step>=11 checkpoint
+					// IDA 0x420111+0x420125: diff4 step>=11 checkpoint
 					// maze_loadScrbObstacleB on target slot
 				}
 			} else if (_stepCounter >= 11) {
@@ -1356,7 +1356,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 
 			// Play reject SCRS animation on snoid
 			int16 eyeVal = snoid->_trait._eye;
-			uint16 rejectScrsBase = (_difficultyLevel >= 3) ? 14025 : 14000;
+			uint16 rejectScrsBase = (_difficultyLevel >= kPuzzleDiffLevel4) ? 14025 : 14000;
 			uint16 rejectScrsId = (uint16)(rejectScrsBase + (eyeVal - 1));
 			Common::SeekableReadStream *rejectStream =
 				_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, rejectScrsId));
@@ -1367,7 +1367,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 			}
 
 			// IDA 0x420164: Step counter management during rejection
-			if (_difficultyLevel == 3) {
+			if (_difficultyLevel == kPuzzleDiffLevel4) {
 				_stepCounter++;
 			} else if (!_bFirstPlacement) {
 				_stepCounter++;
@@ -1394,7 +1394,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 			if (_stepCounter >= 12) {
 				_overflowCounter++;
 				_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, 6006));
-				if (_difficultyLevel == 3) {
+				if (_difficultyLevel == kPuzzleDiffLevel4) {
 					_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, 7500));
 				}
 				// Note: Original does NOT reset the board here.
@@ -1413,7 +1413,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 		_placedZmbSnoid = nullptr;
 
 		if (snoid) {
-			if (_difficultyLevel == 3) {
+			if (_difficultyLevel == kPuzzleDiffLevel4) {
 				snoid->setAnimState(kSnoidAnimIdle);
 				snoid->setupIdleHotspots();
 			} else {
@@ -1426,11 +1426,11 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 
 		// Check win condition
 		if (_placedCount >= _totalZmbCount) {
-			if (_difficultyLevel >= 3) {
-				// IDA 0x4203BF: diff 3 just sets sentinel
+			if (_difficultyLevel >= kPuzzleDiffLevel4) {
+				// IDA 0x4203BF: diff 4 just sets sentinel
 				_targetRoomSlot = 200;
 			} else {
-				// IDA 0x420332: diff 0-2 — win sequence
+				// IDA 0x420332: diff 1-3 — win sequence
 				registerWinCheckpoints();
 				_targetRoomSlot = 200;
 
@@ -1450,7 +1450,7 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 		if (_roomAnimFeature && _guideAnimPurpose == 0) {
 			// IDA 0x41fd2f-0x41fd79: Reload guide prompt
 			_bIntroNeedsGuide = false;
-			loadScrbOntoFeature(_roomAnimFeature, (uint16)(7500 + _difficultyLevel));
+			loadScrbOntoFeature(_roomAnimFeature, (uint16)(7500 + (_difficultyLevel - 1)));
 			_guideAnimPurpose = 1;
 			_bPromptAnimDone = false;
 			_setupFrameCount = getCurrentFrameCounter();
@@ -1489,7 +1489,7 @@ int16 ZoombiniPuzzleHotel::getDropTargetSlot(const Common::Point &dropPos) const
 	// We approximate with a proximity check against known room positions.
 	const int32 kDropRadiusSq = 55 * 55; // ~55px radius
 
-	if (_difficultyLevel == 3) {
+	if (_difficultyLevel == kPuzzleDiffLevel4) {
 		int16 best = -1;
 		int32 bestDist = kDropRadiusSq;
 		for (int i = 0; i < 125; i++) {
@@ -1499,7 +1499,7 @@ int16 ZoombiniPuzzleHotel::getDropTargetSlot(const Common::Point &dropPos) const
 			if (d < bestDist) { bestDist = d; best = (int16)i; }
 		}
 		return best;
-	} else if (_difficultyLevel == 0) {
+	} else if (_difficultyLevel == kPuzzleDiffLevel1) {
 		// Only slots 4, 9, 14, 19, 24
 		int16 best = -1;
 		int32 bestDist = kDropRadiusSq;
@@ -1586,16 +1586,16 @@ void ZoombiniPuzzleHotel::endDrag(const Common::Point &mousePos) {
 		_stepCounter = _maxStepsPerRound;
 		isHovered = false;
 
-		if (_difficultyLevel == 0) {
+		if (_difficultyLevel == kPuzzleDiffLevel1) {
 			_attrGrid1[targetSlot] = axis1Val;
-		} else if (_difficultyLevel <= 2) {
+		} else if (_difficultyLevel <= kPuzzleDiffLevel3) {
 			fillCellRow(targetSlot, axis2Val, axis1Val);
 		} else {
 			setCellAttrsIn3Grids(targetSlot, axis3Val, axis2Val, axis1Val);
 		}
 	} else {
 		// Validate against current constraints
-		if (_difficultyLevel == 0) {
+		if (_difficultyLevel == kPuzzleDiffLevel1) {
 			int16 existing = _attrGrid1[targetSlot];
 			if (existing) {
 				isHovered = (existing != axis1Val);
@@ -1609,7 +1609,7 @@ void ZoombiniPuzzleHotel::endDrag(const Common::Point &mousePos) {
 					}
 				}
 			}
-		} else if (_difficultyLevel <= 2) {
+		} else if (_difficultyLevel <= kPuzzleDiffLevel3) {
 			isHovered = !validate2AttrPlacement(targetSlot, axis2Val, axis1Val);
 			if (!isHovered) {
 				fillCellRow(targetSlot, axis2Val, axis1Val);
@@ -1621,8 +1621,8 @@ void ZoombiniPuzzleHotel::endDrag(const Common::Point &mousePos) {
 			}
 		}
 
-		// For diff 0: set constraint on valid accept (after validation above)
-		if (_difficultyLevel == 0 && !isHovered) {
+		// For diff 1: set constraint on valid accept (after validation above)
+		if (_difficultyLevel == kPuzzleDiffLevel1 && !isHovered) {
 			_attrGrid1[targetSlot] = axis1Val;
 		}
 	}

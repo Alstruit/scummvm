@@ -133,7 +133,7 @@ private:
 	// -----------------------------------------------------------------------
 	// Difficulty parameters
 	// -----------------------------------------------------------------------
-	int16 _difficultyLevel = 0;
+	ZmbPuzzleDifficultyLevel _difficultyLevel = kPuzzleDiffLevel1;
 	int16 _totalToppingSlots = 5;
 	int16 _targetToppingCount = 2;
 	int16 _toppingPlaceThreshold = 500;

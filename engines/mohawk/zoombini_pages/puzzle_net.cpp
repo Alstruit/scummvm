@@ -147,19 +147,22 @@ void ZoombiniPuzzleNet::setBackgroundMusic() {
 void ZoombiniPuzzleNet::setBackgroundBitmap() {
 	// IDA: gfx_drawBackgroundFromResId((net_difficultyLevel >= 2) + 5000)
 	// Background differs based on difficulty: 5000 or 5001
-	uint16 bgId = (_difficultyLevel >= 2) ? 5001 : 5000;
+	// NOTE: setBackgroundBitmap() is called BEFORE loadFeatures(), so _difficultyLevel
+	// is not yet initialized. Read the route level directly from state (0-based).
+	int16 routeLevel = _vm->_state->readActivePageRouteLevel();
+	uint16 bgId = (routeLevel >= 2) ? 5001 : 5000;
 	_vm->_gfx->setPalette(bgId);
 	_vm->_gfx->drawBackground(bgId);
 }
 
 void ZoombiniPuzzleNet::loadFeatures() {
 	// IDA: puzzleNet_4361D4 (0x4361d4)
-	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
+	_difficultyLevel = static_cast<ZmbPuzzleDifficultyLevel>(_vm->_state->readActivePageRouteLevel() + 1);
 
 	// Initialize puzzle state
 	// IDA: net_totalSlotCount = 25; if (diff > 1) net_totalSlotCount = 125;
-	_totalSlotCount = (_difficultyLevel > 1) ? 125 : 25;
-	_columnCount = (_difficultyLevel > 1) ? 3 : 2;
+	_totalSlotCount = (_difficultyLevel >= kPuzzleDiffLevel3) ? 125 : 25;
+	_columnCount = (_difficultyLevel >= kPuzzleDiffLevel3) ? 3 : 2;
 	_bAdvanceReady = false;
 	_advanceButtonDirty = false;
 	_columnLabelDirty = false;
@@ -255,7 +258,7 @@ void ZoombiniPuzzleNet::loadFeatures() {
 	computeColumnSizes();
 
 	// IDA: net_remainingExitSteps = net_columnCount + (difficulty==3) + 7
-	_remainingExitSteps = _columnCount + (_difficultyLevel == 3 ? 1 : 0) + 7;
+	_remainingExitSteps = _columnCount + (_difficultyLevel == kPuzzleDiffLevel4 ? 1 : 0) + 7;
 	// IDA: net_totalExitSteps = net_remainingExitSteps (copy for reference)
 	_totalExitSteps = _remainingExitSteps;
 	_exitAnimActive = true;
@@ -412,7 +415,7 @@ void ZoombiniPuzzleNet::registerColumnRunners() {
 	
 	// Label SCRB runner: 9151 (diff<=1) or 9153 (diff>1)
 	// IDA: net_labelScrbRunner = registerSCRB(..., 6, 9151/9153, ..., 0x4108000)
-	uint16 labelScrbId = (_difficultyLevel > 1) ? 9153 : 9151;
+	uint16 labelScrbId = (_difficultyLevel >= kPuzzleDiffLevel3) ? 9153 : 9151;
 	_labelScrbFeature = loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, 9000), labelScrbId, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
@@ -437,7 +440,7 @@ void ZoombiniPuzzleNet::registerColumnRunners() {
 	// Attribute column SCRB runners at random offsets
 	// IDA: net_attrCol0ScrbRunner (only if diff>=2), net_attrCol1ScrbRunner, net_attrCol2ScrbRunner
 	// IDA flags: 0x4108000 = OVERLAY | PLAY_ONCE | LOOP_ANIM
-	if (_difficultyLevel >= 2) {
+	if (_difficultyLevel >= kPuzzleDiffLevel3) {
 		_attrColScrbFeatures[0] = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 10000), 10002 + _randAttrColOffset[0], 6,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
@@ -599,7 +602,7 @@ void ZoombiniPuzzleNet::remapHotspotFramesByAttr(ZmbFeature *feature, ZmbHotspot
 					hotspots[i]._y = _bounceY + 3;
 				} else {
 					// At rest in slot
-					if (_difficultyLevel >= 2)
+					if (_difficultyLevel >= kPuzzleDiffLevel3)
 						hotspots[i]._x = _bounceX + 3;
 					else
 						hotspots[i]._x = _bounceX + 21;
@@ -624,7 +627,7 @@ void ZoombiniPuzzleNet::slotPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup 
 
 	for (int16 i = 0; i < _totalSlotCount; i++) {
 		if (_slotScrbFeatures[i] == feature && _slotColumnAssign[i] > 0) {
-			int16 shapeOffset = (_difficultyLevel > 1)
+			int16 shapeOffset = (_difficultyLevel >= kPuzzleDiffLevel3)
 				? _slotColumnAssign[i] + 153
 				: _slotColumnAssign[i] + 150;
 			if (!hotspots.empty()) {
@@ -713,12 +716,12 @@ void ZoombiniPuzzleNet::generateAttrRules() {
 			valB = _vm->_rnd->getRandomNumber(0, 4);
 			valC = _vm->_rnd->getRandomNumber(0, 4);
 
-			if (_difficultyLevel >= 2) {
-				// Diff 2+: no two combos share any single trait value
+			if (_difficultyLevel >= kPuzzleDiffLevel3) {
+				// Diff 3+: no two combos share any single trait value
 				if (!usedA[valA] && !usedB[valB] && !usedC[valC])
 					unique = true;
 			} else {
-				// Diff 0-1: no two combos share both A AND B
+				// Diff 1-2: no two combos share both A AND B
 				if (!usedA[valA] && !usedB[valB])
 					unique = true;
 			}
@@ -731,7 +734,7 @@ void ZoombiniPuzzleNet::generateAttrRules() {
 		} while (!unique);
 
 		// Populate grids
-		if (_difficultyLevel < 2) {
+		if (_difficultyLevel < kPuzzleDiffLevel3) {
 			// 5x5 grid
 			for (int16 j = 0; j < 5; j++) {
 				_ruleGridA[5 * i + j] = valA;
@@ -753,7 +756,7 @@ void ZoombiniPuzzleNet::generateAttrRules() {
 	}
 
 	// Apply rotations for difficulty 1 (shift rows of gridB)
-	if (_difficultyLevel == 1) {
+	if (_difficultyLevel == kPuzzleDiffLevel2) {
 		int16 shift = _vm->_rnd->getRandomNumber(0, 1) + 2;
 		int16 tempBuf[5];
 		for (int16 row = 0; row < 5; row++)
@@ -771,7 +774,7 @@ void ZoombiniPuzzleNet::generateAttrRules() {
 		}
 	}
 	// Apply rotations for difficulty 3 (shift columns of gridA across 3D cube)
-	else if (_difficultyLevel == 3) {
+	else if (_difficultyLevel == kPuzzleDiffLevel4) {
 		int16 shift = _vm->_rnd->getRandomNumber(0, 1) + 2;
 		_vm->_rnd->getRandomNumber(0, 1); // extra random call to match original
 		int16 tempBuf[5];
@@ -796,11 +799,11 @@ void ZoombiniPuzzleNet::generateAttrRules() {
 	}
 
 	// Distribute slots to columns — assign column sizes to random slot positions
-	int16 slotBase = (_difficultyLevel > 1) ? 25 : 0;
+	int16 slotBase = (_difficultyLevel >= kPuzzleDiffLevel3) ? 25 : 0;
 	for (int16 i = 0; i < _columnCount; i++) {
 		int16 pos;
 		do {
-			pos = (_difficultyLevel >= 2)
+			pos = (_difficultyLevel >= kPuzzleDiffLevel3)
 				? _vm->_rnd->getRandomNumber(0, 124)
 				: _vm->_rnd->getRandomNumber(0, 24);
 		} while (_slotColumnAssign[pos] != 0);
@@ -812,7 +815,7 @@ void ZoombiniPuzzleNet::generateAttrRules() {
 		_slotScrbFeatures[i] = nullptr;
 		if (_slotColumnAssign[i] != 0) {
 			uint16 scrbId = i + slotBase + 9000;
-			int16 shapeOffset = (_difficultyLevel > 1)
+			int16 shapeOffset = (_difficultyLevel >= kPuzzleDiffLevel3)
 				? _slotColumnAssign[i] + 153
 				: _slotColumnAssign[i] + 150;
 
@@ -844,7 +847,7 @@ void ZoombiniPuzzleNet::generateAttrRules() {
 	}
 
 	// Generate attribute labels
-	if (_difficultyLevel > 2) {
+	if (_difficultyLevel >= kPuzzleDiffLevel4) {
 		// All three labels must be distinct (0, 1, 2 in some order)
 		int16 attempts = 0;
 		do {
@@ -868,7 +871,7 @@ void ZoombiniPuzzleNet::generateAttrRules() {
 	}
 
 	// Attribute permutation for difficulty 3
-	if (_difficultyLevel >= 3)
+	if (_difficultyLevel >= kPuzzleDiffLevel4)
 		_attrPermutationIdx = _vm->_rnd->getRandomNumber(0, 5);
 	else
 		_attrPermutationIdx = 0;
@@ -878,7 +881,7 @@ int16 ZoombiniPuzzleNet::findSlotByAttrColumns() {
 	// IDA: net_findSlotByAttrColumns (0x438C47)
 	// Searches grids for the slot matching current column offsets.
 
-	if (_difficultyLevel < 2) {
+	if (_difficultyLevel < kPuzzleDiffLevel3) {
 		// 2D lookup (two attributes)
 		for (int16 i = 0; i < _totalSlotCount; i++) {
 			if (_attrRowLabel == 2) {
@@ -942,7 +945,7 @@ void ZoombiniPuzzleNet::updateAttrColumnOffset(int16 value, int16 columnGroup) {
 
 	// Check if all required columns are set (pre-check for submit validation)
 	bool allColumnsSet = false;
-	if (_difficultyLevel <= 1) {
+	if (_difficultyLevel <= kPuzzleDiffLevel2) {
 		allColumnsSet = (_randAttrColOffset[1] >= 0 && _randAttrColOffset[2] >= 0);
 	} else {
 		allColumnsSet = (_randAttrColOffset[0] >= 0 && _randAttrColOffset[1] >= 0 && _randAttrColOffset[2] >= 0);
@@ -963,7 +966,7 @@ void ZoombiniPuzzleNet::updateAttrColumnOffset(int16 value, int16 columnGroup) {
 
 			// Compute column index and sort animation type
 			int16 colIdx;
-			if (_difficultyLevel >= 2)
+			if (_difficultyLevel >= kPuzzleDiffLevel3)
 				colIdx = _currentSlotIndex % 25 / 5;
 			else
 				colIdx = _currentSlotIndex % 5;
@@ -990,8 +993,8 @@ void ZoombiniPuzzleNet::updateAttrColumnOffset(int16 value, int16 columnGroup) {
 			}
 		}
 	} else if (columnGroup == 1) {
-		// Column 0 selector (only at difficulty 2+)
-		if (_difficultyLevel >= 2) {
+		// Column 0 selector (only at difficulty 3+)
+		if (_difficultyLevel >= kPuzzleDiffLevel3) {
 			_prevAttrColOffset[1] = _randAttrColOffset[1];
 			_prevAttrColOffset[0] = _randAttrColOffset[0];
 			_randAttrColOffset[0] = value;
@@ -1106,7 +1109,7 @@ void ZoombiniPuzzleNet::registerZmbAtSlot(int16 slotIndex) {
 		return;
 
 	// Get position from appropriate table
-	if (_difficultyLevel > 1) {
+	if (_difficultyLevel >= kPuzzleDiffLevel3) {
 		_bounceX = kSlotPositionsHigh[slotIndex].x;
 		_bounceY = kSlotPositionsHigh[slotIndex].y;
 	} else {
@@ -1117,7 +1120,7 @@ void ZoombiniPuzzleNet::registerZmbAtSlot(int16 slotIndex) {
 	_hotspotPositionFlag++;
 
 	// Load slot display SCRB
-	uint16 scrbId = (_difficultyLevel >= 2) ? 7024 : 7023;
+	uint16 scrbId = (_difficultyLevel >= kPuzzleDiffLevel3) ? 7024 : 7023;
 	if (_activeSlotFeatures[_slotRunnerCount]) {
 		loadScrbOntoFeature(_activeSlotFeatures[_slotRunnerCount], scrbId);
 	} else {
@@ -1154,7 +1157,7 @@ void ZoombiniPuzzleNet::spawnZmbAtSlot(int16 slotIndex) {
 	_bounceCounter = 1;
 
 	// Get target position
-	if (_difficultyLevel > 1) {
+	if (_difficultyLevel >= kPuzzleDiffLevel3) {
 		_bounceX = kSlotPositionsHigh[slotIndex].x;
 		_bounceY = kSlotPositionsHigh[slotIndex].y;
 	} else {
@@ -1231,8 +1234,8 @@ ZmbEventHandleResult ZoombiniPuzzleNet::onLButtonDown(const Common::Point &absPo
 	int16 colIdx = (buttonIdx - 1) / 5;  // 0, 1, or 2
 	int16 value = (buttonIdx - 1) % 5;   // 0-4
 
-	// Column 0 only active at difficulty > 1
-	if (colIdx == 0 && _difficultyLevel <= 1)
+	// Column 0 only active at difficulty >= 3
+	if (colIdx == 0 && _difficultyLevel <= kPuzzleDiffLevel2)
 		return ZmbEventHandleResult::kPassthrough;
 
 	if (_submitActiveFlag && !_rejectedCount)
@@ -1269,7 +1272,9 @@ void ZoombiniPuzzleNet::processSnoidAnimEvent(ZmbFeature *feature, int16 eventCo
 				Common::Point exitPos = kExitPositions[_exitPositionIdx++];
 				ZmbSnoid *activeSnoid = getSnoid(_activeZmbSnoidId);
 				if (activeSnoid) {
-					activeSnoid->setAnimState(kSnoidAnimDepart, &exitPos);
+					// IDA: animateZoombini(0, 7u, ...) then *(int*)(v8+278) = exitPos
+					// initWalkToTarget sets _animTargetPos AND calls setAnimState(kSnoidAnimDepart)
+					activeSnoid->initWalkToTarget(exitPos);
 					activeSnoid->_packIsOccupied = true;
 				}
 				_exitingZmbSnoidId = _activeZmbSnoidId;
@@ -1564,7 +1569,7 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 			_sortAnimRunning = false;
 			if (--_remainingExitSteps < 0) {
 				_rejectedCount++;
-				if (_vm->_rnd->getRandomNumber(0, 4) > _difficultyLevel ||
+				if (_vm->_rnd->getRandomNumber(0, 4) > (_difficultyLevel - 1) ||
 					(_vm->_state->_f._pageFlagNet & 0xFFF) <= 3) {
 					if (_columnMatchCount >= 1) {
 						if (_nextZmbToAssign < _loadedZmbCount)
@@ -1587,7 +1592,7 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 	// Phase 4: Pending column setup
 	if (_pendingColumnSetup && !_rejectedCount) {
 		bool allSet;
-		if (_difficultyLevel <= 1)
+		if (_difficultyLevel <= kPuzzleDiffLevel2)
 			allSet = (_randAttrColOffset[1] >= 0 && _randAttrColOffset[2] >= 0);
 		else
 			allSet = (_randAttrColOffset[0] >= 0 && _randAttrColOffset[1] >= 0 && _randAttrColOffset[2] >= 0);
@@ -1615,7 +1620,7 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 		_prevAttrColOffset[1] = _randAttrColOffset[1];
 		_prevAttrColOffset[2] = -1;
 		_prevAttrColOffset[0] = -1;
-		if (_difficultyLevel <= 1)
+		if (_difficultyLevel <= kPuzzleDiffLevel2)
 			_randAttrColOffset[0] = -1;
 		if (!_rejectedCount) {
 			loadScrbOntoFeature(_attrAnimScrbFeature, 7018);
@@ -1685,7 +1690,7 @@ void ZoombiniPuzzleNet::onEveryFrame() {
 			debugC(1, kZmbDebugAnimation, "NET Phase8 DONE: inputLocked=false");
 			_inputLocked = false;
 			_activeAttrAnim2Running = false;
-			if (_difficultyLevel > 1) {
+			if (_difficultyLevel >= kPuzzleDiffLevel3) {
 				_prevAttrColOffset[0] = -1;
 				loadScrbOntoFeature(_attrAnimScrbFeature, 7027);
 				if (_attrAnimScrbFeature) {
@@ -1753,7 +1758,7 @@ label_postColumn:
 		}
 		// Compute column index and load column SCRB
 		int16 colIdx;
-		if (_difficultyLevel >= 2)
+		if (_difficultyLevel >= kPuzzleDiffLevel3)
 			colIdx = _currentSlotIndex % 25 / 5;
 		else
 			colIdx = _currentSlotIndex % 5;

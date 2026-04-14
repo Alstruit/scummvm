@@ -30,6 +30,7 @@
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
 #include "mohawk/zoombini_text.h"
+#include "interactive_rodmap.h"
 
 namespace Mohawk {
 
@@ -95,6 +96,7 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 	hooks1004.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::patchSelectedLevelShape1004_preRenderShape));
 	hooks1004.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::textLegend1004_postRender));
 	hooks1004.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveRodMap::legendLevel1004_onLButtonDown));
+	hooks1004.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniInteractiveRodMap::legendLevel1004_onKeyDown));
 	int modeFrameVal = _vm->_state->inPracticeMode() ? 6 : 0;
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1000), kResScrbLevelLegend1004, modeFrameVal,
 					ZmbFeature::FLAG_00100000_PLAY_ONCE,
@@ -484,6 +486,44 @@ ZmbEventHandleResult ZoombiniInteractiveRodMap::legendLevel1004_onLButtonDown(Zm
 	}
 
 	return ZmbEventHandleResult::kPassthrough;
+}
+
+ZmbEventHandleResult ZoombiniInteractiveRodMap::legendLevel1004_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat) {
+	if (kbdRepeat)
+		return ZmbEventHandleResult::kPassthrough;
+
+	if (!kbd.hasFlags(0))
+		return ZmbEventHandleResult::kPassthrough;
+
+	uint16 selectedLevel = 0;
+	switch (kbd.keycode) {
+	case Common::KEYCODE_1:
+	case Common::KEYCODE_KP1:
+		selectedLevel = 1;
+		break;
+	case Common::KEYCODE_2:
+	case Common::KEYCODE_KP2:
+		selectedLevel = 2;
+		break;
+	case Common::KEYCODE_3:
+	case Common::KEYCODE_KP3:
+		selectedLevel = 3;
+		break;
+	case Common::KEYCODE_4:
+	case Common::KEYCODE_KP4:
+		selectedLevel = 4;
+		break;
+	default:
+		return ZmbEventHandleResult::kPassthrough;
+	}
+
+	if (_vm->_state->_practiceLevel == selectedLevel)
+		return ZmbEventHandleResult::kPassthrough;
+	
+	_vm->_state->_practiceLevel = selectedLevel;
+	_lastHoveredPageType = ZoombiniPageType::kNone;
+	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX), Audio::Mixer::kSFXSoundType);
+	return ZmbEventHandleResult::kConsumed;
 }
 
 void ZoombiniInteractiveRodMap::textJourneyStat1002_postRender(ZmbFeature *feature) {

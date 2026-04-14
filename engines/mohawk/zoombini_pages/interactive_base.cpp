@@ -326,7 +326,7 @@ void ZoombiniInteractive::executeDeparture() {
 	}
 
 	if (_departXferSrcSiPage != ZMB_SI_MINUS1) {
-		_vm->_xferSrcSiPage = _departXferSrcSiPage;
+		_vm->_xferSrcPage = _departXferSrcSiPage;
 		_vm->setNextPage(ZoombiniPageType::kXfer);
 	}
 	close();

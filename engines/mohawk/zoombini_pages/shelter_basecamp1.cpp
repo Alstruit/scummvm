@@ -377,9 +377,9 @@ void ZoombiniShelterBasecampOne::executeDeparture() {
 	saveBc1PackState(true);
 
 	if (_departRouteDirection == 1)
-		_vm->_xferSrcSiPage = ZMB_SI_BC1_NORTH_05;
+		_vm->_xferSrcPage = ZMB_SI_BC1_NORTH_05;
 	else
-		_vm->_xferSrcSiPage = ZMB_SI_BC1_SOUTH_09;
+		_vm->_xferSrcPage = ZMB_SI_BC1_SOUTH_09;
 	_vm->setNextPage(ZoombiniPageType::kXfer);
 	close();
 }

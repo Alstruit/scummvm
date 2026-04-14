@@ -77,8 +77,8 @@ private:
 	static const uint16 kBadReactionPool[11];
 	static const uint16 kMoveReactionPool[3];
 
-	/** Route difficulty level. IDA: word_4AB112 */
-	int16 _difficultyLevel = 0;
+	/** Puzzle difficulty level (1-4, 1-based). IDA: word_4AB112 */
+	ZmbPuzzleDifficultyLevel _difficultyLevel = kPuzzleDiffLevel1;
 
 	/** Selected SCRB ID for seating layout. IDA: ferry_selectSCRB result */
 	uint16 _seatingSCRB = 0;

@@ -135,7 +135,7 @@ public:
 	 * Used by ZoombiniTransitionXfer to determine which route to display.
 	 * IDA: wXferSrcSiPage (runtime global, reset after use).
 	 */
-	ZMB_SI_PAGE _xferSrcSiPage = ZMB_SI_MINUS1;
+	ZMB_SI_PAGE _xferSrcPage = ZMB_SI_MINUS1;
 
 	/**
 	 * IDA: word_4A4764. Global fidget interval threshold.

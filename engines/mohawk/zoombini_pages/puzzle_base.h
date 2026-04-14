@@ -27,6 +27,29 @@
 namespace Mohawk {
 
 /**
+ * Puzzle difficulty level (1-based, 1-4).
+ * readActivePageRouteLevel() returns 0-3; add 1 to convert.
+ */
+enum ZmbPuzzleDifficultyLevel : int16 {
+	/**
+	 * Level1: "Not So Easy"
+	 */
+	kPuzzleDiffLevel1 = 1,
+	/**
+	 * Level2: "Oh So Hard"
+	 */
+	kPuzzleDiffLevel2 = 2,
+	/**
+	 * Level3: "Very Hard"
+	 */
+	kPuzzleDiffLevel3 = 3,
+	/**
+	 * Level4: "Very Very Hard"
+	 */
+	kPuzzleDiffLevel4 = 4
+};
+
+/**
  * Base class for the 12 puzzle pages. Three puzzles form each route,
  * and the player plays them in sequence.
  */

@@ -373,7 +373,7 @@ private:
 	// =================================================================
 
 	// --- Difficulty and variant ---
-	int16 _difficultyLevel = 0;
+	ZmbPuzzleDifficultyLevel _difficultyLevel = kPuzzleDiffLevel1; ///< Puzzle difficulty level (1-4, 1-based)
 	int16 _regsResourceId = 16600;
 	int16 _levelVariantIdx = 0;
 

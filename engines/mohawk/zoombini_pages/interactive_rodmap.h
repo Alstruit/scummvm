@@ -106,6 +106,10 @@ protected:
 	 */
 	ZmbEventHandleResult legendLevel1004_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 	/**
+	 * 1004: (Practice mode only) Key down on level
+	 */
+	ZmbEventHandleResult legendLevel1004_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);
+	/**
 	 * 1002: Draw text of the journey stat
 	 */
 	void textJourneyStat1002_postRender(ZmbFeature *feature);

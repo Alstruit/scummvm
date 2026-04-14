@@ -177,7 +177,7 @@ void ZoombiniPuzzleTunnels::loadFeatures() {
 
 	initPuzzleState();
 
-	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
+	_difficultyLevel = static_cast<ZmbPuzzleDifficultyLevel>(_vm->_state->readActivePageRouteLevel() + 1); // 1-based (1-4)
 
 	// IDA: node_loadNodeAndPath(1000)
 	loadNODE(ZmbArchiveKind::kPage, 1000);
@@ -459,10 +459,10 @@ void ZoombiniPuzzleTunnels::initPuzzleState() {
 
 void ZoombiniPuzzleTunnels::generateRules() {
 	switch (_difficultyLevel) {
-	case 0:  setupLevel0_singleAttr(); break;
-	case 1:  setupLevel1_dualSingleAttr(); break;
-	case 2:  setupLevel2_dualDoubleAttr(); break;
-	case 3:  setupLevel3_crossCategoryAttr(); break;
+	case kPuzzleDiffLevel1:  setupLevel0_singleAttr(); break;
+	case kPuzzleDiffLevel2:  setupLevel1_dualSingleAttr(); break;
+	case kPuzzleDiffLevel3:  setupLevel2_dualDoubleAttr(); break;
+	case kPuzzleDiffLevel4:  setupLevel3_crossCategoryAttr(); break;
 	default: setupLevel0_singleAttr(); break;
 	}
 }
@@ -1038,7 +1038,7 @@ void ZoombiniPuzzleTunnels::handleZoombiniPlacement(ZmbSnoid *snoid, int16 zone,
 	}
 
 	// Level 0 bias (IDA: 0x45AD14)
-	if (!isRejection && _difficultyLevel == 0) {
+	if (!isRejection && _difficultyLevel == kPuzzleDiffLevel1) {
 		if (_level0GateBias) {
 			if (zone == 1 || zone == 4)
 				isRejection = true;
@@ -1563,8 +1563,8 @@ int16 ZoombiniPuzzleTunnels::spawnPendingZoombinis() {
 void ZoombiniPuzzleTunnels::playAmbientSound() {
 	_goButtonReady = true;
 
-	// Probability check: rand(0,4) > difficultyLevel OR puzzleFlag <= 3
-	bool shouldPlay = (_vm->_rnd->getRandomNumber(0, 4) > _difficultyLevel) ||
+	// Probability check: rand(0,4) > (difficultyLevel - 1) OR puzzleFlag <= 3
+	bool shouldPlay = (_vm->_rnd->getRandomNumber(0, 4) > (_difficultyLevel - 1)) ||
 	                  ((_vm->_state->_f._pageFlagTunnels & 0xFFF) <= 3);
 
 	if (shouldPlay && _enteredCount < _totalZmbCount && _enteredCount > 0) {
@@ -2091,8 +2091,8 @@ void ZoombiniPuzzleTunnels::endDrag(const Common::Point &dropPos) {
 
 	int16 zone = getDropZone(dropPos);
 
-	// For level 0, only zones 1 and 2 are valid
-	if (_difficultyLevel == 0 && zone > 2)
+	// For level 1, only zones 1 and 2 are valid
+	if (_difficultyLevel == kPuzzleDiffLevel1 && zone > 2)
 		zone = 0;
 
 	if (zone > 0) {

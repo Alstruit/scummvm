@@ -83,7 +83,7 @@ protected:
 	// XFer state, set by computeXferRoute()
 	uint16 _xferView = XFER_ROUTE0_FROM_ISLE;
 	ZoombiniPageType _nextPageType = ZoombiniPageType::kBridge;
-	uint16 _xferBgId = kResBackground5000_FromIsle;
+	uint16 _xferBackgroundResId = kResBackground5000_FromIsle;
 	uint16 _xferShapesId = kResShapes5100_FromIsle;
 	uint16 _xferScrbCount = 9;   ///< Number of main environment SCRBs to load
 
@@ -192,7 +192,7 @@ protected:
 	 * 1-4 based on which crossing within the current route.
 	 * Used for shape selection and seed index.
 	 */
-	uint16 _routePathLevel = 1;
+	uint16 _routePathBand = 1;
 
 	/**
 	 * Route color level (IDA: word_4B97FA).
@@ -276,7 +276,7 @@ protected:
 	int16 _routeSlotIndex = 0;
 
 	// Route path methods
-	void computeRoutePathLevel();
+	void computeRoutePathBand();
 	void computeRoutePathColorLevel();
 	void buildPuzzleCompletionArray();
 	static uint16 readPuzzleLevelFlag(const ZmbStateFile &state, ZMB_SI_PAGE siPage);

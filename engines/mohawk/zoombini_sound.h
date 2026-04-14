@@ -49,6 +49,15 @@ public:
 	void setStopMidiOnSfx(bool enabled) { _stopMidiOnSfx = enabled; }
 
 	/**
+	 * Suppress SFX playback. When true, playZmbSound with kSFXSoundType
+	 * returns early without playing. Used by Smoke puzzle to mute ambient
+	 * sounds during question phases.
+	 * IDA: chBoolSFXTurnOnOff_4B8252
+	 */
+	void setSfxMuted(bool muted) { _sfxMuted = muted; }
+	bool isSfxMuted() const { return _sfxMuted; }
+
+	/**
 	 * Opaque handle returned by createSoundQueue().
 	 * kInvalidSoundQueueHandle is the null/uninitialised value.
 	 */
@@ -106,6 +115,7 @@ private:
 	MohawkEngine_Zoombini *_vm;
 
 	bool _stopMidiOnSfx = false;
+	bool _sfxMuted = false;
 
 	Common::HashMap<uint32, SoundQueueChannel> _soundQueues;
 	uint32 _nextQueueHandle = 1; // 0 is kInvalidSoundQueueHandle

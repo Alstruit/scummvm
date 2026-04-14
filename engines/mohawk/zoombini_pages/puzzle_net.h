@@ -114,8 +114,8 @@ private:
 
 	// --- Puzzle configuration ---
 
-	/** Route difficulty level (0-3). IDA: net_difficultyLevel */
-	int16 _difficultyLevel = 0;
+	/** Puzzle difficulty level (1-4, 1-based). IDA: net_difficultyLevel */
+	ZmbPuzzleDifficultyLevel _difficultyLevel = kPuzzleDiffLevel1;
 	/** Total slots: 25 (diff<=1) or 125 (diff>1). IDA: net_totalSlotCount */
 	int16 _totalSlotCount = 25;
 

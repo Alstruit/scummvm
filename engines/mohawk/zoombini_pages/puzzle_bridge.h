@@ -213,8 +213,8 @@ protected:
 
 	// --- Puzzle State ---
 
-	/** Route difficulty level (0-3). IDA: word_4AAE18 */
-	int16 _routeLevel = 0;
+	/** Route difficulty level (1-4). IDA: word_4AAE18 */
+	ZmbPuzzleDifficultyLevel _difficultyLevel = kPuzzleDiffLevel1;
 
 	/** True once the toll table has been built. IDA: bridge_puzzleReady (0x4AAE8C) */
 	bool _puzzleReady = false;

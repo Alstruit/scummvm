@@ -62,7 +62,7 @@ void ZoombiniPuzzleFleens::setBackgroundBitmap() {
 
 void ZoombiniPuzzleFleens::loadFeatures() {
 	// IDA: fleens_initAndSetupPuzzle (0x41C3DC)
-	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
+	_difficultyLevel = static_cast<ZmbPuzzleDifficultyLevel>(_vm->_state->readActivePageRouteLevel() + 1); // 1-based (1-4)
 
 	// Initialize puzzle state
 	_bRaftReady = false;
@@ -201,7 +201,7 @@ void ZoombiniPuzzleFleens::loadFeatures() {
 		uint16 helpSoundId;
 		if (diffId == ZMB_DIFFICULTY_LEVEL2_02) {
 			helpSoundId = 20080;
-		} else if (_difficultyLevel == 1 || _difficultyLevel == 3) {
+		} else if (_difficultyLevel == kPuzzleDiffLevel2 || _difficultyLevel == kPuzzleDiffLevel4) {
 			helpSoundId = _vm->_rnd->getRandomNumber(20079, 20080);
 		} else {
 			helpSoundId = 20079;
@@ -642,7 +642,7 @@ void ZoombiniPuzzleFleens::onRaftExitComplete() {
 		// IDA: with probability or first few attempts, play guidance 20045-20048
 		ZmbStateFile &f = _vm->_state->_f;
 		int16 randCheck = _vm->_rnd->getRandomNumber(0, 4);
-		if (randCheck > _difficultyLevel || (f._pageFlagFleens & 0xFFF) <= 3) {
+		if (randCheck > (_difficultyLevel - 1) || (f._pageFlagFleens & 0xFFF) <= 3) {
 			uint16 sndId = _vm->_rnd->getRandomNumber(20045, 20048);
 			_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, sndId),
 			                          Audio::Mixer::kSFXSoundType, 1);
@@ -755,18 +755,18 @@ void ZoombiniPuzzleFleens::buildZmbTraitSetup() {
 	// Generate trait transformation offsets (1-5) for first 4 slots
 	// These determine how traits are transformed for puzzle matching
 	// IDA: if (!wTransitionsDisable[1] || fleens_routeLevel == 1 || fleens_routeLevel == 3)
-	if (_traitOffsets[0] == 0 || _difficultyLevel == 1 || _difficultyLevel == 3) {
+	if (_traitOffsets[0] == 0 || _difficultyLevel == kPuzzleDiffLevel2 || _difficultyLevel == kPuzzleDiffLevel4) {
 		for (int i = 0; i < 4; i++) {
 			_traitOffsets[i] = static_cast<uint8>(_vm->_rnd->getRandomNumber(1, 5));
 		}
 	}
 	
 	// For difficulty <= 1, clear the slot order array
-	if (_difficultyLevel <= 1) {
+	if (_difficultyLevel <= kPuzzleDiffLevel2) {
 		for (int i = 0; i < 4; i++) {
 			_traitSlotOrder[i] = 0;
 		}
-	} else if (_traitSlotOrder[0] == 0 || _difficultyLevel == 3) {
+	} else if (_traitSlotOrder[0] == 0 || _difficultyLevel == kPuzzleDiffLevel4) {
 		// For higher difficulty, generate slot order using non-repeat random
 		// IDA: e2GetPoolValue_nonRepeatRandom with 4 positions
 		_traitSlotOrder[0] = static_cast<uint8>(_vm->_rnd->getRandomNumber(2, 4));

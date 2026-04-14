@@ -257,7 +257,7 @@ void ZoombiniPuzzleMaze::setBackgroundBitmap() {
 
 void ZoombiniPuzzleMaze::loadFeatures() {
 	// IDA: puzzleMaze2_42E47C (0x42e47c)
-	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
+	_difficultyLevel = static_cast<ZmbPuzzleDifficultyLevel>(_vm->_state->readActivePageRouteLevel() + 1); // 1-based (1-4)
 
 	// Load terrain barrier bitmap (tBMP 100)
 	loadTerrainBitmap(100);
@@ -425,19 +425,19 @@ void ZoombiniPuzzleMaze::loadZoombinisFromPack() {
 void ZoombiniPuzzleMaze::loadRegsConfigByLevel() {
 	// IDA: maze_loadRegsConfigByLevel (0x4319C9)
 	switch (_difficultyLevel) {
-	case 0:
+	case kPuzzleDiffLevel1:
 		_levelVariantIdx = _vm->_rnd->getRandomNumber(0, 1);
 		_regsResourceId = 16600 + _levelVariantIdx;
 		break;
-	case 1:
+	case kPuzzleDiffLevel2:
 		_levelVariantIdx = _vm->_rnd->getRandomNumber(0, 1);
 		_regsResourceId = 16602 + _levelVariantIdx;
 		break;
-	case 2:
+	case kPuzzleDiffLevel3:
 		_levelVariantIdx = _vm->_rnd->getRandomNumber(0, 1);
 		_regsResourceId = 16604 + _levelVariantIdx;
 		break;
-	case 3:
+	case kPuzzleDiffLevel4:
 		_levelVariantIdx = _vm->_rnd->getRandomNumber(0, 2);
 		_regsResourceId = 16606 + _levelVariantIdx;
 		break;
@@ -646,12 +646,12 @@ void ZoombiniPuzzleMaze::initGridAndSelectPaths() {
 
 	// Dispatch path selection by difficulty. IDA: switch at 0x431B8A
 	switch (_difficultyLevel) {
-	case 0:
+	case kPuzzleDiffLevel1:
 		buildZmbAssignmentAlt2();
 		if (++s_variantIdx0 > 1)
 			s_variantIdx0 = 0;
 		break;
-	case 1:
+	case kPuzzleDiffLevel2:
 		if (s_variantIdx1)
 			selectPathSlots2();
 		else
@@ -659,7 +659,7 @@ void ZoombiniPuzzleMaze::initGridAndSelectPaths() {
 		if (++s_variantIdx1 > 1)
 			s_variantIdx1 = 0;
 		break;
-	case 2:
+	case kPuzzleDiffLevel3:
 		if (s_variantIdx2)
 			selectPathSlots();
 		else
@@ -667,14 +667,14 @@ void ZoombiniPuzzleMaze::initGridAndSelectPaths() {
 		if (++s_variantIdx2 > 1)
 			s_variantIdx2 = 0;
 		break;
-	case 3:
+	case kPuzzleDiffLevel4:
 		buildZmbAssignmentList();
 		s_variantIdx3 += 2;
 		if (s_variantIdx3 > 2)
 			s_variantIdx3 = 0;
 		break;
-	case 4:
-		selectPathSlots();
+	default:
+		// Unreachable: difficulty is always 1-4
 		break;
 	}
 
@@ -1294,8 +1294,8 @@ void ZoombiniPuzzleMaze::buildZmbAssignmentAlt2() {
 	_selectedPathSlots[_pathSlotWriteIdx++] = firstSlot;
 	_selectedPathSlots[_pathSlotWriteIdx++] = firstSlot; // Duplicate slot[1] = slot[0]
 
-	if (_difficultyLevel == 2)
-		_selectedPathSlots[_pathSlotWriteIdx++] = firstSlot; // Extra dup at diff 2
+	if (_difficultyLevel == kPuzzleDiffLevel3)
+		_selectedPathSlots[_pathSlotWriteIdx++] = firstSlot; // Extra dup at diff 3
 
 	// Count matches for the selected slot
 	collectMatchingZmbAttrs(firstSlot);
@@ -1312,7 +1312,7 @@ void ZoombiniPuzzleMaze::buildZmbAssignmentAlt2() {
 		int16 slot2 = findHighestScoredSlot(slot1);
 		if (!slot2) slot2 = slot1;
 
-		if (_difficultyLevel >= 2 && _slotScores[slot2] > _slotScores[slot1]) {
+		if (_difficultyLevel >= kPuzzleDiffLevel3 && _slotScores[slot2] > _slotScores[slot1]) {
 			_selectedPathSlots[_pathSlotWriteIdx++] = slot2;
 			_selectedPathSlots[_pathSlotWriteIdx++] = slot1;
 		} else {
@@ -1379,7 +1379,7 @@ void ZoombiniPuzzleMaze::buildZmbAssignmentAlt() {
 		int16 slot2 = findHighestScoredSlot(slot1);
 		if (!slot2) slot2 = slot1;
 
-		if (_difficultyLevel >= 2 && _slotScores[slot2] > _slotScores[slot1]) {
+		if (_difficultyLevel >= kPuzzleDiffLevel3 && _slotScores[slot2] > _slotScores[slot1]) {
 			_selectedPathSlots[_pathSlotWriteIdx++] = slot2;
 			_selectedPathSlots[_pathSlotWriteIdx++] = slot1;
 		} else {
@@ -1477,7 +1477,7 @@ void ZoombiniPuzzleMaze::selectPathSlots2() {
 		int16 slot2 = findHighestScoredSlot(slot1);
 		if (!slot2) slot2 = slot1;
 
-		if (_difficultyLevel >= 2 && _slotScores[slot2] > _slotScores[slot1]) {
+		if (_difficultyLevel >= kPuzzleDiffLevel3 && _slotScores[slot2] > _slotScores[slot1]) {
 			_selectedPathSlots[_pathSlotWriteIdx++] = slot2;
 			_selectedPathSlots[_pathSlotWriteIdx++] = slot1;
 		} else {
@@ -1581,7 +1581,7 @@ void ZoombiniPuzzleMaze::selectPathSlots() {
 		int16 slot2 = findHighestScoredSlot(slot1);
 		if (!slot2) slot2 = slot1;
 
-		if (_difficultyLevel >= 2 && _slotScores[slot2] > _slotScores[slot1]) {
+		if (_difficultyLevel >= kPuzzleDiffLevel3 && _slotScores[slot2] > _slotScores[slot1]) {
 			_selectedPathSlots[_pathSlotWriteIdx++] = slot2;
 			_selectedPathSlots[_pathSlotWriteIdx++] = slot1;
 		} else {
@@ -2730,6 +2730,11 @@ void ZoombiniPuzzleMaze::assignCrossRunnerScrbs(int16 runner1Idx, int16 runner2I
 	}
 
 	// Play crossing SCRS with foot offset
+	// Note: audioScrb1/2 values are preserved for potential future audio enhancement
+	// but currently not used since a single shared sound (5101) is played instead.
+	(void)audioScrb1;
+	(void)audioScrb2;
+
 	if (visualScrb2 && snoid2) {
 		Common::SeekableReadStream *scrs2 =
 			_vm->getResource(MKTAG('S', 'C', 'R', 'S'),

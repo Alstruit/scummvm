@@ -121,7 +121,7 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 	// IDA: bridge_initPuzzleState_414C83
 	_anyZmbCrossed = 0;
 	_isActive = 0;
-	_routeLevel = _vm->_state->readActivePageRouteLevel();
+	_difficultyLevel = static_cast<ZmbPuzzleDifficultyLevel>(_vm->_state->readActivePageRouteLevel() + 1);
 	_puzzleReady = false;
 	_reqAttrCount = 0;
 	memset(_reqAttrTypes, 0, sizeof(_reqAttrTypes));
@@ -408,9 +408,9 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 
 	uint32 poolSize = 0;
 
-	switch (_routeLevel) {
-	case 0: {
-		// Level 0: 20 single-attribute combos (5 values × 4 types)
+	switch (_difficultyLevel) {
+	case kPuzzleDiffLevel1: {
+		// Level 1: 20 single-attribute combos (5 values × 4 types)
 		// foot:1-5, nose:256-1280, eye:0x10000-0x50000, head:0x1000000-0x5000000
 		poolSize = 20;
 		comboPool.resize(poolSize); 
@@ -440,8 +440,8 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 		break;
 	}
 
-	case 1: {
-		// Level 1: 40 dual-nibble combos (4 types × 10 combos each)
+	case kPuzzleDiffLevel2: {
+		// Level 2: 40 dual-nibble combos (4 types × 10 combos each)
 		// Uses kLevel1ComboTable shifted by 0/8/16/24 bits per type group
 		poolSize = 40;
 		comboPool.resize(poolSize);
@@ -456,8 +456,8 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 		break;
 	}
 
-	case 2: {
-		// Level 2: 150 arithmetic combos (6 groups × 5 × 5)
+	case kPuzzleDiffLevel3: {
+		// Level 3: 150 arithmetic combos (6 groups × 5 × 5)
 		// Uses base+step tables
 		poolSize = 150;
 		comboPool.resize(poolSize);
@@ -474,8 +474,8 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 		break;
 	}
 
-	case 3: {
-		// Level 3: 500 four-attribute permutation combos (4 groups × 125 each)
+	case kPuzzleDiffLevel4: {
+		// Level 4: 500 four-attribute permutation combos (4 groups × 125 each)
 		poolSize = 500;
 		comboPool.resize(poolSize);
 		uint32 groupOffset = 0;
@@ -552,8 +552,8 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 	for (uint32 i = 0; i < poolSize; i++)
 		matchCounts[i] = 0;
 
-	if (_routeLevel == 1) {
-		// Level 1: match if any nibble of the Zoombini matches the corresponding combo nibble
+	if (_difficultyLevel == kPuzzleDiffLevel2) {
+		// Level 2: match if any nibble of the Zoombini matches the corresponding combo nibble
 		// Uses shifted nibble comparison (also checks the second nibble in each byte)
 		for (uint32 j = 0; j < zmbTraits.size(); j++) {
 			// Swap bytes to match original memory layout (the original does byte endian swap)
@@ -576,7 +576,7 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 			}
 		}
 	} else {
-		// Levels 0, 2, 3: match if any byte-level nibble matches
+		// Levels 1, 3, 4: match if any byte-level nibble matches
 		for (uint32 j = 0; j < zmbTraits.size(); j++) {
 			uint32 zmb = zmbTraits[j];
 			uint32 swapped = ((zmb & 0xFF) << 24) | (((zmb >> 8) & 0xFF) << 16)
@@ -656,7 +656,7 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 	// IDA: bridge_prevExcludeCount/bridge_prevExcludePattern at 0x41665D
 	_prevExcludeCount = 0;
 	_prevExcludePattern = 0;
-	if (!_routeLevel && found == 1) {
+	if (_difficultyLevel == kPuzzleDiffLevel1 && found == 1) {
 		_prevExcludeCount = chosenCount;
 		_prevExcludePattern = targetCombo;
 	}
@@ -666,8 +666,8 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 	// IDA: bridge_bRandomLaneSwap = nextRand_410705(1, 0) at 0x4166A0
 	_bRandomLaneSwap = _vm->_rnd->getRandomNumber(0, 1);
 
-	if (_routeLevel == 0) {
-		// Level 0: single attribute
+	if (_difficultyLevel == kPuzzleDiffLevel1) {
+		// Level 1: single attribute
 		_reqAttrCount = 1;
 		if (targetCombo & 0xFF) {
 			_reqAttrTypes[0] = 4; // legs
@@ -682,8 +682,8 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 			_reqAttrTypes[0] = 1; // hair
 			_reqAttrValues[0] = (targetCombo >> 24) & 0xF;
 		}
-	} else if (_routeLevel == 1) {
-		// Level 1: two attributes
+	} else if (_difficultyLevel == kPuzzleDiffLevel2) {
+		// Level 2: two attributes
 		_reqAttrCount = 2;
 		if (targetCombo & 0xFF) {
 			_reqAttrTypes[0] = 4;
@@ -707,7 +707,7 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 			_reqSecondAttrValue = (targetCombo >> 28) & 0xF;
 		}
 	} else {
-		// Levels 2 and 3: extract all non-zero nibbles
+		// Levels 3 and 4: extract all non-zero nibbles
 		_reqAttrCount = 0;
 		uint32 idx = 0;
 		if (targetCombo & 0xFF) {
@@ -717,7 +717,7 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 			_reqAttrCount++;
 		}
 		if ((targetCombo >> 8) & 0xFF) {
-			if (idx < static_cast<uint32>(_routeLevel)) {
+			if (idx < static_cast<uint32>(_difficultyLevel - 1)) {
 				_reqAttrTypes[idx] = 3;
 				_reqAttrValues[idx] = (targetCombo >> 8) & 0xF;
 				idx++;
@@ -725,7 +725,7 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 			_reqAttrCount++;
 		}
 		if ((targetCombo >> 16) & 0xFF) {
-			if (idx < static_cast<uint32>(_routeLevel)) {
+			if (idx < static_cast<uint32>(_difficultyLevel - 1)) {
 				_reqAttrTypes[idx] = 2;
 				_reqAttrValues[idx] = (targetCombo >> 16) & 0xF;
 				idx++;
@@ -733,7 +733,7 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 			_reqAttrCount++;
 		}
 		if ((targetCombo >> 24) & 0xFF) {
-			if (idx < static_cast<uint32>(_routeLevel)) {
+			if (idx < static_cast<uint32>(_difficultyLevel - 1)) {
 				_reqAttrTypes[idx] = 1;
 				_reqAttrValues[idx] = (targetCombo >> 24) & 0xF;
 			}
@@ -741,7 +741,7 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 		}
 	}
 
-	debugC(kZmbDebugPage, "Bridge: route level %d, reqAttrCount=%d", _routeLevel, _reqAttrCount);
+	debugC(kZmbDebugPage, "Bridge: difficulty level %d, reqAttrCount=%d", _difficultyLevel, _reqAttrCount);
 	for (int i = 0; i < _reqAttrCount; i++) {
 		debugC(kZmbDebugPage, "  reqAttr[%d]: type=%d, value=%d", i, _reqAttrTypes[i], _reqAttrValues[i]);
 	}

@@ -991,7 +991,7 @@ void ZoombiniShelterBasecampTwo::executeDeparture() {
 	saveSnoidsToPack();
 	saveBc2PackState(true);
 
-	_vm->_xferSrcSiPage = ZMB_SI_BASECAMP2_13;
+	_vm->_xferSrcPage = ZMB_SI_BASECAMP2_13;
 	_vm->setNextPage(ZoombiniPageType::kXfer);
 	close();
 }

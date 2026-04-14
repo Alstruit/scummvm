@@ -189,7 +189,7 @@ private:
 	static const int16 kGlyphXPositions[11];
 
 	/** Route difficulty level + 1 (1-4). IDA: word_4AAF00 */
-	int16 _difficultyLevel = 0;
+	ZmbPuzzleDifficultyLevel _difficultyLevel = kPuzzleDiffLevel1;
 	
 	// --- Glyph system state (IDA: caves_initDifficultyParams globals) ---
 	
@@ -346,6 +346,9 @@ private:
 
 	/** Hint flash counter for glyph blink at difficulty 1. IDA: word_4AAEF6 */
 	int16 _hintFlashCounter = 0;
+
+	/** Frame counter for next glyph blink toggle. IDA: runner->dNextRenderFrame in caves_funcOnHover */
+	uint32 _glyphBlinkNextFrame = 0;
 };
 
 } // End of namespace Mohawk

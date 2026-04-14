@@ -816,7 +816,7 @@ void ZoombiniShelterPicker::onGoButtonActivated() {
 	// Snoids arriving at the next page will do a turn-around-left animation.
 	_vm->setArrivalTurnDirection(1);
 
-	_vm->_xferSrcSiPage = ZMB_SI_PICKER_01;
+	_vm->_xferSrcPage = ZMB_SI_PICKER_01;
 	setGoButtonsEnabled(false);
 
 	// Clear embarking snoid list for new departure

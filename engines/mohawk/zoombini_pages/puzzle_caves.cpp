@@ -127,7 +127,7 @@ void ZoombiniPuzzleCaves::setBackgroundBitmap() {
 
 void ZoombiniPuzzleCaves::loadFeatures() {
 	// IDA: caves_funcInit (0x416978)
-	_difficultyLevel = _vm->_state->readActivePageRouteLevel() + 1;
+	_difficultyLevel = static_cast<ZmbPuzzleDifficultyLevel>(_vm->_state->readActivePageRouteLevel() + 1);
 
 	// Preload shape images
 	// IDA: shape_loadSubShapesFromArchive(&stru_4A08C0, 0x2AF8u) — shapes at tBMP 11000
@@ -457,19 +457,19 @@ void ZoombiniPuzzleCaves::initDifficultyParams() {
 
 	// Map level (1-4) to entrance count (4-7) and panel SCRB (6006-6003)
 	switch (_difficultyLevel) {
-	case 1:
+	case kPuzzleDiffLevel1:
 		_entranceCount = 4;
 		_glyphPanelScrbId = 6006;
 		break;
-	case 2:
+	case kPuzzleDiffLevel2:
 		_entranceCount = 5;
 		_glyphPanelScrbId = 6005;
 		break;
-	case 3:
+	case kPuzzleDiffLevel3:
 		_entranceCount = 6;
 		_glyphPanelScrbId = 6004;
 		break;
-	case 4:
+	case kPuzzleDiffLevel4:
 	default:
 		_entranceCount = 7;
 		_glyphPanelScrbId = 6003;
@@ -494,7 +494,7 @@ void ZoombiniPuzzleCaves::initEntranceAttrPattern() {
 
 	// Guard complexity: 1 or 2 based on difficulty
 	// IDA: unk_4A08E4 = (word_4AAF00 <= 2) ? 1 : 2
-	_guardComplexity = (_difficultyLevel <= 2) ? 1 : 2;
+	_guardComplexity = (_difficultyLevel <= kPuzzleDiffLevel2) ? 1 : 2;
 
 	// Number of attribute columns (typically 5)
 	_attrColumnCount = 5;
@@ -573,7 +573,7 @@ void ZoombiniPuzzleCaves::countGlyphDistribution() {
 	}
 
 	// Guard complexity based on difficulty
-	_guardComplexity = (_difficultyLevel <= 2) ? 1 : 2;
+	_guardComplexity = (_difficultyLevel <= kPuzzleDiffLevel2) ? 1 : 2;
 
 	// Clear distribution table
 	for (int i = 0; i < 36; i++) {
@@ -659,14 +659,14 @@ void ZoombiniPuzzleCaves::distributeEntranceAttributes() {
 	}
 
 	switch (_difficultyLevel) {
-	case 1:
+	case kPuzzleDiffLevel1:
 		// Level 1: All first 5 entrances active
 		for (int slot = 1; slot < 6; slot++) {
 			_entranceAttrReq[slot] = 1;
 		}
 		break;
 
-	case 2: {
+	case kPuzzleDiffLevel2: {
 		// Level 2: Random 2-4 of first 5 entrances
 		int16 numActive = _vm->_rnd->getRandomNumber(2, 4);
 		int16 poolSize = 5;
@@ -682,7 +682,7 @@ void ZoombiniPuzzleCaves::distributeEntranceAttributes() {
 		break;
 	}
 
-	case 3: {
+	case kPuzzleDiffLevel3: {
 		// Level 3: Random selection in two groups (0-4 and 5-9)
 		for (int group = 0; group < 2; group++) {
 			int16 offset = (group == 0) ? 0 : 5;
@@ -771,7 +771,7 @@ ZmbRenderResult ZoombiniPuzzleCaves::renderEntranceGlyphs(ZmbFeature *feature) {
 	// Iterates entrance slots 1-10, drawing hieroglyph shapes at each active entrance.
 	// At difficulty 1 with hoveredSlot < 6, skip the hovered entrance (hide its glyph).
 	ZmbResource glyphRes(ZmbArchiveKind::kPage, 10000);
-	bool skipHovered = (_difficultyLevel == 1 && _hoveredEntranceSlot < 6);
+	bool skipHovered = (_difficultyLevel == kPuzzleDiffLevel1 && _hoveredEntranceSlot < 6);
 
 	for (int slot = 1; slot < 11; slot++) {
 		if (!_entranceAttrReq[slot])
@@ -1108,7 +1108,28 @@ void ZoombiniPuzzleCaves::onEveryFrame() {
 	// [1] Glyph hint blink at difficulty 1.
 	// IDA: word_4AAEF4 toggling with 30-frame timer on glyphRenderRunner.
 	// At difficulty 1 with hoveredSlot < 6, the glyph renderer toggles visibility.
-	// TODO: Implement full glyph blink system matching IDA 0x4175DF-0x41767F.
+	// IDA: caves_funcOnHover @ 0x4175DF-0x41767F
+	if (_difficultyLevel == kPuzzleDiffLevel1 && _hoveredEntranceSlot < 6) {
+		if (_virtualGlyphRenderer) {
+			uint32 currFrame = getCurrentFrameCounter();
+			if (currFrame >= _glyphBlinkNextFrame) {
+				if (_hoveredEntranceSlot != 0) {
+					// Currently showing hint -> hide it
+					_glyphBlinkNextFrame = currFrame + 30;
+					_hoveredEntranceSlot = 0;
+				} else {
+					// Currently hidden -> show next hint
+					_glyphBlinkNextFrame = currFrame + 30;
+					_hintFlashCounter++;
+					_hoveredEntranceSlot = _hintFlashCounter;
+				}
+				// Request redraw of glyph panel
+				if (_virtualGlyphRenderer->isRenderActivated()) {
+					_virtualGlyphRenderer->setNeedsRedraw(true);
+				}
+			}
+		}
+	}
 
 	_processingFrame = false;
 }

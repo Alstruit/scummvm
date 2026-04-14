@@ -118,8 +118,8 @@ private:
 	static const Common::Point kSnoidPositions[16];
 	static const Common::Point kRaftPosition;
 
-	/** Route difficulty level. IDA: fleens_routeLevel */
-	int16 _difficultyLevel = 0;
+	/** Puzzle difficulty level (1-4, 1-based). IDA: fleens_routeLevel */
+	ZmbPuzzleDifficultyLevel _difficultyLevel = kPuzzleDiffLevel1;
 
 	// === Puzzle state (IDA: fleens_clearAllPuzzleState @ 0x41C0B4) ===
 

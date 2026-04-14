@@ -84,7 +84,7 @@ void ZoombiniPuzzleFerry::setBackgroundBitmap() {
 
 void ZoombiniPuzzleFerry::loadFeatures() {
 	// IDA: ferry_funcInit (0x41a394)
-	_difficultyLevel = _vm->_state->readActivePageRouteLevel();
+	_difficultyLevel = static_cast<ZmbPuzzleDifficultyLevel>(_vm->_state->readActivePageRouteLevel() + 1); // 1-based (1-4)
 	_visitCounter++;
 
 	// IDA: ferry_selectSCRB (0x41bc4e) — calculate SCRB ID based on difficulty and zoombini count
@@ -95,7 +95,7 @@ void ZoombiniPuzzleFerry::loadFeatures() {
 		else if (zmbCount > 20)
 			zmbCount = 20;
 
-		uint16 scrbBase = 1510 + (_difficultyLevel * 5);
+		uint16 scrbBase = 1510 + ((_difficultyLevel - 1) * 5);
 		_seatingSCRB = scrbBase + (zmbCount - 16);
 		debugC(kZmbDebugPage, "Ferry: difficultyLevel=%d, zmbCount=%d, seatingSCRB=%d",
 		       _difficultyLevel, zmbCount, _seatingSCRB);
@@ -262,7 +262,7 @@ void ZoombiniPuzzleFerry::loadFeatures() {
 		uint16 helpSoundId;
 		if (diffId == ZMB_DIFFICULTY_LEVEL2_02) {
 			helpSoundId = 20074;
-		} else if (_difficultyLevel > 0) {
+		} else if (_difficultyLevel >= kPuzzleDiffLevel2) {
 			helpSoundId = _vm->_rnd->getRandomNumber(20073, 20074);
 		} else {
 			helpSoundId = 20073;
@@ -519,7 +519,7 @@ void ZoombiniPuzzleFerry::buildAdjacencyMatrix() {
 			}
 
 			// Test 3: Raw overlap (difficulty >= 3 only)
-			if (!adjacent && _difficultyLevel >= 3) {
+			if (!adjacent && _difficultyLevel == kPuzzleDiffLevel4) {
 				adjacent = rectK.intersects(rectM);
 			}
 

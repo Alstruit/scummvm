@@ -2118,7 +2118,7 @@ bool ZoombiniConsole::Cmd_GoXfer(int argc, const char **argv) {
 		_vm->_state->_practiceLevel = level;
 
 	// Close the current page and queue the xfer transition
-	_vm->_xferSrcSiPage = srcSiPage;
+	_vm->_xferSrcPage = srcSiPage;
 	_vm->setNextPage(ZoombiniPageType::kXfer);
 	if (_vm->getActivePage())
 		_vm->getActivePage()->close();

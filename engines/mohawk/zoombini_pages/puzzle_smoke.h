@@ -219,7 +219,7 @@ private:
 
 	// === Core gameplay state ===
 
-	int16 _difficultyLevel = 0;       // IDA: smoke_difficultyLevel — route level + 1 (1-4)
+	ZmbPuzzleDifficultyLevel _difficultyLevel = kPuzzleDiffLevel1;       // IDA: smoke_difficultyLevel — route level + 1 (1-4)
 	bool _puzzleActive = false;        // IDA: smoke_bInitialized (0x4B1E64)
 	bool _processingFrame = false;     // IDA: word_4A43BE — reentrancy guard
 	int16 _zmbCount = 0;              // IDA: smoke_zmbCount (0x4B1D02)
