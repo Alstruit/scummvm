@@ -44,11 +44,9 @@ void ZoombiniShelterTown::open() {
 }
 
 void ZoombiniShelterTown::setBackgroundMusic() {
-	if (_allZoombinisInTown) {
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound3003_BGM), Audio::Mixer::kMusicSoundType);
-	} else {
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound3000_BGM), Audio::Mixer::kMusicSoundType);
-	}
+	// Town does not use the standard setBackgroundMusic() path.
+	// Music is handled through the ambient sound cycling system in onEveryFrame().
+	// IDA: town_initAndSetupPuzzle handles initial sound setup at the end of init.
 }
 
 void ZoombiniShelterTown::setBackgroundBitmap() {
@@ -220,29 +218,42 @@ void ZoombiniShelterTown::loadFeatures() {
 	}
 
 	// Walking Zoombinis from stored chunk (up to 20)
+	// IDA 0x4580A0: Iterates backwards from (firstEmptySlot - 1) through stored chunk,
+	// creates snoid feature runners with TYPE_TOWN_ENTITY for each occupied entry.
+	// Original: zmb_registerSnoidFeatureRunner(0, &pFeatureCore), then bitmask &= ~1, |= 2.
+	// Random position x=[-320, 1599], y=[410, 475].
 	{
 		int16 storedCount = static_cast<int16>(f._zmbStoredTownCount);
-		int16 maxWalking = storedCount;
-		if (maxWalking > 20)
-			maxWalking = 20;
-		if (maxWalking < 0)
-			maxWalking = 0;
-		_walkingZmbCount = maxWalking;
+		_walkingZmbCount = 0;
 
-		bool entryUsed[625] = { };
-		for (uint16 i = 0; i < _walkingZmbCount; i++) {
-			// Find a random occupied entry in stored chunk
-			int16 storedIdx = -1;
-			uint16 attempts = 0;
-			while (storedIdx < 0 && attempts < 256) {
-				int16 idx = _vm->_rnd->getRandomNumber(0, 624);
-				if (!entryUsed[idx] && f._storedChunkTown._entries[idx]._traits._head != ZmbTrait::TRAIT_NONE) {
-					storedIdx = idx;
-					entryUsed[idx] = true;
+		int16 walkIdx = firstEmptySlot - 1;
+		if (walkIdx >= 0) {
+			while (walkIdx >= 0 && _walkingZmbCount < 20 &&
+				   _walkingZmbCount < static_cast<uint16>(storedCount)) {
+				ZmbStateStoredEntry &entry = f._storedChunkTown._entries[walkIdx];
+
+				// Use snoid IDs in the 20000+ range to avoid collision with inhabitants (0-15)
+				uint16 snoidId = 20000 + _walkingZmbCount;
+
+				Common::Point walkPos(
+					_vm->_rnd->getRandomNumber(-320, 1599),
+					_vm->_rnd->getRandomNumber(410, 475));
+
+				ZmbSnoid *snoid = loadSnoidFromPack(snoidId, walkPos,
+					ZmbFeature::FLAG_00000001_TYPE_SNOID);
+				if (snoid) {
+					snoid->_trait = entry._traits;
+					snoid->_name = entry.getU32Name(_vm);
+					// IDA: bitmask &= ~1; bitmask |= 2; → change TYPE_SNOID to TYPE_TOWN_ENTITY
+					snoid->removeFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID);
+					snoid->addFlag(ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY);
+					snoid->setupIdleHotspots();
+					_walkingZmbSnoidIds[_walkingZmbCount] = snoidId;
+					_walkingZmbCount++;
 				}
-				attempts++;
+
+				--walkIdx;
 			}
-			_walkingZmbStoredIdx[i] = storedIdx;
 		}
 	}
 
@@ -269,8 +280,8 @@ void ZoombiniShelterTown::loadFeatures() {
 
 	// Determine sound to play based on difficulty
 	ZMB_DIFFICULTY_ID difficultyId = ZMB_DIFFICULTY_NOTVISITED_00;
-	if (f._townScrollCol != 0) {
-		f._townScrollCol = 0;
+	if (_vm->_state->_lastPageBeforeContainer != 0) {
+		_vm->_state->_lastPageBeforeContainer = 0;
 		difficultyId = _vm->_state->getDifficultyIdFromPageType(ZoombiniPageType::kTown);
 		if (difficultyId == ZMB_DIFFICULTY_LEVEL2_02 && static_cast<int16>(f._zmbStoredTownCount) <= 16) {
 			difficultyId = ZMB_DIFFICULTY_LEVEL1_01;
@@ -311,19 +322,14 @@ void ZoombiniShelterTown::loadFeatures() {
 	} else {
 		// Default: compute route-based sound ID from maze page flag.
 		// IDA: rodmap_getScrbIdFromRoute (0x4588ED): ((pageFlagMaze - 1) & 0xFFF) % 3 + 3000, clamped to [3000, 3002].
-		uint16 mazePF = _vm->_state->_f._pageFlagMaze;
-		int16 soundId = ((mazePF - 1) & 0x0FFF) % 3 + 3000;
-		if (soundId < 3000)
-			soundId = 3000;
-		if (soundId >= 3003)
-			soundId = 3002;
-		_entrySoundRes = ZmbResource(ZmbArchiveKind::kSystem, soundId);
+		int16 soundId = computeRouteMusicId();
+		_entrySoundRes = ZmbResource(ZmbArchiveKind::kPage, soundId);
 		_playEntrySoundImmediately = true;
 	}
 
-	// If all Zoombinis are in town, play victory BGM (3003 is in ZOOMBINI.MHK per range registration)
+	// If all Zoombinis are in town, play victory BGM (3003 is in TOWN.MHK)
 	if (_allZoombinisInTown) {
-		_entrySoundRes = ZmbResource(ZmbArchiveKind::kSystem, kResSound3003_BGM);
+		_entrySoundRes = ZmbResource(ZmbArchiveKind::kPage, kResSound3003_BGM);
 		_playEntrySoundImmediately = true;
 	}
 
@@ -361,8 +367,20 @@ void ZoombiniShelterTown::loadFeatures() {
 	}
 
 	// Play entry sound if conditions met
+	// IDA: town_currentAmbientSoundId stores the raw sound ID for cycling.
+	_ambientSoundId = _entrySoundRes._id;
+	_ambientSoundFirstPlay = _playEntrySoundImmediately;
+	_ambientSoundDone = false;
+	_ambientSoundLastTime = 0;
+	_ambientSoundDelay = 0;
+	_ambientVoicePoolState = 0;
+	_nPendingWalkerRemovals = 0;
+	for (int i = 0; i < 3; i++)
+		_celebWalkerFeatures[i] = nullptr;
+
 	if (_entrySoundRes.hasId() && _playEntrySoundImmediately && !_developAnimTimer) {
 		_vm->_sound->playZmbSound(_entrySoundRes, Audio::Mixer::kSFXSoundType);
+		_ambientSoundDone = true;
 	}
 
 	// Idle animation state init (IDA: town_clearAllPuzzleState @ 0x457B3C)
@@ -373,39 +391,126 @@ void ZoombiniShelterTown::loadFeatures() {
 }
 
 // ---------------------------------------------------------------------------
-// onEveryFrame: Walking Zoombini idle celebration scheduling.
-// IDA: town_onHoverPerFrame @ 0x458B40
-// Budget-based system: budget is recalculated from storedTownCount when exhausted.
-// NOTE: Walking Zoombinis are not yet individual snoid features in ScummVM,
-// so SCRS playback is deferred until walker feature system is implemented.
+// onEveryFrame: Main per-frame update for Town.
+// IDA: town_onHoverPerFrame (0x45891F)
+// Order: cleanup finished walkers, spawn new walkers, ambient sound cycling,
+// idle animation scheduling.
 // ---------------------------------------------------------------------------
 void ZoombiniShelterTown::onEveryFrame() {
+	// --- 1. Cleanup finished celebration walkers ---
+	// IDA 0x45895D: scan celebration walker slots, free completed ones.
+	cleanupFinishedWalkers();
+
+	// --- 2. Spawn celebration walkers ---
+	// IDA 0x4589A8: town_spawnAmbientWalker
+	spawnCelebrationWalker();
+
+	// --- 3. Ambient sound cycling ---
+	// IDA 0x458A05: timer-based alternation between music (3000-3002) and voice (20089-20093).
+	if (_ambientSoundId && !_vm->_sound->isPlaying(static_cast<uint16>(_ambientSoundId))) {
+		if (_ambientSoundDone) {
+			// Sound just finished: start random delay timer
+			_ambientSoundLastTime = getCurrentFrameCounter();
+			_ambientSoundDelay = _vm->_rnd->getRandomNumber(150, 300);
+			_ambientSoundDone = false;
+
+			// Full town: keep spawning fireworks continuously
+			if (_allZoombinisInTown)
+				_developAnimTimer = 50;
+		}
+
+		if (getCurrentFrameCounter() - _ambientSoundLastTime > static_cast<uint32>(_ambientSoundDelay)) {
+			_ambientSoundLastTime = getCurrentFrameCounter();
+
+			int16 nextSoundId;
+			if (_ambientSoundFirstPlay && !_allZoombinisInTown) {
+				// First-play branch: pick random voice from pool [20089-20093]
+				// IDA 0x458AB5: clear first-play flag, then pick from pool with retry
+				_ambientSoundFirstPlay = false;
+				bool retry;
+				do {
+					retry = false;
+					uint16 poolIdx = _vm->_rnd->getNonRepeatRandom(5, _ambientVoicePoolState);
+					nextSoundId = kAmbientVoicePool[poolIdx];
+					// IDA: if voice 20093 selected and town count > 600, retry
+					if (nextSoundId == 20093 &&
+						static_cast<int16>(_vm->_state->_f._zmbStoredTownCount) > 600)
+						retry = true;
+					_ambientSoundId = nextSoundId;
+				} while (retry);
+			} else {
+				// Music branch: cycle 3000->3001->3002->3000 or switch from voice to music
+				if (_ambientSoundId >= 20000) {
+					// Was a voice -> switch to route-based music
+					_ambientSoundId = computeRouteMusicId();
+				} else {
+					// Advance to next music track (wrap 3003->3000)
+					++_ambientSoundId;
+					if (_ambientSoundId >= 3003)
+						_ambientSoundId = 3000;
+				}
+				_ambientSoundFirstPlay = true;
+				nextSoundId = _ambientSoundId;
+			}
+
+			// Play the selected sound
+			ZmbArchiveKind kind = getAmbientSoundArchiveKind(nextSoundId);
+			_vm->_sound->playZmbSound(ZmbResource(kind, static_cast<uint16>(nextSoundId)),
+									  Audio::Mixer::kSFXSoundType);
+			_ambientSoundDone = true;
+		}
+	}
+
+	// --- 4. Idle animation scheduling ---
+	// IDA 0x458B32: budget-based SCRS playback on walking Zoombinis.
 	if (_walkingZmbCount <= 0)
 		return;
 
 	// Recalculate budget when exhausted.
-	// IDA: budget thresholds based on storedTownCount
+	// IDA 0x458B40: budget thresholds based on storedTownCount (wStoredTownZmbCount)
 	if (_idleAnimBudget <= 0) {
 		uint16 storedCount = _vm->_state->_f._zmbStoredTownCount;
 		if (storedCount == 0)
 			return;
+		else if (storedCount == 625)
+			_idleAnimBudget = 8;
 		else if (storedCount <= 156)
 			_idleAnimBudget = 1;
 		else if (storedCount <= 312)
 			_idleAnimBudget = 4;
-		else if (storedCount <= 624)
+		else // storedCount <= 624
 			_idleAnimBudget = 6;
-		else
-			_idleAnimBudget = 8;
+		return;
 	}
 
 	if (getCurrentFrameCounter() - _idleAnimLastFrame <= _idleAnimInterval)
 		return;
 	_idleAnimLastFrame = getCurrentFrameCounter();
 
-	// TODO: Pick random walker via getNonRepeatRandom(_walkingZmbCount, _idleAnimPoolState),
-	// check walker x > 20 && x < 620, play SCRS (foot + 4999), decrement _idleAnimBudget.
-	// Requires walking Zoombinis to be implemented as snoid features.
+	// IDA 0x458B69: Try up to 16 times to find a valid idle walker on-screen
+	bool triggered = false;
+	int16 attempts = 0;
+	do {
+		++attempts;
+		uint16 poolIdx = _vm->_rnd->getNonRepeatRandom(_walkingZmbCount, _idleAnimPoolState);
+		ZmbSnoid *snoid = getSnoid(_walkingZmbSnoidIds[poolIdx]);
+		if (snoid
+			&& snoid->hasFlag(ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY)
+			&& snoid->getAnimState() == kSnoidAnimIdle
+			&& snoid->getPointLoc().x > 20
+			&& snoid->getPointLoc().x < 620) {
+			// Play celebration SCRS: foot + 4999 (SCRS 5000-5004)
+			uint16 scrsId = snoid->_trait._foot + 4999;
+			Common::SeekableReadStream *scrsStream =
+				_vm->getResource(ID_SCRS,
+					ZmbResource(ZmbArchiveKind::kPage, scrsId));
+			if (scrsStream) {
+				snoid->startScrsPlayback(scrsStream, false, false);
+				--_idleAnimBudget;
+				triggered = true;
+			}
+		}
+	} while (!triggered && attempts < 16);
 }
 
 void ZoombiniShelterTown::transferActivePackToTownStorage() {
@@ -467,6 +572,128 @@ void ZoombiniShelterTown::overlay_preRenderShape(ZmbFeature *feature, ZmbHotspot
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Celebration walker spawning.
+// IDA: town_spawnAmbientWalker (0x4599F3)
+// Creates SCRB 8000-8043 features with PLAY_ONCE animation.
+// Up to 3 concurrent walkers; linked to SCRB 1001 overlay for Z-order.
+// ---------------------------------------------------------------------------
+void ZoombiniShelterTown::spawnCelebrationWalker() {
+	if (_developAnimTimer <= 0)
+		return;
+
+	// Find an empty slot
+	int16 slot = -1;
+	for (int16 i = 0; i < 3; ++i) {
+		if (_celebWalkerFeatures[i] == nullptr) {
+			slot = i;
+			break;
+		}
+	}
+	if (slot < 0)
+		return;
+
+	// Select SCRB ID: 50% chance each range [8000,8021] or [8022,8043]
+	int16 randVal = _vm->_rnd->getRandomNumber(0, 100);
+	uint16 scrbId;
+	if (randVal > 50)
+		scrbId = _vm->_rnd->getRandomNumber(8000, 8021);
+	else
+		scrbId = _vm->_rnd->getRandomNumber(8022, 8043);
+
+	// Determine Y position by SCRB ID group (building elevation ranges)
+	// IDA 0x459A7D-0x459B4C: nested if-else tree
+	int16 yPos;
+	if (static_cast<int16>(scrbId) <= 8007)
+		yPos = _vm->_rnd->getRandomNumber(170, 280);
+	else if (static_cast<int16>(scrbId) <= 8009)
+		yPos = _vm->_rnd->getRandomNumber(40, 280);
+	else if (static_cast<int16>(scrbId) <= 8017)
+		yPos = _vm->_rnd->getRandomNumber(110, 260);
+	else if (static_cast<int16>(scrbId) <= 8021)
+		yPos = _vm->_rnd->getRandomNumber(-10, 100);
+	else if (static_cast<int16>(scrbId) <= 8029)
+		yPos = _vm->_rnd->getRandomNumber(230, 310);
+	else if (static_cast<int16>(scrbId) <= 8031)
+		yPos = _vm->_rnd->getRandomNumber(140, 290);
+	else if (static_cast<int16>(scrbId) <= 8039)
+		yPos = _vm->_rnd->getRandomNumber(190, 280);
+	else // 8040-8043
+		yPos = _vm->_rnd->getRandomNumber(100, 200);
+
+	// X position is random in [100, 540]
+	int16 xPos = _vm->_rnd->getRandomNumber(100, 540);
+
+	// Create the celebration SCRB feature.
+	// IDA: runner_registerAndAllocate with TYPE_SNOID flag, then bitmask overwrite to
+	// TYPE_TOWN_ENTITY | LOOP_ANIM | PLAY_ONCE | POS_DELTA (0x908002).
+	// The original also sets pos2 = posLoc (delta = 0), so POS_DELTA has no visual effect.
+	// We omit POS_DELTA to avoid incorrect delta from the SCRB's embedded hotspot position.
+	// Frame interval = 6.
+	ZmbFeature *walker = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 8000), scrbId, 6,
+		ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY |
+		ZmbFeature::FLAG_00008000_LOOP_ANIM |
+		ZmbFeature::FLAG_00100000_PLAY_ONCE);
+
+	if (walker) {
+		// IDA: Sets posLoc to (random_x, random_y), then pos2 = posLoc (delta=0).
+		// We set pointLoc for potential hit-testing; rendering uses embedded SCRB positions.
+		walker->setPointLoc(Common::Point(xPos, yPos));
+		// NOTE: Original engine runner_linkRelativeToParent(wFeatureRunnerIdx_1001, 0, walker)
+		// for Z-order. ScummVM uses a different Z-ordering system; no-op here.
+		_celebWalkerFeatures[slot] = walker;
+
+		if (_developAnimTimer > 0)
+			--_developAnimTimer;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cleanup completed celebration walkers.
+// IDA: town_onHoverPerFrame (0x45895D) cleanup loop.
+// Scans celebration walker slots for completed animations, frees them.
+// ---------------------------------------------------------------------------
+void ZoombiniShelterTown::cleanupFinishedWalkers() {
+	for (int16 i = 0; i < 3; ++i) {
+		if (_celebWalkerFeatures[i] == nullptr)
+			continue;
+		if (_celebWalkerFeatures[i]->hasAnimEndCallbackFired()) {
+			unloadScrbFeature(_celebWalkerFeatures[i]);
+			_celebWalkerFeatures[i] = nullptr;
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+ZmbArchiveKind ZoombiniShelterTown::getAmbientSoundArchiveKind(int16 id) const {
+	// Town music 3000-3003 is in TOWN.MHK (page archive).
+	// Voice sounds 20000+ are in ZOOMBINI.MHK (system archive).
+	if (id >= 1000 && id < 20000)
+		return ZmbArchiveKind::kPage;
+	return ZmbArchiveKind::kSystem;
+}
+
+int16 ZoombiniShelterTown::computeRouteMusicId() const {
+	// IDA: rodmap_getScrbIdFromRoute (0x4588ED)
+	// ((pageFlagMaze - 1) & 0xFFF) % 3 + 3000, clamped to [3000, 3002].
+	uint16 mazePF = _vm->_state->_f._pageFlagMaze;
+	int16 soundId = ((mazePF - 1) & 0x0FFF) % 3 + 3000;
+	if (soundId < 3000)
+		soundId = 3000;
+	if (soundId >= 3003)
+		soundId = 3002;
+	return soundId;
+}
+
+// Ambient voice pool: 5 voice tracks for Town ambient cycling.
+// IDA: word_4A727E[5]
+const int16 ZoombiniShelterTown::kAmbientVoicePool[5] = {
+	20089, 20090, 20091, 20092, 20093
+};
 
 // Town inhabitant position data (16 x,y coordinate pairs).
 // Source: unk_4A72D0 in the original binary (puzzleTown_457C7E).

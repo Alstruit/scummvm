@@ -888,6 +888,24 @@ void ZoombiniGraphics::setPalette(uint16 id) {
 	_vm->_system->getPaletteManager()->setPalette(_paletteBytes, 0, ARRAYSIZE(_paletteBytes) / 3);
 }
 
+void ZoombiniGraphics::rotatePaletteRight(uint16 startEntry, uint16 count) {
+	if (count < 2 || startEntry >= 256)
+		return;
+
+	uint16 endEntry = (uint16)MIN<uint32>((uint32)startEntry + count, 256);
+	if (endEntry - startEntry < 2)
+		return;
+
+	byte saved[3];
+	const uint16 lastEntry = endEntry - 1;
+	memcpy(saved, &_paletteBytes[lastEntry * 3], sizeof(saved));
+	memmove(&_paletteBytes[(startEntry + 1) * 3], &_paletteBytes[startEntry * 3],
+	        (endEntry - startEntry - 1) * 3);
+	memcpy(&_paletteBytes[startEntry * 3], saved, sizeof(saved));
+
+	_vm->_system->getPaletteManager()->setPalette(_paletteBytes, 0, ARRAYSIZE(_paletteBytes) / 3);
+}
+
 bool ZoombiniGraphics::readPalette(uint16 id, byte *destBuf, size_t destBufSize) {
 	if (!destBuf || destBufSize == 0)
 		return false;

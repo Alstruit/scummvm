@@ -100,6 +100,7 @@ const int16 ZoombiniPuzzleLilly::kObstacleBFSOffset[5] = {0, 0, 3, 7, 0};
 ZoombiniPuzzleLilly::ZoombiniPuzzleLilly(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kLilly) {
 	memset(_gridPattern, 0, sizeof(_gridPattern));
 	memset(_gridOccupancy, 0, sizeof(_gridOccupancy));
+	memset(_gridExitReservation, 0, sizeof(_gridExitReservation));
 	memset(_gridAttr1, 0, sizeof(_gridAttr1));
 	memset(_gridAttr2, 0, sizeof(_gridAttr2));
 	memset(_gridAttr3, 0, sizeof(_gridAttr3));
@@ -299,11 +300,15 @@ void ZoombiniPuzzleLilly::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	const Common::Point offscreenPos(680, 220);
 	uint16 posIdx = 0;
+	_activeBfsRunnerCount = 0;
 
 	for (int16 i = 0; i < f._zmbPackActive._wPackZmbCount; i++) {
 		ZmbStateActiveEntry &entry = f._zmbPackActive._entries[i];
 		if (!entry._bIsOccupied)
 			continue;
+
+		if (posIdx < kMaxRunners)
+			_activeBfsRunners[_activeBfsRunnerCount++] = posIdx;
 
 		uint16 snoidId = 10000 + posIdx;
 		ZmbSnoid *snoid = loadSnoidFromPack(snoidId, offscreenPos,
@@ -318,6 +323,7 @@ void ZoombiniPuzzleLilly::loadZoombinisFromPack() {
 	}
 
 	_totalZmbCount = posIdx;
+	_remainingZmbs = _totalZmbCount;
 }
 
 void ZoombiniPuzzleLilly::setDifficultyParams() {
@@ -550,6 +556,7 @@ void ZoombiniPuzzleLilly::initGridWithAttributes() {
 	for (int16 row = 0; row < 12; row++) {
 		for (int16 col = 0; col < 13; col++) {
 			_gridOccupancy[row][col] = 0;
+			_gridExitReservation[row][col] = 0;
 		}
 	}
 
@@ -645,6 +652,7 @@ void ZoombiniPuzzleLilly::initGridWithAttributes() {
 	for (int16 k = 0; k < 12; k++) {
 		for (int16 m = 0; m < 12; m++) {
 			_gridOccupancy[k][m] = 0;
+			_gridExitReservation[k][m] = 0;
 			_gridAttr1[k][m] = 0;
 			_gridAttr2[k][m] = 0;
 			_gridAttr3[k][m] = 0;
@@ -913,8 +921,8 @@ void ZoombiniPuzzleLilly::processExitQueue() {
 			_runnerStates[runnerIdx].callbackMode = kCBLillyExit;
 			loadScrbOntoFeature(_zmbRunners[runnerIdx], 10058);
 			// IDA: runner[8] = 0x04980002 (flags)
-			// IDA: runner_linkRelativeToParent(word_4AE398, 0, runner.idx)
-			// TODO: Z-order linking to exit parent runner
+			// IDA also re-links to a no-op parent runner for list ordering.
+			// ScummVM rebuilds render order every frame, so no persistent link is required here.
 		}
 	}
 }
@@ -1066,8 +1074,8 @@ void ZoombiniPuzzleLilly::processMovePhase() {
 				continue;
 			}
 
-			// IDA: runner_linkRelativeToParent(word_4AE3AA[runner.col], 0, runner.idx)
-			// TODO: Z-order linking to column parent runner
+			// IDA re-links to column parents for linked-list ordering only.
+			// ScummVM's per-frame Z-sort makes that ordering implicit.
 
 			// Advance one path step
 			uint16 nextScrb = advancePathOnGrid(runnerIdx);
@@ -1154,10 +1162,9 @@ void ZoombiniPuzzleLilly::processMovePhase() {
 			// No valid move — put back for retry
 			_pendingMoveQueue[_pendingMoveCount++] = _moveQueue[_moveQueueSize];
 		} else {
-			// IDA: Direction-based parent linking
-			// dirByte 0,1,3 → normal parent (word_4AE3AA[col])
-			// dirByte 2 → alt parent (word_4AE3AC[col])
-			// TODO: runner_linkRelativeToParent based on rs.dirByte
+			// IDA re-links to row/column helper runners before the step SCRB.
+			// ScummVM does not preserve runner-list ordering between frames, so the
+			// direction-specific parent link is not modeled directly.
 
 			rs.callbackMode = kCBLillyMoveStep;
 			loadScrbOntoFeature(_zmbRunners[runnerIdx], v31);
@@ -1434,11 +1441,12 @@ uint16 ZoombiniPuzzleLilly::advancePathOnGrid(int16 runnerIdx) {
 
 	// Handle exit case: moving right past col 11
 	if (exitFound) {
-		// IDA: Check byte_4AC691 (exit flag) — if exit cell already used, no exit
-		// For now, just check occupancy of the boundary cell
-		if (_gridOccupancy[rs.row][11] != 0) {
+		// IDA: Check byte_4AC691 on the current cell. This reserves the
+		// enter/rotate/cross handoff so only one runner exits from a cell at a time.
+		if (_gridExitReservation[rs.row][rs.col] != 0) {
 			bestDir = 5; // no valid move
 		} else {
+			_gridExitReservation[rs.row][rs.col] = 1;
 			bestDir = 4; // exit
 		}
 	}
@@ -2107,8 +2115,8 @@ void ZoombiniPuzzleLilly::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCod
 			// Snap position to cell center
 			if (rs.obstCol < 12 && rs.obstRow < 13)
 				feature->setPointLoc(_gridCellPos[rs.obstCol][rs.obstRow]);
-			// Clear grid occupancy at this cell
-			_gridOccupancy[rs.obstCol][rs.obstRow] = 0;
+			// Clear Lilly's exit reservation for this cell.
+			_gridExitReservation[rs.obstCol][rs.obstRow] = 0;
 			// Push to rotateQueue
 			if (_rotateQueueSize < kMaxQueueSize)
 				_rotateQueue[_rotateQueueSize++] = runnerIdx;
@@ -2121,8 +2129,8 @@ void ZoombiniPuzzleLilly::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCod
 			// Snap position
 			if (rs.obstCol < 12 && rs.obstRow < 13)
 				feature->setPointLoc(_gridCellPos[rs.obstCol][rs.obstRow]);
-			// Clear occupancy
-			_gridOccupancy[rs.obstCol][rs.obstRow] = 0;
+			// Clear Lilly's exit reservation for this cell.
+			_gridExitReservation[rs.obstCol][rs.obstRow] = 0;
 			// Push to exitQueue
 			if (_exitQueueSize < kMaxQueueSize)
 				_exitQueue[_exitQueueSize++] = runnerIdx;
@@ -2150,10 +2158,10 @@ void ZoombiniPuzzleLilly::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCod
 			// Snap position
 			if (rs.obstCol < 12 && rs.obstRow < 13)
 				feature->setPointLoc(_gridCellPos[rs.obstCol][rs.obstRow]);
-			// Clear grid cell
-			_gridOccupancy[rs.obstCol][rs.obstRow] = 0;
+			// Clear Lilly's exit reservation for this cell.
+			_gridExitReservation[rs.obstCol][rs.obstRow] = 0;
 			_completedCrossRunner = runnerIdx;
-			// TODO: Remove from word_4AE3EC[] array (dual-runner tracking)
+			removeActiveBfsRunner(runnerIdx);
 		}
 		break;
 
@@ -2168,8 +2176,14 @@ void ZoombiniPuzzleLilly::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCod
 		if (eventCode == 20) {
 			if (_readyQueueSize < kMaxMoveQueueSize)
 				_readyQueue[_readyQueueSize++] = runnerIdx;
+		} else if (eventCode == 26 && _exitAnimFeatures[runnerIdx]) {
+			// IDA reloads the linked child runner with SCRB 10000 here.
+			// Reuse the dedicated child feature so the extra Lilly path visual stays
+			// separate from the primary path runner in the current architecture.
+			_exitAnimFeatures[runnerIdx]->setPointLoc(feature->getPointLoc());
+			_exitAnimFeatures[runnerIdx]->activateRender();
+			loadScrbOntoFeature(_exitAnimFeatures[runnerIdx], 10000);
 		}
-		// Event 26: load SCRB 10000 on child runner (dual-runner system — skip for now)
 		break;
 
 	case kCBLillyReadyMove:
@@ -2436,10 +2450,11 @@ void ZoombiniPuzzleLilly::handleScriptEvent(int16 eventId, ZmbFeature *eventFeat
 		if (_difficultyLevel >= kPuzzleDiffLevel2) {
 			for (int16 i = 0; i < _totalZmbCount; i++) {
 				if (i == _totalZmbCount - 2 || i == _totalZmbCount - 1) {
-					if (_zmbRunners[i]) {
-						_runnerStates[i].callbackMode = kCBLillyDepart;
-						_zmbRunners[i]->activateRender();
-						loadScrbOntoFeature(_zmbRunners[i], 10089 + i);
+					if (_exitAnimFeatures[i]) {
+						if (_zmbRunners[i])
+							_exitAnimFeatures[i]->setPointLoc(_zmbRunners[i]->getPointLoc());
+						_exitAnimFeatures[i]->activateRender();
+						loadScrbOntoFeature(_exitAnimFeatures[i], 10089 + i);
 					}
 				}
 			}
@@ -2493,17 +2508,34 @@ void ZoombiniPuzzleLilly::handleScriptEvent(int16 eventId, ZmbFeature *eventFeat
 // Helpers
 // =================================================================
 
+void ZoombiniPuzzleLilly::removeActiveBfsRunner(int16 runnerIdx) {
+	for (int16 i = 0; i < _activeBfsRunnerCount; i++) {
+		if (_activeBfsRunners[i] != runnerIdx)
+			continue;
+
+		for (int16 j = i + 1; j < _activeBfsRunnerCount; j++)
+			_activeBfsRunners[j - 1] = _activeBfsRunners[j];
+
+		_activeBfsRunners[--_activeBfsRunnerCount] = -1;
+		break;
+	}
+}
+
 void ZoombiniPuzzleLilly::countMatchesAndPlaySound() {
 	// IDA: fleens_countAttrMatchAndEnqueueSound (0x429395)
-	// Iterates zoombini BFS runners (word_4AE3EC[] in original).
+	// Iterates live zoombini BFS runners (word_4AE3EC[] in original).
 	// For each: checks placed (core188+0xC2 != 0) AND targetRow == 11 (core188+0xD6 == 11).
 	// targetRow == 11 means the BFS path successfully reaches the exit row.
-	// Runners that already exited have targetRow cleared to 0 by handleArriveAtNode,
-	// and are removed from word_4AE3EC in original; here they start counted in _completedZmbCount.
+	// Runners that already exited have targetRow cleared to 0 by handleArriveAtNode
+	// and are removed from the live list during event 54 cross completion.
 	int16 matchCount = _completedZmbCount;
 
-	for (int16 i = 0; i < _totalZmbCount; i++) {
-		ZmbLillyRunnerState &rs = _runnerStates[i];
+	for (int16 i = 0; i < _activeBfsRunnerCount; i++) {
+		int16 runnerIdx = _activeBfsRunners[i];
+		if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
+			continue;
+
+		ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 		if (rs.placed && rs.targetRow == 11) {
 			matchCount++;
 			rs.matched = true;
@@ -2561,11 +2593,13 @@ void ZoombiniPuzzleLilly::swapCellsAndUpdateRunners(int16 colA, int16 rowA, int1
 	_gridCombinedAttr[rowA][colA] = _gridCombinedAttr[rowB][colB];
 	_gridCombinedAttr[rowB][colB] = tmpC;
 
-	// IDA: First loop — Clear visit grids at swapped cells for placed zoombini BFS runners.
-	// Original iterates word_4AE3EC[0..lilly_obstacleRunnerCount-1] (zoombini BFS runners).
-	// In our architecture, zoombini BFS runner states are _runnerStates[0.._totalZmbCount-1].
-	for (int16 i = 0; i < _totalZmbCount; i++) {
-		ZmbLillyRunnerState &rs = _runnerStates[i];
+	// IDA: First loop — Clear visit grids at swapped cells for live zoombini BFS runners.
+	for (int16 i = 0; i < _activeBfsRunnerCount; i++) {
+		int16 runnerIdx = _activeBfsRunners[i];
+		if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
+			continue;
+
+		ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 		if (!rs.placed)
 			continue;
 
@@ -2576,7 +2610,7 @@ void ZoombiniPuzzleLilly::swapCellsAndUpdateRunners(int16 colA, int16 rowA, int1
 			byte attrAtA = getGridAttrByType(rs.attrType, rowA, colA);
 			byte attrAtB = getGridAttrByType(rs.attrType, rowB, colB);
 			if (attrAtA == rs.attrValue || attrAtB == rs.attrValue)
-				initRunnerBFSPath(i);
+				initRunnerBFSPath(runnerIdx);
 		}
 	}
 

@@ -177,6 +177,7 @@ ZoombiniPuzzleSlides::ZoombiniPuzzleSlides(MohawkEngine_Zoombini *vm) : Zoombini
 	memset(_usedFlags, 0, sizeof(_usedFlags));
 	memset(_pairTypeArray, 0, sizeof(_pairTypeArray));
 	memset(_activeCellList, 0, sizeof(_activeCellList));
+	memset(_activeCellRunnerIds, 0, sizeof(_activeCellRunnerIds));
 	memset(_cellFeatures, 0, sizeof(_cellFeatures));
 	memset(_layerScrbArr, 0, sizeof(_layerScrbArr));
 }
@@ -288,6 +289,11 @@ void ZoombiniPuzzleSlides::loadFeatures() {
 	setHelpButton(Common::Rect(600, 365, 639, 402));
 	loadGoMapButtonsFeature(6000);
 	loadHelpButtonFeature();
+	setGoButtonsEnabled(false);
+
+	// The original init path consumes attribute pairings during board construction.
+	snapshotZmbAttrsToArrays();
+	generateAttrPairings();
 
 	// Initialize the hex grid based on difficulty
 	initGridByDifficulty();
@@ -295,11 +301,14 @@ void ZoombiniPuzzleSlides::loadFeatures() {
 	// Build adjacency table
 	buildHexAdjacencyTable();
 
-	// Snapshot attributes for matching
-	snapshotZmbAttrsToArrays();
+	// Active Slides grid cells need SCRB runners so chain logic can reload them.
+	for (int16 cellIdx = 0; cellIdx < kNumCells; cellIdx++) {
+		if (_cellGrid[cellIdx * kFieldsPerCell + 1] != kCellInert)
+			ensureCellFeature(cellIdx);
+	}
 
-	// Generate attribute pairings
-	generateAttrPairings();
+	// Refresh cached runner ids after grid setup.
+	snapshotZmbAttrsToArrays();
 
 	// Get difficulty
 	_vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagSlides);
@@ -316,15 +325,95 @@ void ZoombiniPuzzleSlides::loadFeatures() {
 	_celebrationLastFrame = 0;
 	_matchCount = 0;
 	_roundComplete = 0;
+	_victoryState = 0;
+	_victoryLastFrame = 0;
+	_victoryNotified = false;
+	_roundInitialized = 0;
+	_completionAnimFeature = nullptr;
+	_completionSequenceActive = false;
 	_isDragging = 0;
 	_activeCellCount = 0;
+	memset(_activeCellList, 0, sizeof(_activeCellList));
+	memset(_activeCellRunnerIds, 0, sizeof(_activeCellRunnerIds));
+	debug("Slides: loadFeatures difficulty=%d loaded=%d numSlots=%d practice=%u",
+	      _difficultyLevel, _loadedZmbCount, _numSlots, _vm->_state->_practiceLevel);
 }
 
 void ZoombiniPuzzleSlides::onGoButtonActivated() {
 	// IDA: slides_onClickHandler case 2 -> puzzle_pendingTransitionTarget = 5 (BC2)
 	// Route 2: Slides -> Basecamp2 (via Xfer)
-	_departXferSrcSiPage = ZMB_SI_SLIDES_08;
-	ZoombiniInteractive::onGoButtonActivated();
+	if (_pendingGoDepart || _completionSequenceActive)
+		return;
+	if (!_roundComplete)
+		return;
+
+	beginSolvedDepartureSequence();
+}
+
+void ZoombiniPuzzleSlides::executeDeparture() {
+	// Locked Slides cells correspond to Zoombinis that passed the puzzle.
+	// IDA clears runner+295 here via slides_markMatchedRunnersDone(); with the
+	// CFeatureRunner307 layout, runner+295 = 0x30 + core259.unk00F7 (occupied flag).
+	// Clear them out of the active pack before the shared container-puzzle save/export runs.
+	markMatchedRunnersDone();
+	ZoombiniInteractive::executeDeparture();
+}
+
+void ZoombiniPuzzleSlides::debugPrepareForDeparture() {
+	_isDragging = 0;
+	_roundInitialized = 0;
+	_completionSequenceActive = false;
+	_completionAnimFeature = nullptr;
+	_victoryNotified = false;
+	_activeCellCount = 0;
+	memset(_activeCellList, 0, sizeof(_activeCellList));
+	memset(_activeCellRunnerIds, 0, sizeof(_activeCellRunnerIds));
+
+	for (int16 cellIdx = 0; cellIdx < kNumCells; cellIdx++) {
+		int16 base = cellIdx * kFieldsPerCell;
+		int16 state = _cellGrid[base + 1];
+
+		if (state == kCellLocked || state == kCellOccupied) {
+			_cellGrid[base + 1] = kCellConnector;
+			_cellGrid[base + 2] = 0;
+			syncCellFeatureScript(cellIdx);
+		} else if (state == kCellMatched) {
+			_cellGrid[base + 1] = kCellPath;
+			syncCellFeatureScript(cellIdx);
+		}
+	}
+
+	int16 placedCount = 0;
+	for (int16 i = 0; i < _loadedZmbCount && placedCount < _numSlots; i++) {
+		int16 cellIdx = _slotCellMap[placedCount];
+		if (cellIdx < 0 || kNumCells <= cellIdx)
+			continue;
+
+		ZmbSnoid *snoid = getSnoid(10000 + i);
+		if (!snoid)
+			continue;
+
+		moveZmbToCell(snoid, cellIdx);
+		snoid->setAnimState(kSnoidAnimIdle);
+		snoid->setupIdleHotspots();
+
+		int16 base = cellIdx * kFieldsPerCell;
+		_cellGrid[base + 1] = kCellLocked;
+		_cellGrid[base + 2] = snoid->getId();
+		_activeCellList[placedCount] = cellIdx;
+		_activeCellRunnerIds[placedCount] = snoid->getId();
+		_activeCellCount++;
+		syncCellFeatureScript(cellIdx);
+		placedCount++;
+	}
+
+	_roundComplete = (placedCount >= _loadedZmbCount);
+	_victoryState = (_difficultyLevel == kPuzzleDiffLevel4 && _roundComplete) ? 1 : 0;
+	if (_victoryState != 0)
+		_victoryLastFrame = getCurrentFrameCounter();
+
+	setGoButtonsEnabled(_roundComplete);
+	debugC(kZmbDebugPage, "Slides: debug prepared solved board (%d/%d runners)", placedCount, _loadedZmbCount);
 }
 
 // =============================================================================
@@ -354,109 +443,482 @@ void ZoombiniPuzzleSlides::initGridByDifficulty() {
 	memset(_slotCellMap, -1, sizeof(_slotCellMap));
 	_numSlots = 0;
 
+	// IDA: slides_snapshotZmbAttrsToArrays() happens before the difficulty switch.
+	snapshotZmbAttrsToArrays();
+
 	// IDA: Large switch on difficulty level (0-3, but we use 1-4)
 	switch (_difficultyLevel) {
 	case kPuzzleDiffLevel1:
-		// Level 1: Simple 3-slot configuration
-		// IDA: 3 slots at cells: 57 (center), 46, 68
-		_numSlots = 3;
-		_slotCellMap[0] = 57;
-		_slotCellMap[1] = 46;
-		_slotCellMap[2] = 68;
+		if (_numPairs < ARRAYSIZE(kPairStartOffsets)) {
+			int16 startCell = kPairStartOffsets[_numPairs];
+			int16 cellStep = kPairSpacingArray[_numPairs];
 
-		for (int16 i = 0; i < _numSlots; i++) {
-			int16 cell = _slotCellMap[i];
-			_cellGrid[cell * kFieldsPerCell + 1] = _slotBaseState;
-		}
-		break;
+			for (int16 pairIdx = 0; pairIdx < _numPairs; pairIdx++) {
+				int16 baseCell = startCell + cellStep * pairIdx;
+				int16 offsetCell = 0;
 
-	case kPuzzleDiffLevel2:
-		// Level 2: 6-slot horizontal configuration
-		// IDA: 6 slots in a row pattern
-		_numSlots = 6;
-		_slotCellMap[0] = 46;
-		_slotCellMap[1] = 48;
-		_slotCellMap[2] = 50;
-		_slotCellMap[3] = 65;
-		_slotCellMap[4] = 67;
-		_slotCellMap[5] = 69;
+				if (7 < _numPairs && (baseCell % 2) != 0) {
+					_cellGrid[baseCell * kFieldsPerCell + 1] = _slotBaseState;
+					_adjBitFlags[baseCell] = kAdjE;
+					for (int16 cell = baseCell + 1; cell < baseCell + 4; cell++) {
+						_cellGrid[cell * kFieldsPerCell + 1] = _slotBaseState;
+						_adjBitFlags[cell] = kAdjW | kAdjE;
+					}
+					offsetCell = 3;
+				}
 
-		for (int16 i = 0; i < _numSlots; i++) {
-			int16 cell = _slotCellMap[i];
-			_cellGrid[cell * kFieldsPerCell + 1] = _slotBaseState;
-		}
+				int16 slotBaseCell = baseCell + offsetCell;
+				int16 slotCell = slotBaseCell + 1;
+				_cellGrid[slotBaseCell * kFieldsPerCell + 1] = _slotBaseState;
+				_cellGrid[slotCell * kFieldsPerCell + 1] = kCellConnector;
+				_slotCellMap[_numSlots++] = slotCell;
 
-		// Set up connector cells
-		for (int16 i = 0; i < 18; i++) {
-			int16 cell = kLeftArmLinkCells[i];
-			if (_cellGrid[cell * kFieldsPerCell + 1] == kCellInert) {
-				_cellGrid[cell * kFieldsPerCell + 1] = kCellConnector;
-			}
-		}
-		break;
-
-	case kPuzzleDiffLevel3:
-		// Level 3: 12-slot grid configuration
-		// IDA: 12 slots across two rows
-		_numSlots = 12;
-		for (int16 i = 0; i < 12; i++) {
-			_slotCellMap[i] = kInnerLinkPairs[i];
-			int16 cell = _slotCellMap[i];
-			_cellGrid[cell * kFieldsPerCell + 1] = _slotBaseState;
-		}
-
-		// Set up left and right endpoints as connectors
-		for (int16 i = 0; i < 3; i++) {
-			_cellGrid[kLeftEndpointCells[i] * kFieldsPerCell + 1] = kCellConnector;
-			_cellGrid[kRightEndpointCells[i] * kFieldsPerCell + 1] = kCellConnector;
-		}
-
-		// Set up all link cells
-		for (int16 i = 0; i < 18; i++) {
-			int16 cellL = kLeftArmLinkCells[i];
-			int16 cellR = kRightArmLinkCells[i];
-			if (_cellGrid[cellL * kFieldsPerCell + 1] == kCellInert) {
-				_cellGrid[cellL * kFieldsPerCell + 1] = kCellConnector;
-			}
-			if (_cellGrid[cellR * kFieldsPerCell + 1] == kCellInert) {
-				_cellGrid[cellR * kFieldsPerCell + 1] = kCellConnector;
-			}
-		}
-		break;
-
-	case kPuzzleDiffLevel4:
-		// Level 4: Full 26-slot grid (uses kSlotCellIndices)
-		// IDA: All primary slot cells active
-		_numSlots = 26;
-		for (int16 i = 0; i < 26; i++) {
-			_slotCellMap[i] = kSlotCellIndices[i];
-			int16 cell = _slotCellMap[i];
-			_cellGrid[cell * kFieldsPerCell + 1] = _slotBaseState;
-		}
-
-		// Set up all interior link cells
-		for (int16 i = 0; i < 43; i++) {
-			int16 cell = kLinkCellIndices[i];
-			if (_cellGrid[cell * kFieldsPerCell + 1] == kCellInert) {
-				_cellGrid[cell * kFieldsPerCell + 1] = kCellConnector;
-			}
-		}
-
-		// At level 4, path cells may be used for walking
-		// IDA: if (slotBaseState == 505) use alternate path setup
-		if (_slotBaseState == kCellSlotBase2) {
-			for (int16 i = 0; i < 20; i++) {
-				int16 cell = kEvenRowLinkCells[i];
-				if (_cellGrid[cell * kFieldsPerCell + 1] == kCellConnector) {
-					_cellGrid[cell * kFieldsPerCell + 1] = kCellPath;
+				if (_pairTypeArray[pairIdx] == kCellPath) {
+					_adjBitFlags[slotBaseCell] |= kAdjE;
+					_adjBitFlags[slotCell] |= kAdjW;
+				} else {
+					int16 attrCell = slotBaseCell + 2;
+					int16 endSlotCell = slotBaseCell + 3;
+					_cellGrid[attrCell * kFieldsPerCell + 1] = kCellPath;
+					_cellGrid[attrCell * kFieldsPerCell + 2] = _pairTypeArray[pairIdx];
+					_cellGrid[endSlotCell * kFieldsPerCell + 1] = kCellConnector;
+					_slotCellMap[_numSlots++] = endSlotCell;
+					_adjBitFlags[slotBaseCell] |= kAdjE;
+					_adjBitFlags[slotCell] = kAdjW | kAdjE;
+					_adjBitFlags[attrCell] = kAdjW | kAdjE;
+					_adjBitFlags[endSlotCell] |= kAdjW;
 				}
 			}
 		}
 		break;
 
+	case kPuzzleDiffLevel2:
+		buildChainSequence();
+		if (_numPairs < ARRAYSIZE(kPairStartOffsets)) {
+			int16 startCell = kPairStartOffsets[_numPairs];
+			int16 cellStep = kPairSpacingArray[_numPairs];
+			int16 pairTypeIdx = 0;
+			int16 placedSlotCount = 0;
+
+			for (int16 groupIdx = 0; groupIdx < _numPairs; groupIdx++) {
+				int16 baseCell = startCell + cellStep * groupIdx;
+				_cellGrid[baseCell * kFieldsPerCell + 1] = _slotBaseState;
+				_cellGrid[(baseCell + 1) * kFieldsPerCell + 1] = kCellConnector;
+				_slotCellMap[_numSlots++] = baseCell + 1;
+				placedSlotCount++;
+
+				if (_loadedZmbCount <= placedSlotCount) {
+					_adjBitFlags[baseCell] = kAdjE;
+					_adjBitFlags[baseCell + 1] = kAdjW;
+					break;
+				}
+
+				if (pairTypeIdx < ARRAYSIZE(_pairTypeArray) &&
+					(_pairTypeArray[pairTypeIdx] == 0 || _pairTypeArray[pairTypeIdx] == kCellPath)) {
+					if (_pairTypeArray[pairTypeIdx] != 0) {
+						_cellGrid[(baseCell + 2) * kFieldsPerCell + 1] = kCellPath;
+						_cellGrid[(baseCell + 2) * kFieldsPerCell + 2] = 0;
+						_cellGrid[(baseCell + 3) * kFieldsPerCell + 1] = kCellConnector;
+						_slotCellMap[_numSlots++] = baseCell + 3;
+						_adjBitFlags[baseCell] |= kAdjE;
+						_adjBitFlags[baseCell + 1] = kAdjW | kAdjE;
+						_adjBitFlags[baseCell + 2] = kAdjW | kAdjE;
+						_adjBitFlags[baseCell + 3] |= kAdjW;
+						pairTypeIdx++;
+						placedSlotCount++;
+						if (_loadedZmbCount <= placedSlotCount)
+							break;
+					}
+				} else if (pairTypeIdx < ARRAYSIZE(_pairTypeArray)) {
+					_cellGrid[(baseCell + 2) * kFieldsPerCell + 1] = kCellPath;
+					_cellGrid[(baseCell + 2) * kFieldsPerCell + 2] = _pairTypeArray[pairTypeIdx];
+					_cellGrid[(baseCell + 3) * kFieldsPerCell + 1] = kCellConnector;
+					_slotCellMap[_numSlots++] = baseCell + 3;
+					_adjBitFlags[baseCell] |= kAdjE;
+					_adjBitFlags[baseCell + 1] = kAdjW | kAdjE;
+					_adjBitFlags[baseCell + 2] = kAdjW | kAdjE;
+					_adjBitFlags[baseCell + 3] |= kAdjW;
+					pairTypeIdx++;
+					placedSlotCount++;
+					if (_loadedZmbCount <= placedSlotCount)
+						break;
+				}
+
+				if (pairTypeIdx < ARRAYSIZE(_pairTypeArray) &&
+					(_pairTypeArray[pairTypeIdx] == 0 || _pairTypeArray[pairTypeIdx] == kCellPath)) {
+					if (_pairTypeArray[pairTypeIdx] != 0) {
+						_cellGrid[(baseCell + 4) * kFieldsPerCell + 1] = kCellPath;
+						_cellGrid[(baseCell + 4) * kFieldsPerCell + 2] = 0;
+						_cellGrid[(baseCell + 5) * kFieldsPerCell + 1] = kCellConnector;
+						_slotCellMap[_numSlots++] = baseCell + 5;
+						_adjBitFlags[baseCell + 3] |= kAdjE;
+						_adjBitFlags[baseCell + 4] = kAdjW | kAdjE;
+						_adjBitFlags[baseCell + 5] = kAdjW;
+						pairTypeIdx++;
+						placedSlotCount++;
+						if (_loadedZmbCount <= placedSlotCount)
+							break;
+					}
+				} else if (pairTypeIdx < ARRAYSIZE(_pairTypeArray)) {
+					_cellGrid[(baseCell + 4) * kFieldsPerCell + 1] = kCellPath;
+					_cellGrid[(baseCell + 4) * kFieldsPerCell + 2] = _pairTypeArray[pairTypeIdx];
+					_cellGrid[(baseCell + 5) * kFieldsPerCell + 1] = kCellConnector;
+					_slotCellMap[_numSlots++] = baseCell + 5;
+					_adjBitFlags[baseCell + 3] |= kAdjE;
+					_adjBitFlags[baseCell + 4] = kAdjW | kAdjE;
+					_adjBitFlags[baseCell + 5] = kAdjW;
+					pairTypeIdx++;
+					placedSlotCount++;
+					if (_loadedZmbCount <= placedSlotCount)
+						break;
+				}
+			}
+		}
+		break;
+
+	case kPuzzleDiffLevel3: {
+		for (int16 i = 0; i < ARRAYSIZE(kLeftEndpointCells); i++) {
+			int16 cell = kLeftEndpointCells[i];
+			_cellGrid[cell * kFieldsPerCell + 1] = _slotBaseState;
+			_adjBitFlags[cell] = kAdjE;
+			_adjBitFlags[cell + 1] = kAdjW | kAdjSW | kAdjNE;
+			_adjBitFlags[cell - 8] |= kAdjSW;
+			_adjBitFlags[cell + 10] |= kAdjNW;
+		}
+
+		for (int16 i = 0; i < ARRAYSIZE(kRightEndpointCells); i++) {
+			int16 cell = kRightEndpointCells[i];
+			_cellGrid[cell * kFieldsPerCell + 1] = kCellConnector;
+			_adjBitFlags[cell] = kAdjNW | kAdjSW;
+			_adjBitFlags[cell - 10] |= kAdjSE;
+			_adjBitFlags[cell + 8] |= kAdjNE;
+		}
+
+		for (int16 i = 0; i < ARRAYSIZE(kLeftArmLinkCells); i++) {
+			_cellGrid[kLeftArmLinkCells[i] * kFieldsPerCell + 1] = kCellPath;
+			_cellGrid[kRightArmLinkCells[i] * kFieldsPerCell + 1] = kCellConnector;
+		}
+
+		for (int16 i = 0; i < ARRAYSIZE(kInnerLinkPairs); i++) {
+			int16 cell = kInnerLinkPairs[i];
+			_adjBitFlags[cell] |= kAdjW | kAdjE;
+			_adjBitFlags[cell - 1] |= kAdjE;
+			_adjBitFlags[cell + 1] |= kAdjW;
+		}
+
+		buildHexAdjacencyTable();
+		sortZmbsByOverlapCount();
+
+		if (_vm->_rnd->getRandomNumber(0, 99) >= 50) {
+			if (_vm->_rnd->getRandomNumber(0, 99) >= 50) {
+				int16 result = placeNextZmbInCell(91);
+				result = placeNextZmbInCell(19);
+				placeNextZmbInCell(55);
+				(void)result;
+			} else {
+				int16 result = placeNextZmbInCell(55);
+				result = placeNextZmbInCell(91);
+				placeNextZmbInCell(19);
+				(void)result;
+			}
+		} else {
+			int16 result = placeNextZmbInCell(19);
+			result = placeNextZmbInCell(55);
+			placeNextZmbInCell(91);
+			(void)result;
+		}
+
+		auto maybeSetMatchAttr = [this](int16 destCell, int16 cellIdx, int16 otherCellIdx) {
+			int16 attr = pickRandomMatchingAttr(cellIdx, otherCellIdx);
+			if (attr != 0)
+				_cellGrid[destCell * kFieldsPerCell + 2] = attr;
+		};
+		maybeSetMatchAttr(12, 13, 11);
+		maybeSetMatchAttr(30, 31, 29);
+		maybeSetMatchAttr(48, 49, 47);
+		maybeSetMatchAttr(66, 67, 65);
+		maybeSetMatchAttr(84, 85, 83);
+		maybeSetMatchAttr(102, 103, 101);
+
+		int16 occupiedCount = 0;
+		for (int16 i = 0; i < ARRAYSIZE(kRightArmLinkCells); i++) {
+			if (_cellGrid[kRightArmLinkCells[i] * kFieldsPerCell + 1] == kCellOccupied)
+				occupiedCount++;
+		}
+
+		if (_loadedZmbCount < occupiedCount) {
+			int16 extraCount = occupiedCount - _loadedZmbCount;
+			while (0 < extraCount) {
+				bool removed = false;
+				for (int16 i = 0; i < 6; i++) {
+					int16 cell = kRightArmLinkCells[i];
+					int16 base = cell * kFieldsPerCell;
+					if (_cellGrid[base + 1] == kCellOccupied && _cellGrid[base - 7] == -1) {
+						_cellGrid[base + 1] = kCellPath;
+						_cellGrid[base + 2] = -1;
+						extraCount--;
+						removed = true;
+						break;
+					}
+				}
+
+				if (removed)
+					continue;
+
+				for (int16 i = 6; i < 12; i++) {
+					int16 cell = kRightArmLinkCells[i];
+					int16 base = cell * kFieldsPerCell;
+					if (_cellGrid[base + 1] == kCellOccupied && _cellGrid[base + 11] == -1) {
+						_cellGrid[base + 1] = kCellPath;
+						_cellGrid[base + 2] = -1;
+						extraCount--;
+						removed = true;
+						break;
+					}
+				}
+
+				if (removed)
+					continue;
+
+				for (int16 i = 12; i < 15; i++) {
+					int16 cell = kRightArmLinkCells[i];
+					int16 base = cell * kFieldsPerCell;
+					if (_cellGrid[base + 1] == kCellOccupied &&
+						_cellGrid[base - 88] == -1 && _cellGrid[base + 74] == -1) {
+						_cellGrid[base + 1] = kCellPath;
+						_cellGrid[base + 2] = -1;
+						extraCount--;
+						removed = true;
+						break;
+					}
+				}
+
+				if (!removed)
+					break;
+			}
+		} else {
+			int16 missingCount = _loadedZmbCount - occupiedCount;
+			while (0 < missingCount) {
+				for (int16 i = 0; i < ARRAYSIZE(kRightArmLinkCells); i++) {
+					int16 cell = kRightArmLinkCells[i];
+					if (_cellGrid[cell * kFieldsPerCell + 1] == kCellOccupied)
+						continue;
+
+					_cellGrid[cell * kFieldsPerCell + 1] = kCellOccupied;
+					missingCount--;
+					break;
+				}
+			}
+		}
+
+		for (int16 i = 0; i < kNumCells; i++) {
+			int16 base = i * kFieldsPerCell;
+			if (_cellGrid[base + 1] == kCellConnector) {
+				_cellGrid[base + 1] = kCellPath;
+				_cellGrid[base + 2] = -1;
+			}
+		}
+
+		_numSlots = 0;
+		for (int16 i = 0; i < ARRAYSIZE(kRightArmLinkCells); i++) {
+			int16 cell = kRightArmLinkCells[i];
+			if (_cellGrid[cell * kFieldsPerCell + 1] == kCellOccupied)
+				_slotCellMap[_numSlots++] = cell;
+		}
+		break;
+	}
+
+	case kPuzzleDiffLevel4: {
+		auto setCellStateData = [this](int16 cellIdx, int16 state, int16 data) {
+			int16 base = cellIdx * kFieldsPerCell;
+			_cellGrid[base + 1] = state;
+			_cellGrid[base + 2] = data;
+		};
+		auto clearBoard = [this]() {
+			memset(_adjBitFlags, 0, sizeof(_adjBitFlags));
+			for (int16 i = 0; i < kNumCells; i++) {
+				int16 base = i * kFieldsPerCell;
+				_cellGrid[base + 1] = kCellInert;
+				_cellGrid[base + 2] = 0;
+				for (int16 linkIdx = 0; linkIdx < 6; linkIdx++)
+					_cellGrid[base + 3 + linkIdx] = -1;
+			}
+		};
+		auto rebuildOccupiedSlots = [this]() {
+			_numSlots = 0;
+			_activeCellCount = 0;
+			memset(_slotCellMap, -1, sizeof(_slotCellMap));
+			memset(_activeCellList, 0, sizeof(_activeCellList));
+			memset(_activeCellRunnerIds, 0, sizeof(_activeCellRunnerIds));
+			for (int16 i = 0; i < ARRAYSIZE(kSlotCellIndices); i++) {
+				int16 cell = kSlotCellIndices[i];
+				if (_cellGrid[cell * kFieldsPerCell + 1] != kCellOccupied)
+					continue;
+				if (_numSlots < ARRAYSIZE(_slotCellMap))
+					_slotCellMap[_numSlots++] = cell;
+				if (_activeCellCount < ARRAYSIZE(_activeCellList)) {
+					_activeCellList[_activeCellCount] = cell;
+					_activeCellRunnerIds[_activeCellCount] = _cellGrid[cell * kFieldsPerCell + 2];
+					_activeCellCount++;
+				}
+			}
+		};
+
+		for (int16 i = 0; i < ARRAYSIZE(kLinkCellIndices); i++)
+			setCellStateData(kLinkCellIndices[i], kCellPath, 0);
+		for (int16 i = 0; i < ARRAYSIZE(kEvenRowLinkCells); i++)
+			_adjBitFlags[kEvenRowLinkCells[i]] = 36;
+		for (int16 i = 0; i < ARRAYSIZE(kOddRowLinkCells); i++)
+			_adjBitFlags[kOddRowLinkCells[i]] = 9;
+
+		setCellStateData(54, _slotBaseState, 0);
+		_adjBitFlags[54] = 16;
+		_adjBitFlags[55] = 58;
+		_adjBitFlags[56] = 18;
+		_adjBitFlags[57] = 63;
+		_adjBitFlags[58] = 18;
+		_adjBitFlags[59] = 63;
+		_adjBitFlags[60] = 18;
+		_adjBitFlags[61] = 47;
+		_adjBitFlags[19] = 40;
+		_adjBitFlags[21] = 45;
+		_adjBitFlags[23] = 45;
+		_adjBitFlags[25] = 13;
+		_adjBitFlags[38] = 45;
+		_adjBitFlags[40] = 45;
+		_adjBitFlags[42] = 45;
+		_adjBitFlags[44] = 5;
+		_adjBitFlags[74] = 45;
+		_adjBitFlags[76] = 45;
+		_adjBitFlags[78] = 45;
+		_adjBitFlags[80] = 5;
+		_adjBitFlags[91] = 40;
+		_adjBitFlags[93] = 45;
+		_adjBitFlags[95] = 45;
+		_adjBitFlags[97] = 37;
+		_adjBitFlags[2] = 12;
+		_adjBitFlags[4] = 12;
+		_adjBitFlags[6] = 12;
+		_adjBitFlags[110] = 33;
+		_adjBitFlags[112] = 33;
+		_adjBitFlags[114] = 33;
+
+		for (int16 i = 0; i < ARRAYSIZE(kSlotCellIndices); i++)
+			setCellStateData(kSlotCellIndices[i], kCellConnector, 0);
+
+		buildHexAdjacencyTable();
+
+		if (_loadedZmbCount <= 2) {
+			clearBoard();
+			setCellStateData(54, _slotBaseState, 0);
+			setCellStateData(55, kCellOccupied, _zmbRunnerIdxArr[0]);
+			_adjBitFlags[54] = kAdjE;
+			_adjBitFlags[55] = kAdjW;
+
+			if (_loadedZmbCount == 2) {
+				setCellStateData(56, kCellPath, 0);
+				setCellStateData(57, kCellOccupied, _zmbRunnerIdxArr[1]);
+				if (checkFirstAttrMatch(1, 0))
+					_cellGrid[56 * kFieldsPerCell + 2] = _matchAttrIndex + kAttrHair;
+				_adjBitFlags[55] = kAdjW | kAdjE;
+				_adjBitFlags[56] = kAdjW | kAdjE;
+				_adjBitFlags[57] = kAdjW;
+			}
+
+			for (int16 i = 0; i < _loadedZmbCount; i++)
+				_sortedZmbIndices[i] = -1;
+		} else if (_loadedZmbCount <= 5) {
+			clearBoard();
+			sortZmbsByOverlapCount();
+			setCellStateData(54, _slotBaseState, 0);
+			setCellStateData(55, kCellOccupied, _zmbRunnerIdxArr[0]);
+			_adjBitFlags[54] = kAdjE;
+			_adjBitFlags[55] = kAdjW | kAdjE;
+
+			setCellStateData(56, kCellPath, 0);
+			setCellStateData(57, kCellOccupied, _zmbRunnerIdxArr[1]);
+			if (checkFirstAttrMatch(1, 0))
+				_cellGrid[56 * kFieldsPerCell + 2] = _matchAttrIndex + kAttrHair;
+			_adjBitFlags[56] = kAdjW | kAdjE;
+			_adjBitFlags[57] = kAdjW;
+
+			if (3 <= _loadedZmbCount) {
+				setCellStateData(58, kCellPath, 0);
+				setCellStateData(59, kCellOccupied, _zmbRunnerIdxArr[2]);
+				if (checkFirstAttrMatch(2, 1))
+					_cellGrid[58 * kFieldsPerCell + 2] = _matchAttrIndex + kAttrHair;
+				_adjBitFlags[57] = kAdjW | kAdjE;
+				_adjBitFlags[58] = kAdjW | kAdjE;
+				_adjBitFlags[59] = kAdjW;
+			}
+
+			if (4 <= _loadedZmbCount) {
+				setCellStateData(60, kCellPath, 0);
+				setCellStateData(61, kCellOccupied, _zmbRunnerIdxArr[3]);
+				if (checkFirstAttrMatch(3, 2))
+					_cellGrid[60 * kFieldsPerCell + 2] = _matchAttrIndex + kAttrHair;
+				_adjBitFlags[59] = kAdjW | kAdjE;
+				_adjBitFlags[60] = kAdjW | kAdjE;
+				_adjBitFlags[61] = kAdjW;
+			}
+
+			if (5 <= _loadedZmbCount) {
+				setCellStateData(52, kCellPath, 0);
+				setCellStateData(44, kCellOccupied, _zmbRunnerIdxArr[4]);
+				if (checkFirstAttrMatch(4, 3))
+					_cellGrid[52 * kFieldsPerCell + 2] = _matchAttrIndex + kAttrHair;
+				_adjBitFlags[61] = kAdjW | kAdjNE;
+				_adjBitFlags[52] = kAdjSW | kAdjNE;
+				_adjBitFlags[44] = kAdjSW;
+			}
+
+			for (int16 i = 0; i < _loadedZmbCount; i++)
+				_sortedZmbIndices[i] = -1;
+		} else {
+			assignZmbToSlot(54);
+			if (hasPendingZmb())
+				reassignDeadSlots();
+			scanAndResetActiveCells();
+
+			pickNextCellForLink(93, 84, 83);
+			pickNextCellForLink(21, 30, 29);
+			pickNextCellForLink(112, 103, 102);
+			pickNextCellForLink(4, 13, 12);
+			pickNextCellForLink(95, 86, 85);
+			pickNextCellForLink(23, 32, 31);
+			pickNextCellForLink(78, 69, 68);
+			pickNextCellForLink(42, 51, 50);
+			pickNextCellForLink(76, 67, 66);
+			pickNextCellForLink(114, 105, 104);
+			pickNextCellForLink(6, 15, 14);
+			pickNextCellForLink(44, 52, 34);
+			pickNextCellForLink(80, 88, 70);
+
+			if (_cellGrid[60 * kFieldsPerCell + 1] == kCellPath &&
+				_cellGrid[61 * kFieldsPerCell + 1] == kCellPath &&
+				_cellGrid[69 * kFieldsPerCell + 1] == kCellInert &&
+				_cellGrid[51 * kFieldsPerCell + 1] == kCellInert &&
+				_cellGrid[52 * kFieldsPerCell + 1] == kCellInert &&
+				_cellGrid[70 * kFieldsPerCell + 1] == kCellInert) {
+				resetCellToEmpty(60);
+				resetCellToEmpty(61);
+			}
+
+			triggerSwapAnimation();
+		}
+
+		rebuildOccupiedSlots();
+		break;
+	}
+
 	default:
 		warning("Slides: Unknown difficulty level %d", _difficultyLevel);
 		break;
+	}
+
+	for (int16 i = 0; i < kNumCells; i++) {
+		if (_cellGrid[i * kFieldsPerCell + 1] == kCellOccupied)
+			_cellGrid[i * kFieldsPerCell + 1] = kCellConnector;
 	}
 
 	debugC(kZmbDebugPage, "Slides: initGridByDifficulty level=%d, numSlots=%d",
@@ -469,111 +931,83 @@ void ZoombiniPuzzleSlides::initGridByDifficulty() {
 // =============================================================================
 
 void ZoombiniPuzzleSlides::buildHexAdjacencyTable() {
-	// Build neighbor links for all cells based on hex grid geometry.
-	// Row parity determines neighbor offsets:
-	// - Even rows (0,2,4,...): cell % 18 is 0-8
-	// - Odd rows (1,3,5,...): cell % 18 is 9-17
-	//
-	// Direction offsets (from IDA analysis):
-	// NW: -10 (even), -9 (odd)
-	// W:  -1 (always)
-	// SW: +8 (even), +9 (odd)
-	// SE: +9 (even), +10 (odd)
-	// E:  +1 (always)
-	// NE: -9 (even), -8 (odd)
+	for (int16 cellIdx = 0; cellIdx < kNumCells; cellIdx++) {
+		int16 base = cellIdx * kFieldsPerCell;
+		for (int16 linkIdx = 0; linkIdx < 6; linkIdx++)
+			_cellGrid[base + 3 + linkIdx] = -1;
 
-	for (int16 cell = 0; cell < kNumCells; cell++) {
-		// Only process active cells (not inert)
-		if (_cellGrid[cell * kFieldsPerCell + 1] == kCellInert)
+		if (_cellGrid[base + 1] == kCellInert)
 			continue;
 
-		int16 row = cell / 9;
-		int16 col = cell % 9;
-		bool oddRow = (row % 2) != 0;
-
-		int16 base = cell * kFieldsPerCell;
-
-		// NW neighbor (field 3)
+		int16 row = cellIdx / 9;
+		int16 col = cellIdx % 9;
+		bool oddRow = (cellIdx % 18) > 8;
+		uint16 adjMask = _adjBitFlags[cellIdx];
 		int16 nwCell = -1;
-		if (row > 0) {
-			if (oddRow) {
-				nwCell = cell - 9;  // Odd row: directly above
-			} else if (col > 0) {
-				nwCell = cell - 10; // Even row: above-left
-			}
-		}
-		if (nwCell >= 0 && nwCell < kNumCells &&
-			_cellGrid[nwCell * kFieldsPerCell + 1] != kCellInert) {
-			_cellGrid[base + 3] = nwCell;
-			_adjBitFlags[cell] |= kAdjNW;
-		}
-
-		// W neighbor (field 4)
-		int16 wCell = -1;
-		if (col > 0) {
-			wCell = cell - 1;
-		}
-		if (wCell >= 0 && wCell < kNumCells &&
-			_cellGrid[wCell * kFieldsPerCell + 1] != kCellInert) {
-			_cellGrid[base + 4] = wCell;
-			_adjBitFlags[cell] |= kAdjW;
-		}
-
-		// SW neighbor (field 5)
-		int16 swCell = -1;
-		if (row < 12) {
-			if (oddRow) {
-				swCell = cell + 9;  // Odd row: directly below
-			} else if (col > 0) {
-				swCell = cell + 8;  // Even row: below-left
-			}
-		}
-		if (swCell >= 0 && swCell < kNumCells &&
-			_cellGrid[swCell * kFieldsPerCell + 1] != kCellInert) {
-			_cellGrid[base + 5] = swCell;
-			_adjBitFlags[cell] |= kAdjSW;
-		}
-
-		// SE neighbor (field 6)
-		int16 seCell = -1;
-		if (row < 12) {
-			if (oddRow && col < 8) {
-				seCell = cell + 10; // Odd row: below-right
-			} else if (!oddRow) {
-				seCell = cell + 9;  // Even row: directly below
-			}
-		}
-		if (seCell >= 0 && seCell < kNumCells &&
-			_cellGrid[seCell * kFieldsPerCell + 1] != kCellInert) {
-			_cellGrid[base + 6] = seCell;
-			_adjBitFlags[cell] |= kAdjSE;
-		}
-
-		// E neighbor (field 7)
-		int16 eCell = -1;
-		if (col < 8) {
-			eCell = cell + 1;
-		}
-		if (eCell >= 0 && eCell < kNumCells &&
-			_cellGrid[eCell * kFieldsPerCell + 1] != kCellInert) {
-			_cellGrid[base + 7] = eCell;
-			_adjBitFlags[cell] |= kAdjE;
-		}
-
-		// NE neighbor (field 8)
 		int16 neCell = -1;
-		if (row > 0) {
-			if (oddRow && col < 8) {
-				neCell = cell - 8;  // Odd row: above-right
-			} else if (!oddRow) {
-				neCell = cell - 9;  // Even row: directly above
+		int16 swCell = -1;
+		int16 seCell = -1;
+		if (0 < row) {
+			if (oddRow) {
+				nwCell = cellIdx - 9;
+				if (col < 8)
+					neCell = cellIdx - 8;
+			} else {
+				if (0 < col)
+					nwCell = cellIdx - 10;
+				neCell = cellIdx - 9;
 			}
 		}
-		if (neCell >= 0 && neCell < kNumCells &&
-			_cellGrid[neCell * kFieldsPerCell + 1] != kCellInert) {
-			_cellGrid[base + 8] = neCell;
-			_adjBitFlags[cell] |= kAdjNE;
+
+		int16 westCell = (0 < col) ? static_cast<int16>(cellIdx - 1) : -1;
+		int16 eastCell = (col < 8) ? static_cast<int16>(cellIdx + 1) : -1;
+
+		if (row < 12) {
+			if (oddRow) {
+				swCell = cellIdx + 9;
+				if (col < 8)
+					seCell = cellIdx + 10;
+			} else {
+				if (0 < col)
+					swCell = cellIdx + 8;
+				seCell = cellIdx + 9;
+			}
 		}
+
+		// Unported setup branches still rely on the old geometry-derived adjacency.
+		if (adjMask == 0) {
+			if (0 <= nwCell && _cellGrid[nwCell * kFieldsPerCell + 1] != kCellInert)
+				adjMask |= kAdjNW;
+			if (0 <= neCell && _cellGrid[neCell * kFieldsPerCell + 1] != kCellInert)
+				adjMask |= kAdjNE;
+			if (0 <= westCell && _cellGrid[westCell * kFieldsPerCell + 1] != kCellInert)
+				adjMask |= kAdjW;
+			if (0 <= eastCell && _cellGrid[eastCell * kFieldsPerCell + 1] != kCellInert)
+				adjMask |= kAdjE;
+			if (0 <= swCell && _cellGrid[swCell * kFieldsPerCell + 1] != kCellInert)
+				adjMask |= kAdjSW;
+			if (0 <= seCell && _cellGrid[seCell * kFieldsPerCell + 1] != kCellInert)
+				adjMask |= kAdjSE;
+
+			_adjBitFlags[cellIdx] = adjMask;
+		}
+
+		auto setLinkIfValid = [&](uint16 bit, int16 fieldOffset, int16 neighborCell) {
+			if ((adjMask & bit) == 0)
+				return;
+			if (neighborCell < 0 || kNumCells <= neighborCell)
+				return;
+			if (_cellGrid[neighborCell * kFieldsPerCell + 1] == kCellInert)
+				return;
+			_cellGrid[base + fieldOffset] = neighborCell;
+		};
+
+		setLinkIfValid(kAdjNW, 3, nwCell);
+		setLinkIfValid(kAdjW, 4, westCell);
+		setLinkIfValid(kAdjSW, 5, swCell);
+		setLinkIfValid(kAdjSE, 6, seCell);
+		setLinkIfValid(kAdjE, 7, eastCell);
+		setLinkIfValid(kAdjNE, 8, neCell);
 	}
 
 	debugC(kZmbDebugPage, "Slides: buildHexAdjacencyTable complete");
@@ -605,20 +1039,103 @@ void ZoombiniPuzzleSlides::snapshotZmbAttrsToArrays() {
 // =============================================================================
 
 void ZoombiniPuzzleSlides::generateAttrPairings() {
-	// Generate attribute type pairings for matching.
-	// Each pair determines which attribute type connects two slots.
+	int16 hairAttrs[16] = {};
+	int16 eyeAttrs[16] = {};
+	int16 noseAttrs[16] = {};
+	int16 legAttrs[16] = {};
+	int16 pairUsed[16] = {};
 
-	_numPairs = 0;
-	memset(_pairTypeArray, 0, sizeof(_pairTypeArray));
-	memset(_usedFlags, 0, sizeof(_usedFlags));
-
-	// Simple pairing: cycle through attribute types
-	// IDA: more complex logic involving overlap counting, but simplified here
-	for (int16 i = 0; i < _numSlots && _numPairs < 16; i++) {
-		// Assign attribute type (510-513) cycling
-		_pairTypeArray[_numPairs] = kAttrHair + (i % 4);
-		_numPairs++;
+	for (int16 i = 0; i < _loadedZmbCount; i++) {
+		hairAttrs[i] = _zmbHairAttrs[i];
+		eyeAttrs[i] = _zmbEyesAttrs[i];
+		noseAttrs[i] = _zmbNoseAttrs[i];
+		legAttrs[i] = _zmbLegsAttrs[i];
 	}
+
+	int16 seedAttr = _vm->_rnd->getRandomNumber(0, 3);
+	for (int16 attempt = 0; attempt < 10; attempt++) {
+		memset(_pairTypeArray, 0, sizeof(_pairTypeArray));
+		memset(pairUsed, 0, sizeof(pairUsed));
+		_numPairs = 0;
+		int16 unpairedCount = 0;
+		int16 attrCursor = seedAttr;
+
+		for (int16 i = 0; i < _loadedZmbCount; i++) {
+			if (pairUsed[i] != 0)
+				continue;
+
+			int16 tries = 4;
+			while (tries > 0 && pairUsed[i] == 0) {
+				attrCursor++;
+				if (attrCursor > 3)
+					attrCursor = 0;
+
+				for (int16 j = i + 1; j < _loadedZmbCount; j++) {
+					if (pairUsed[j] != 0)
+						continue;
+
+					bool matched = false;
+					switch (attrCursor) {
+					case 0:
+						matched = (hairAttrs[i] == hairAttrs[j]);
+						break;
+					case 1:
+						matched = (eyeAttrs[i] == eyeAttrs[j]);
+						break;
+					case 2:
+						matched = (noseAttrs[i] == noseAttrs[j]);
+						break;
+					case 3:
+						matched = (legAttrs[i] == legAttrs[j]);
+						break;
+					default:
+						break;
+					}
+
+					if (!matched)
+						continue;
+
+					_pairTypeArray[_numPairs++] = kAttrHair + attrCursor;
+					pairUsed[j] = 1;
+					pairUsed[i] = 1;
+					break;
+				}
+
+				tries--;
+				if (tries == 0 && pairUsed[i] == 0) {
+					pairUsed[i] = 99;
+					_pairTypeArray[_numPairs++] = kCellPath;
+					unpairedCount++;
+				}
+			}
+		}
+
+		if (unpairedCount == 0 || (unpairedCount == 1 && (_loadedZmbCount % 2) == 1))
+			break;
+
+		for (int16 i = _loadedZmbCount - 1; i >= 0; i--) {
+			if (pairUsed[i] != 99 || pairUsed[0] == 99)
+				continue;
+
+			int16 tmp = hairAttrs[i];
+			hairAttrs[i] = hairAttrs[0];
+			hairAttrs[0] = tmp;
+
+			tmp = eyeAttrs[i];
+			eyeAttrs[i] = eyeAttrs[0];
+			eyeAttrs[0] = tmp;
+
+			tmp = noseAttrs[i];
+			noseAttrs[i] = noseAttrs[0];
+			noseAttrs[0] = tmp;
+
+			tmp = legAttrs[i];
+			legAttrs[i] = legAttrs[0];
+			legAttrs[0] = tmp;
+		}
+	}
+
+	memset(_usedFlags, 0, sizeof(_usedFlags));
 
 	debugC(kZmbDebugPage, "Slides: generateAttrPairings numPairs=%d", _numPairs);
 }
@@ -631,6 +1148,25 @@ void ZoombiniPuzzleSlides::generateAttrPairings() {
 void ZoombiniPuzzleSlides::onEveryFrame() {
 	if (_loadedZmbCount <= 0)
 		return;
+	if (_pendingGoDepart)
+		return;
+	if (_completionSequenceActive && isSolvedDepartureSequenceActive()) {
+		finishSolvedDepartureSequence();
+		return;
+	}
+
+	if (_victoryState != 0) {
+		if (!_victoryNotified) {
+			showNotiBox(Common::U32String(U"you entered"), true);
+			_victoryNotified = true;
+		}
+
+		// IDA: slides_rotatePaletteEntries_443F9C rotates palette entries 243..245.
+		if (6 < getCurrentFrameCounter() - _victoryLastFrame) {
+			_vm->_gfx->rotatePaletteRight(243, 3);
+			_victoryLastFrame = getCurrentFrameCounter();
+		}
+	}
 
 	// Celebration scheduling.
 	// Once _celebrationActive is set, it stays set (one celebration per match event).
@@ -673,6 +1209,81 @@ void ZoombiniPuzzleSlides::onEveryFrame() {
 			} while (!triggered);
 		}
 	}
+}
+
+void ZoombiniPuzzleSlides::beginSolvedDepartureSequence() {
+	if (_completionSequenceActive || !_roundComplete || _roundInitialized != 0)
+		return;
+
+	_departXferSrcSiPage = ZMB_SI_SLIDES_08;
+	_roundInitialized = 1;
+	_completionSequenceActive = true;
+	_completionAnimFeature = nullptr;
+
+	if (_matchCount)
+		_celebrationActive = true;
+
+	for (int16 cellIdx = 0; cellIdx < kNumCells; cellIdx++) {
+		int16 state = _cellGrid[cellIdx * kFieldsPerCell + 1];
+		if (state == kCellMatched || state == kCellLocked || state == _slotBaseState) {
+			ensureCellFeature(cellIdx);
+			ZmbFeature *cellFeature = _cellFeatures[cellIdx];
+			if (cellFeature) {
+				setCellFeaturePreRenderHook(cellFeature, 7002);
+				loadScrbOntoFeature(cellFeature, 7002, true);
+				cellFeature->activateAnimate();
+				if (_completionAnimFeature == nullptr)
+					_completionAnimFeature = cellFeature;
+			}
+		}
+
+		if (state == kCellLocked) {
+			ZmbSnoid *snoid = getSnoid(_cellGrid[cellIdx * kFieldsPerCell + 2]);
+			if (!snoid)
+				continue;
+
+			Common::SeekableReadStream *scrsStream =
+				_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+				                 ZmbResource(ZmbArchiveKind::kPage, 13000));
+			if (scrsStream)
+				snoid->startScrsPlayback(scrsStream, false, false);
+		}
+	}
+
+	unlockInteractiveSlots();
+	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, 7000));
+	debugC(kZmbDebugPage, "Slides: began solved departure sequence");
+}
+
+
+bool ZoombiniPuzzleSlides::isSolvedDepartureSequenceActive() const {
+	if (!_completionSequenceActive || !_completionAnimFeature)
+		return false;
+
+	// IDA gates this handoff on hotspot_ownerRunnerArr[slides_animHotspotId] == 0.
+	// ScummVM's generic SCRB renderer falls back from empty frame groups to the last
+	// non-empty hotspot group, so draw-record absence is not a reliable proxy here.
+	// SCRB 7002 frame 1 is genuinely empty in the original data, so gate on the exact
+	// selected frame group becoming empty after animation startup.
+	int32 frameIdx = _completionAnimFeature->getLastFrameIdx();
+	ZmbHotspotGroup *hsGroup = _completionAnimFeature->getHotspotGroupExact(frameIdx);
+	return frameIdx > 0 && hsGroup != nullptr && hsGroup->getHotspotCount() == 0;
+}
+
+void ZoombiniPuzzleSlides::finishSolvedDepartureSequence() {
+	_completionSequenceActive = false;
+	_completionAnimFeature = nullptr;
+
+	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, 7001));
+	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 996));
+
+	if (_difficultyLevel <= kPuzzleDiffLevel2)
+		startDepartWalkAnimation(Common::Point(1280, 240));
+	else
+		startDepartWalkAnimation(Common::Point(800, 200));
+
+	ZoombiniInteractive::onGoButtonActivated();
+	debugC(kZmbDebugPage, "Slides: solved departure sequence complete");
 }
 
 // =============================================================================
@@ -875,15 +1486,63 @@ void ZoombiniPuzzleSlides::assignZmbToSlot(ZmbSnoid *snoid, int16 cellIdx) {
 	// Update cell state
 	_cellGrid[base + 1] = kCellOccupied;
 	_cellGrid[base + 2] = snoid->getId(); // Store runner ID in data field
+	syncCellFeatureScript(cellIdx);
 
 	debugC(kZmbDebugPage, "Slides: Assigned snoid %d to cell %d", snoid->getId(), cellIdx);
 
 	// Check for attribute matches
-	int16 matchResult = validateChainAndMarkMatched();
+	int16 matchResult = validateChainAndMarkMatched(cellIdx);
 	if (matchResult > 0) {
 		_matchCount += matchResult;
 		debugC(kZmbDebugPage, "Slides: Found %d matches, total matchCount=%d", matchResult, _matchCount);
 	}
+}
+
+int16 ZoombiniPuzzleSlides::assignZmbToSlot(int16 slotBaseCell) {
+	// IDA: slides_assignZmbToSlot @ 0x447FF9
+	static const int16 kCascadeCells[12] = {
+		40, 76, 23, 95, 42, 78, 38, 74, 21, 93, 19, 91
+	};
+
+	sortZmbsByOverlapCount();
+	int16 slotCell = slotBaseCell + 1;
+	_cellGrid[slotCell * kFieldsPerCell + 1] = kCellOccupied;
+
+	if (_loadedZmbCount == 1) {
+		_cellGrid[slotCell * kFieldsPerCell + 2] = _zmbRunnerIdxArr[0];
+		_sortedZmbIndices[0] = -1;
+		return _zmbRunnerIdxArr[0];
+	}
+
+	for (int16 i = 0; i < _loadedZmbCount; i++) {
+		if (i + 1 >= _loadedZmbCount)
+			break;
+		if (!checkFirstAttrMatch(i + 1, i))
+			continue;
+
+		int16 sortedIdx = _sortedZmbIndices[i + 1];
+		if (sortedIdx >= 0) {
+			_cellGrid[slotCell * kFieldsPerCell + 2] = _zmbRunnerIdxArr[sortedIdx];
+			_sortedZmbIndices[i + 1] = -1;
+		}
+		break;
+	}
+
+	int16 result = moveZmbToCell(slotCell);
+	if (result != 0) {
+		if (result != -1)
+			result = moveZmbToCell(result);
+	} else {
+		int16 nextCell = slotCell + 2;
+		result = moveZmbToCell(nextCell);
+		if (result == 0)
+			result = moveZmbToCell(nextCell + 2);
+	}
+
+	for (uint i = 0; i < ARRAYSIZE(kCascadeCells) && hasPendingZmb(); i++)
+		moveZmbToCell(kCascadeCells[i]);
+
+	return result;
 }
 
 void ZoombiniPuzzleSlides::moveZmbToCell(ZmbSnoid *snoid, int16 cellIdx) {
@@ -891,17 +1550,88 @@ void ZoombiniPuzzleSlides::moveZmbToCell(ZmbSnoid *snoid, int16 cellIdx) {
 	snoid->setPointLoc(kCellPositions[cellIdx]);
 }
 
+int16 ZoombiniPuzzleSlides::moveZmbToCell(int16 moveData) {
+	// IDA: slides_moveZmb_4481FE
+	if (!hasPendingZmb())
+		return -1;
+
+	auto getLink = [this](int16 cellIdx, int16 dir) -> int16 {
+		if (cellIdx < 0 || cellIdx >= kNumCells || dir < 0 || dir >= 6)
+			return -1;
+		return _cellGrid[cellIdx * kFieldsPerCell + 3 + dir];
+	};
+
+	if (_cellGrid[moveData * kFieldsPerCell + 1] != kCellOccupied) {
+		int16 farNE = getLink(getLink(moveData, 5), 5);
+		int16 farSE = getLink(getLink(moveData, 3), 3);
+		if (farNE < 0 || _cellGrid[farNE * kFieldsPerCell + 1] != kCellOccupied) {
+			if (farSE < 0 || _cellGrid[farSE * kFieldsPerCell + 1] != kCellOccupied)
+				return -1;
+			if (findMatchingZmbForCell(farSE, 0) == -1)
+				return -1;
+		} else if (findMatchingZmbForCell(farNE, 2) == -1) {
+			return -1;
+		}
+	}
+
+	int16 farNE = getLink(getLink(moveData, 5), 5);
+	int16 farSE = getLink(getLink(moveData, 3), 3);
+
+	if ((moveData == 55 || moveData == 57 || moveData == 59) && findMatchingZmbForCell(moveData, 4) == -1)
+		return -1;
+
+	int16 nextCell = moveData + 2;
+	if (farNE >= 0 && _cellGrid[farNE * kFieldsPerCell + 1] == kCellConnector) {
+		if (!hasPendingZmb())
+			return -1;
+		if (findMatchingZmbForCell(moveData, 5) == -1) {
+			_cellGrid[farNE * kFieldsPerCell + 1] = kCellPath;
+			return nextCell;
+		}
+	}
+
+	if (nextCell < kNumCells && _cellGrid[nextCell * kFieldsPerCell + 1] == kCellOccupied && farNE >= 0) {
+		int16 attr = pickRandomMatchingAttr(nextCell, farNE);
+		if (attr != 0) {
+			int16 middleCell = getLink(farNE, 3);
+			if (middleCell >= 0)
+				_cellGrid[middleCell * kFieldsPerCell + 2] = attr;
+		}
+	}
+
+	if (farSE >= 0 && _cellGrid[farSE * kFieldsPerCell + 1] == kCellConnector) {
+		if (!hasPendingZmb())
+			return -1;
+		if (findMatchingZmbForCell(moveData, 3) == -1) {
+			_cellGrid[farSE * kFieldsPerCell + 1] = kCellPath;
+			return nextCell;
+		}
+		if (nextCell < kNumCells && _cellGrid[nextCell * kFieldsPerCell + 1] == kCellOccupied) {
+			int16 attr = pickRandomMatchingAttr(nextCell, farSE);
+			if (attr != 0) {
+				int16 middleCell = getLink(farSE, 5);
+				if (middleCell >= 0)
+					_cellGrid[middleCell * kFieldsPerCell + 2] = attr;
+			}
+		}
+	}
+
+	return 0;
+}
+
 void ZoombiniPuzzleSlides::clearCellToEmpty(int16 cellIdx) {
 	// IDA: slides_clearCellToEmpty @ 0x448955
 	int16 base = cellIdx * kFieldsPerCell;
 	_cellGrid[base + 1] = kCellConnector;
 	_cellGrid[base + 2] = 0;
+	syncCellFeatureScript(cellIdx);
 }
 
 void ZoombiniPuzzleSlides::resetCellToEmpty(int16 cellIdx) {
 	// IDA: slides_resetCellToEmpty @ 0x4496BC
 	int16 base = cellIdx * kFieldsPerCell;
 	_cellGrid[base + 1] = kCellInert;
+	_cellGrid[base + 2] = 0;
 
 	// Clear all link fields and corresponding adjacency bits
 	for (int16 i = 0; i < 6; i++) {
@@ -924,11 +1654,16 @@ void ZoombiniPuzzleSlides::resetCellToEmpty(int16 cellIdx) {
 	}
 
 	_adjBitFlags[cellIdx] = 0;
+	syncCellFeatureScript(cellIdx);
 }
 
-void ZoombiniPuzzleSlides::clearCellLinkBits(int16 cellIdx, uint16 bitsToClear) {
+void ZoombiniPuzzleSlides::clearCellLinkBits(uint16 bitMask, int16 linkField, int16 cellIdx) {
 	// IDA: slides_clearCellLinkBits @ 0x449048
-	_adjBitFlags[cellIdx] &= ~bitsToClear;
+	if (cellIdx < 0 || cellIdx >= kNumCells || linkField < 0 || linkField >= 6)
+		return;
+
+	_cellGrid[cellIdx * kFieldsPerCell + 3 + linkField] = -1;
+	_adjBitFlags[cellIdx] &= ~bitMask;
 }
 
 void ZoombiniPuzzleSlides::updateNeighborFlags(int16 cellIdx) {
@@ -953,104 +1688,120 @@ void ZoombiniPuzzleSlides::updateNeighborFlags(int16 cellIdx) {
 // IDA: slides_validateChainAndMarkMatched @ 0x4442A9
 // =============================================================================
 
-int16 ZoombiniPuzzleSlides::validateChainAndMarkMatched() {
+int16 ZoombiniPuzzleSlides::validateChainAndMarkMatched(int16 startCellIdx) {
+	if (startCellIdx < 0 || startCellIdx >= kNumCells)
+		return 0;
+
 	int16 matchCount = 0;
+	int16 currentCell = startCellIdx;
 
-	// Scan all slots for attribute matches with neighbors
-	for (int16 slot = 0; slot < _numSlots; slot++) {
-		int16 cellIdx = _slotCellMap[slot];
-		if (cellIdx < 0)
-			continue;
+	if (setCellStateAndReload(startCellIdx, kCellOccupied))
+		matchCount++;
 
-		int16 base = cellIdx * kFieldsPerCell;
+	int16 backwardCell = getBackwardChainLink(startCellIdx);
+	if (backwardCell >= 0 && _cellGrid[backwardCell * kFieldsPerCell + 1] != _slotBaseState)
+		currentCell = backwardCell;
+
+	bool blocked = false;
+	while (!blocked && currentCell >= 0) {
+		int16 base = currentCell * kFieldsPerCell;
 		int16 state = _cellGrid[base + 1];
 
-		// Only check occupied cells
-		if (state != kCellOccupied && state != kCellLocked)
-			continue;
-
-		int16 zmbId = _cellGrid[base + 2];
-		ZmbSnoid *snoid = getSnoid(zmbId);
-		if (!snoid)
-			continue;
-
-		// Check all 6 neighbors for matching attributes
-		for (int16 dir = 0; dir < 6; dir++) {
-			int16 neighborCell = _cellGrid[base + 3 + dir];
-			if (neighborCell < 0)
-				continue;
-
-			int16 neighborBase = neighborCell * kFieldsPerCell;
-			int16 neighborState = _cellGrid[neighborBase + 1];
-
-			if (neighborState != kCellOccupied && neighborState != kCellLocked)
-				continue;
-
-			int16 neighborZmbId = _cellGrid[neighborBase + 2];
-			ZmbSnoid *neighborSnoid = getSnoid(neighborZmbId);
-			if (!neighborSnoid)
-				continue;
-
-			// Check if any attribute matches
-			bool matched = false;
-			if (snoid->_trait._head == neighborSnoid->_trait._head)
-				matched = true;
-			if (snoid->_trait._eye == neighborSnoid->_trait._eye)
-				matched = true;
-			if (snoid->_trait._nose == neighborSnoid->_trait._nose)
-				matched = true;
-			if (snoid->_trait._foot == neighborSnoid->_trait._foot)
-				matched = true;
-
-			if (matched) {
-				// Mark both cells as matched/locked
-				_cellGrid[base + 1] = kCellLocked;
-				_cellGrid[neighborBase + 1] = kCellLocked;
+		if (state == kCellInert || state == kCellConnector) {
+			blocked = true;
+		} else if (state != kCellPath) {
+			if (state == kCellOccupied && setCellStateAndReload(currentCell, kCellLocked))
 				matchCount++;
+		} else {
+			int16 attrType = _cellGrid[base + 2];
+			if (attrType >= kAttrHair && attrType <= kAttrLegs) {
+				int16 forwardCell = getForwardChainLink(currentCell);
+				int16 backwardMatchCell = getBackwardChainLink(currentCell);
+
+				if (!cellStateIs(forwardCell, kCellOccupied, kCellLocked) ||
+					!cellStateIs(backwardMatchCell, kCellOccupied, kCellLocked)) {
+					blocked = true;
+				} else if (cellsMatchAttr(backwardMatchCell, forwardCell, attrType)) {
+					if (setCellStateAndReload(currentCell, kCellMatched))
+						matchCount++;
+				} else {
+					blocked = true;
+				}
+			} else if (_difficultyLevel == kPuzzleDiffLevel2 && attrType == 0 && currentCell > 0 &&
+				_cellGrid[(currentCell - 1) * kFieldsPerCell + 1] == kCellLocked) {
+				if (setCellStateAndReload(currentCell, kCellMatched))
+					matchCount++;
 			}
+		}
+
+		if (!blocked) {
+			currentCell = getForwardChainLink(currentCell);
+			blocked = (currentCell < 0);
 		}
 	}
 
 	return matchCount;
 }
 
-int16 ZoombiniPuzzleSlides::buildChainSequence(int16 startCell, int16 *outChain, int16 maxLen) {
+void ZoombiniPuzzleSlides::buildChainSequence() {
 	// IDA: slides_buildChainSequence @ 0x444C16
-	if (!outChain || maxLen <= 0)
-		return 0;
+	memset(_pairTypeArray, 0, sizeof(_pairTypeArray));
+	memset(_usedFlags, 0, sizeof(_usedFlags));
+	_numPairs = _loadedZmbCount / 3;
+	if ((_loadedZmbCount % 3) != 0)
+		_numPairs++;
 
-	int16 count = 0;
-	int16 currentCell = startCell;
-	uint16 visited[kNumCells];
-	memset(visited, 0, sizeof(visited));
-
-	while (currentCell >= 0 && count < maxLen) {
-		if (visited[currentCell])
-			break;
-
-		visited[currentCell] = 1;
-		outChain[count++] = currentCell;
-
-		// Find next unvisited neighbor in chain
-		int16 base = currentCell * kFieldsPerCell;
-		int16 nextCell = -1;
-
-		for (int16 dir = 0; dir < 6; dir++) {
-			int16 neighbor = _cellGrid[base + 3 + dir];
-			if (neighbor >= 0 && !visited[neighbor]) {
-				int16 neighborState = _cellGrid[neighbor * kFieldsPerCell + 1];
-				if (neighborState == kCellOccupied || neighborState == kCellLocked ||
-					neighborState == kCellConnector) {
-					nextCell = neighbor;
-					break;
-				}
+	int16 pairTypeIdx = 0;
+	int16 runnerIdx = 0;
+	for (int16 groupIdx = 0; groupIdx < _numPairs; groupIdx++) {
+		_usedFlags[runnerIdx] = 1;
+		int16 nextRunnerIdx = findRunnerByMatchingAttr(runnerIdx);
+		if (nextRunnerIdx == -1) {
+			_pairTypeArray[pairTypeIdx++] = kCellPath;
+			for (int16 i = 1; i < _loadedZmbCount; i++) {
+				if (_usedFlags[i] != 0)
+					continue;
+				_usedFlags[i] = 1;
+				nextRunnerIdx = i;
+				break;
 			}
+		} else {
+			_usedFlags[nextRunnerIdx] = 1;
+			_pairTypeArray[pairTypeIdx++] = _matchAttrIndex + kAttrHair;
 		}
 
-		currentCell = nextCell;
-	}
+		runnerIdx = nextRunnerIdx;
+		int16 remainingRunnerIdx = -1;
+		for (int16 i = 1; i < _loadedZmbCount; i++) {
+			if (_usedFlags[i] == 0)
+				remainingRunnerIdx = i;
+		}
+		if (remainingRunnerIdx == -1)
+			break;
 
-	return count;
+		int16 lastRunnerIdx = findRunnerByMatchingAttr(runnerIdx);
+		if (lastRunnerIdx == -1) {
+			_pairTypeArray[pairTypeIdx++] = kCellPath;
+			for (int16 i = 1; i < _loadedZmbCount; i++) {
+				if (_usedFlags[i] == 0)
+					lastRunnerIdx = i;
+			}
+		} else {
+			_usedFlags[lastRunnerIdx] = 1;
+			_pairTypeArray[pairTypeIdx++] = _matchAttrIndex + kAttrHair;
+		}
+
+		runnerIdx = lastRunnerIdx;
+		_usedFlags[lastRunnerIdx] = 1;
+		remainingRunnerIdx = -1;
+		for (int16 i = 1; i < _loadedZmbCount; i++) {
+			if (_usedFlags[i] == 0)
+				remainingRunnerIdx = i;
+		}
+		if (remainingRunnerIdx == -1)
+			break;
+		runnerIdx = remainingRunnerIdx;
+	}
 }
 
 int16 ZoombiniPuzzleSlides::findRunnerInState508() const {
@@ -1064,128 +1815,443 @@ int16 ZoombiniPuzzleSlides::findRunnerInState508() const {
 	return -1;
 }
 
-int16 ZoombiniPuzzleSlides::findRunnerByMatchingAttr(int16 attrType, int16 attrValue) const {
+int16 ZoombiniPuzzleSlides::findRunnerByMatchingAttr(int16 runnerIdx) {
 	// IDA: slides_findRunnerByMatchingAttr @ 0x444DC8
-	for (int16 i = 0; i < _loadedZmbCount; i++) {
-		ZmbSnoid *snoid = getSnoid(10000 + i);
-		if (!snoid)
-			continue;
+	_matchAttrIndex = _vm->_rnd->getRandomNumber(0, 3);
+	for (int16 tries = 4; 0 < tries; tries--) {
+		_matchAttrIndex++;
+		if (3 < _matchAttrIndex)
+			_matchAttrIndex = 0;
 
-		int16 snoidAttrVal = 0;
-		switch (attrType) {
-		case kAttrHair: snoidAttrVal = snoid->_trait._head; break;
-		case kAttrEyes: snoidAttrVal = snoid->_trait._eye; break;
-		case kAttrNose: snoidAttrVal = snoid->_trait._nose; break;
-		case kAttrLegs: snoidAttrVal = snoid->_trait._foot; break;
-		default: break;
+		for (int16 i = 0; i < _loadedZmbCount; i++) {
+			if (i == runnerIdx || _usedFlags[i] != 0)
+				continue;
+
+			if ((_matchAttrIndex == 0 && _zmbHairAttrs[runnerIdx] == _zmbHairAttrs[i]) ||
+				(_matchAttrIndex == 1 && _zmbEyesAttrs[runnerIdx] == _zmbEyesAttrs[i]) ||
+				(_matchAttrIndex == 2 && _zmbNoseAttrs[runnerIdx] == _zmbNoseAttrs[i]) ||
+				(_matchAttrIndex == 3 && _zmbLegsAttrs[runnerIdx] == _zmbLegsAttrs[i])) {
+				return i;
+			}
 		}
-
-		if (snoidAttrVal == attrValue)
-			return snoid->getId();
 	}
+
 	return -1;
 }
 
 void ZoombiniPuzzleSlides::sortZmbsByOverlapCount() {
 	// IDA: slides_sortZmbsByOverlapCount @ 0x444FBF
-	// Sort _sortedZmbIndices by number of matching attributes with neighbors
+	int16 overlapCounts[16] = {};
+
 	for (int16 i = 0; i < _loadedZmbCount; i++) {
-		_sortedZmbIndices[i] = i;
+		for (int16 j = 0; j < _loadedZmbCount; j++) {
+			if (_zmbHairAttrs[i] == _zmbHairAttrs[j] ||
+				_zmbEyesAttrs[i] == _zmbEyesAttrs[j] ||
+				_zmbNoseAttrs[i] == _zmbNoseAttrs[j] ||
+				_zmbLegsAttrs[i] == _zmbLegsAttrs[j]) {
+				overlapCounts[i]++;
+			}
+		}
 	}
-	// Simple bubble sort by overlap count (simplified)
-	// In original: calculates overlap counts and sorts descending
+
+	for (int16 sortedIdx = 0; sortedIdx < _loadedZmbCount; sortedIdx++) {
+		int16 bestRunnerIdx = 0;
+		int16 bestOverlap = -1;
+
+		for (int16 runnerIdx = 0; runnerIdx < _loadedZmbCount; runnerIdx++) {
+			if (bestOverlap < overlapCounts[runnerIdx]) {
+				bestOverlap = overlapCounts[runnerIdx];
+				bestRunnerIdx = runnerIdx;
+			}
+		}
+
+		_sortedZmbIndices[sortedIdx] = bestRunnerIdx;
+		overlapCounts[bestRunnerIdx] = -1;
+	}
 }
 
-void ZoombiniPuzzleSlides::placeMatchingZmbInCell(int16 cellIdx, int16 attrType) {
+int16 ZoombiniPuzzleSlides::placeMatchingZmbInCell(int16 matchCellIdx, int16 outSlot) {
 	// IDA: slides_placeMatchingZmbInCell @ 0x4450A3
-	// Find a Zoombini with matching attribute and place in cell
-	// Simplified: just find first unused Zoombini
-	for (int16 i = 0; i < _loadedZmbCount; i++) {
-		if (_usedFlags[i])
-			continue;
+	auto getLink = [this](int16 cellIdx, int16 dir) -> int16 {
+		if (cellIdx < 0 || cellIdx >= kNumCells || dir < 0 || dir >= 6)
+			return -1;
+		return _cellGrid[cellIdx * kFieldsPerCell + 3 + dir];
+	};
 
-		ZmbSnoid *snoid = getSnoid(10000 + i);
-		if (!snoid)
-			continue;
-
-		_usedFlags[i] = 1;
-		assignZmbToSlot(snoid, cellIdx);
-		break;
+	int16 midCell = -1;
+	int16 destCell = -1;
+	if (5 < outSlot) {
+		switch (outSlot) {
+		case 6:
+			midCell = getLink(matchCellIdx, 0);
+			destCell = getLink(midCell, 1);
+			break;
+		case 7:
+			midCell = getLink(matchCellIdx, 2);
+			destCell = getLink(midCell, 1);
+			break;
+		case 8:
+			midCell = getLink(matchCellIdx, 5);
+			destCell = getLink(midCell, 4);
+			break;
+		case 9:
+			midCell = getLink(matchCellIdx, 3);
+			destCell = getLink(midCell, 4);
+			break;
+		default:
+			break;
+		}
+	} else {
+		midCell = getLink(matchCellIdx, outSlot);
+		destCell = getLink(midCell, outSlot);
 	}
+
+	if (midCell < 0 || destCell < 0)
+		return -1;
+
+	ZmbSnoid *sourceSnoid = getSnoid(_cellGrid[matchCellIdx * kFieldsPerCell + 2]);
+	if (!sourceSnoid)
+		return -1;
+
+	int16 attrCursor = _vm->_rnd->getRandomNumber(0, 3);
+	for (int16 sortedIdx = _loadedZmbCount - 1; 0 <= sortedIdx; --sortedIdx) {
+		int16 runnerListIdx = _sortedZmbIndices[sortedIdx];
+		if (runnerListIdx == -1)
+			continue;
+
+		ZmbSnoid *candidateSnoid = getSnoid(_zmbRunnerIdxArr[runnerListIdx]);
+		if (!candidateSnoid)
+			continue;
+
+		bool noMatch = true;
+		int16 tries = 4;
+		while (noMatch && 0 < tries) {
+			if ((attrCursor == 0 && candidateSnoid->_trait._head == sourceSnoid->_trait._head) ||
+				(attrCursor == 1 && candidateSnoid->_trait._eye == sourceSnoid->_trait._eye) ||
+				(attrCursor == 2 && candidateSnoid->_trait._nose == sourceSnoid->_trait._nose) ||
+				(attrCursor == 3 && candidateSnoid->_trait._foot == sourceSnoid->_trait._foot)) {
+				noMatch = false;
+			} else {
+				tries--;
+				attrCursor++;
+				if (3 < attrCursor)
+					attrCursor = 0;
+			}
+		}
+
+		if (!noMatch) {
+			_cellGrid[destCell * kFieldsPerCell + 1] = kCellOccupied;
+			_cellGrid[destCell * kFieldsPerCell + 2] = candidateSnoid->getId();
+			_cellGrid[midCell * kFieldsPerCell + 1] = kCellPath;
+			_cellGrid[midCell * kFieldsPerCell + 2] = attrCursor + kAttrHair;
+			_sortedZmbIndices[sortedIdx] = -1;
+			syncCellFeatureScript(destCell);
+			syncCellFeatureScript(midCell);
+			return sortedIdx;
+		}
+	}
+
+	return -1;
 }
 
-int16 ZoombiniPuzzleSlides::pickRandomMatchingAttr(int16 snoidIdx) const {
+int16 ZoombiniPuzzleSlides::pickRandomMatchingAttr(int16 cellIdx, int16 otherCellIdx) const {
 	// IDA: slides_pickRandomMatchingAttr @ 0x44533D
-	// Return a random attribute type (510-513)
-	return kAttrHair + _vm->_rnd->getRandomNumber(0, 3);
+	if (!cellStateIs(cellIdx, kCellOccupied, kCellLocked) || !cellStateIs(otherCellIdx, kCellOccupied, kCellLocked))
+		return 0;
+
+	int16 leftRunnerId = _cellGrid[cellIdx * kFieldsPerCell + 2];
+	int16 rightRunnerId = _cellGrid[otherCellIdx * kFieldsPerCell + 2];
+	if (leftRunnerId == 0 || rightRunnerId == 0)
+		return 0;
+
+	ZmbSnoid *leftSnoid = getSnoid(leftRunnerId);
+	ZmbSnoid *rightSnoid = getSnoid(rightRunnerId);
+	if (!leftSnoid || !rightSnoid)
+		return 0;
+
+	int16 roll = _vm->_rnd->getRandomNumber(0, 999);
+	if (roll < 250) {
+		if (leftSnoid->_trait._head == rightSnoid->_trait._head)
+			return kAttrHair;
+		if (leftSnoid->_trait._eye == rightSnoid->_trait._eye)
+			return kAttrEyes;
+		if (leftSnoid->_trait._nose == rightSnoid->_trait._nose)
+			return kAttrNose;
+		if (leftSnoid->_trait._foot == rightSnoid->_trait._foot)
+			return kAttrLegs;
+	} else if (roll < 500) {
+		if (leftSnoid->_trait._eye == rightSnoid->_trait._eye)
+			return kAttrEyes;
+		if (leftSnoid->_trait._nose == rightSnoid->_trait._nose)
+			return kAttrNose;
+		if (leftSnoid->_trait._foot == rightSnoid->_trait._foot)
+			return kAttrLegs;
+		if (leftSnoid->_trait._head == rightSnoid->_trait._head)
+			return kAttrHair;
+	} else if (roll < 750) {
+		if (leftSnoid->_trait._nose == rightSnoid->_trait._nose)
+			return kAttrNose;
+		if (leftSnoid->_trait._foot == rightSnoid->_trait._foot)
+			return kAttrLegs;
+		if (leftSnoid->_trait._head == rightSnoid->_trait._head)
+			return kAttrHair;
+		if (leftSnoid->_trait._eye == rightSnoid->_trait._eye)
+			return kAttrEyes;
+	} else {
+		if (leftSnoid->_trait._foot == rightSnoid->_trait._foot)
+			return kAttrLegs;
+		if (leftSnoid->_trait._head == rightSnoid->_trait._head)
+			return kAttrHair;
+		if (leftSnoid->_trait._eye == rightSnoid->_trait._eye)
+			return kAttrEyes;
+		if (leftSnoid->_trait._nose == rightSnoid->_trait._nose)
+			return kAttrNose;
+	}
+
+	return 0;
 }
 
 void ZoombiniPuzzleSlides::activateChainLink(int16 linkIdx) {
 	// IDA: slides_activateChainLink @ 0x445527
-	// Activate visual feedback for chain link
-	debugC(kZmbDebugPage, "Slides: activateChainLink %d", linkIdx);
+	static const int16 kChainCells[12] = { 55, 57, 59, 61, 38, 74, 40, 76, 42, 78, 44, 80 };
+	int16 cellIdx = linkIdx + 1;
+
+	if (!cellStateIs(cellIdx, kCellOccupied))
+		return;
+
+	setCellStateAndReload(cellIdx, kCellLocked);
+
+	for (uint i = 0; i < ARRAYSIZE(kChainCells); i++) {
+		int16 chainCell = kChainCells[i];
+		if (!cellStateIs(chainCell, kCellOccupied))
+			continue;
+
+		for (int16 dir = 0; dir < 6; dir++) {
+			int16 neighborCell = _cellGrid[chainCell * kFieldsPerCell + 3 + dir];
+			if (cellStateIs(neighborCell, kCellMatched)) {
+				setCellStateAndReload(chainCell, kCellLocked);
+				break;
+			}
+		}
+	}
+
+	for (uint i = 0; i < ARRAYSIZE(kChainCells); i++) {
+		int16 chainCell = kChainCells[i];
+		if (cellStateIs(chainCell, kCellMatched, kCellLocked))
+			evalNeighborStates(chainCell);
+	}
+
+	checkVictoryCondition();
+
+	if (_difficultyLevel == kPuzzleDiffLevel4 &&
+		cellStateIs(57, kCellLocked) && cellStateIs(59, kCellLocked) && cellStateIs(61, kCellLocked)) {
+		int16 occupiedSlots = 0;
+		for (int16 i = 0; i < _numSlots; i++) {
+			int16 slotCell = _slotCellMap[i];
+			if (cellStateIs(slotCell, kCellOccupied, kCellLocked))
+				occupiedSlots++;
+		}
+
+		if (_victoryState == 0 && occupiedSlots == 4) {
+			_victoryState = 1;
+			_victoryLastFrame = getCurrentFrameCounter();
+			_victoryNotified = false;
+			_roundComplete = 1;
+		} else if (occupiedSlots != 4) {
+			_victoryState = 0;
+			_victoryNotified = false;
+		}
+	}
 }
 
 void ZoombiniPuzzleSlides::confirmEndpointMatches() {
 	// IDA: slides_confirmEndpointMatches @ 0x445700
-	// Confirm matches at chain endpoints
+	static const int16 kEndpointCells[3] = { 19, 55, 91 };
+
+	for (int16 i = 0; i < 3; i++) {
+		int16 endpointCell = kEndpointCells[i];
+		if (!cellStateIs(endpointCell, kCellOccupied))
+			continue;
+
+		setCellStateAndReload(endpointCell, kCellLocked);
+		propagateMatchChain(endpointCell);
+	}
+
+	checkVictoryCondition();
 }
 
-bool ZoombiniPuzzleSlides::checkFirstAttrMatch(int16 cellIdx, int16 snoidIdx) const {
+bool ZoombiniPuzzleSlides::checkFirstAttrMatch(int16 leftSortedIdx, int16 rightSortedIdx) {
 	// IDA: slides_checkFirstAttrMatch @ 0x448119
-	ZmbSnoid *snoid = getSnoid(10000 + snoidIdx);
-	if (!snoid)
+	if (leftSortedIdx < 0 || rightSortedIdx < 0 || leftSortedIdx >= _loadedZmbCount || rightSortedIdx >= _loadedZmbCount)
+		return false;
+	int16 leftRunnerIdx = _sortedZmbIndices[leftSortedIdx];
+	int16 rightRunnerIdx = _sortedZmbIndices[rightSortedIdx];
+	if (leftRunnerIdx < 0 || rightRunnerIdx < 0)
 		return false;
 
-	int16 base = cellIdx * kFieldsPerCell;
-
-	// Check neighbors for any attribute match
-	for (int16 dir = 0; dir < 6; dir++) {
-		int16 neighbor = _cellGrid[base + 3 + dir];
-		if (neighbor < 0)
-			continue;
-
-		int16 neighborBase = neighbor * kFieldsPerCell;
-		if (_cellGrid[neighborBase + 1] != kCellOccupied &&
-			_cellGrid[neighborBase + 1] != kCellLocked)
-			continue;
-
-		int16 neighborZmbId = _cellGrid[neighborBase + 2];
-		ZmbSnoid *neighborSnoid = getSnoid(neighborZmbId);
-		if (!neighborSnoid)
-			continue;
-
-		if (snoid->_trait._head == neighborSnoid->_trait._head)
-			return true;
-		if (snoid->_trait._eye == neighborSnoid->_trait._eye)
-			return true;
-		if (snoid->_trait._nose == neighborSnoid->_trait._nose)
-			return true;
-		if (snoid->_trait._foot == neighborSnoid->_trait._foot)
-			return true;
+	if (_zmbHairAttrs[leftRunnerIdx] == _zmbHairAttrs[rightRunnerIdx]) {
+		_matchAttrIndex = 0;
+		return true;
+	}
+	if (_zmbEyesAttrs[leftRunnerIdx] == _zmbEyesAttrs[rightRunnerIdx]) {
+		_matchAttrIndex = 1;
+		return true;
+	}
+	if (_zmbNoseAttrs[leftRunnerIdx] == _zmbNoseAttrs[rightRunnerIdx]) {
+		_matchAttrIndex = 2;
+		return true;
+	}
+	if (_zmbLegsAttrs[leftRunnerIdx] == _zmbLegsAttrs[rightRunnerIdx]) {
+		_matchAttrIndex = 3;
+		return true;
 	}
 
 	return false;
 }
 
-void ZoombiniPuzzleSlides::evalAttrMatchAndAdvance(int16 cellIdx) {
+void ZoombiniPuzzleSlides::evalAttrMatchAndAdvance(int16 leadCellIdx, int16 middleCellIdx, int16 tailCellIdx) {
 	// IDA: slides_evalAttrMatchAndAdvance @ 0x445A1B
-	// Evaluate and advance chain propagation
+	if (middleCellIdx < 0 || !cellStateIs(middleCellIdx, kCellPath))
+		return;
+
+	int16 middleBase = middleCellIdx * kFieldsPerCell;
+	int16 attrType = _cellGrid[middleBase + 2];
+
+	if (attrType >= kAttrHair) {
+		if (leadCellIdx >= 0 && cellStateIs(tailCellIdx, kCellOccupied, kCellLocked) &&
+			cellStateIs(leadCellIdx, kCellOccupied, kCellLocked)) {
+			if (cellStateIs(middleCellIdx, kCellMatched) || cellsMatchAttr(tailCellIdx, leadCellIdx, attrType)) {
+				setCellStateAndReload(leadCellIdx, kCellLocked);
+				setCellStateAndReload(middleCellIdx, kCellMatched);
+			}
+		} else if (leadCellIdx >= 0 && cellStateIs(leadCellIdx, kCellMatched, kCellPath)) {
+			setCellStateAndReload(leadCellIdx, kCellMatched);
+		}
+	} else if (cellStateIs(tailCellIdx, kCellOccupied, kCellLocked, kCellMatched)) {
+		setCellStateAndReload(middleCellIdx, kCellMatched);
+		if (leadCellIdx >= 0) {
+			if (cellStateIs(leadCellIdx, kCellOccupied, kCellLocked)) {
+				setCellStateAndReload(leadCellIdx, kCellLocked);
+			} else if (cellStateIs(leadCellIdx, kCellPath)) {
+				setCellStateAndReload(leadCellIdx, kCellMatched);
+			}
+		}
+	}
 }
 
 void ZoombiniPuzzleSlides::evalNeighborStates(int16 cellIdx) {
 	// IDA: slides_evalNeighborStates @ 0x445880
-	// Evaluate neighbor cell states for chain propagation
+	if (cellIdx < 0 || cellIdx >= kNumCells)
+		return;
+
+	int16 westCell = _cellGrid[cellIdx * kFieldsPerCell + 7];
+	if (westCell >= 0)
+		evalAttrMatchAndAdvance(_cellGrid[westCell * kFieldsPerCell + 7], westCell, cellIdx);
+
+	int16 linkCell = _cellGrid[cellIdx * kFieldsPerCell + 4];
+	if (linkCell >= 0)
+		evalAttrMatchAndAdvance(_cellGrid[linkCell * kFieldsPerCell + 4], linkCell, cellIdx);
+
+	int16 northEastCell = _cellGrid[cellIdx * kFieldsPerCell + 8];
+	if (northEastCell >= 0) {
+		int16 leadCell = _cellGrid[northEastCell * kFieldsPerCell + 8];
+		evalAttrMatchAndAdvance(leadCell, northEastCell, cellIdx);
+		if (cellStateIs(leadCell, kCellLocked, kCellMatched)) {
+			int16 innerLead = _cellGrid[leadCell * kFieldsPerCell + 6];
+			if (innerLead >= 0)
+				evalAttrMatchAndAdvance(_cellGrid[innerLead * kFieldsPerCell + 6], innerLead, leadCell);
+
+			int16 branchCell = _cellGrid[leadCell * kFieldsPerCell + 3];
+			if (branchCell >= 0)
+				evalAttrMatchAndAdvance(_cellGrid[branchCell * kFieldsPerCell + 3], branchCell, leadCell);
+		}
+	}
+
+	int16 southWestCell = _cellGrid[cellIdx * kFieldsPerCell + 6];
+	if (southWestCell >= 0) {
+		int16 leadCell = _cellGrid[southWestCell * kFieldsPerCell + 6];
+		evalAttrMatchAndAdvance(leadCell, southWestCell, cellIdx);
+		if (cellStateIs(leadCell, kCellLocked, kCellMatched)) {
+			int16 innerLead = _cellGrid[leadCell * kFieldsPerCell + 8];
+			if (innerLead >= 0)
+				evalAttrMatchAndAdvance(_cellGrid[innerLead * kFieldsPerCell + 8], innerLead, leadCell);
+
+			int16 branchCell = _cellGrid[leadCell * kFieldsPerCell + 5];
+			if (branchCell >= 0)
+				evalAttrMatchAndAdvance(_cellGrid[branchCell * kFieldsPerCell + 5], branchCell, leadCell);
+		}
+	}
+
+	int16 northWestCell = _cellGrid[cellIdx * kFieldsPerCell + 3];
+	if (northWestCell >= 0)
+		evalAttrMatchAndAdvance(_cellGrid[northWestCell * kFieldsPerCell + 3], northWestCell, cellIdx);
+
+	int16 eastCell = _cellGrid[cellIdx * kFieldsPerCell + 5];
+	if (eastCell >= 0)
+		evalAttrMatchAndAdvance(_cellGrid[eastCell * kFieldsPerCell + 5], eastCell, cellIdx);
 }
 
-void ZoombiniPuzzleSlides::propagateMatchChain() {
+void ZoombiniPuzzleSlides::propagateMatchChain(int16 chainIdx) {
 	// IDA: slides_propagateMatchChain @ 0x446073
-	// Propagate match status through connected cells
+	if (chainIdx < 0 || chainIdx >= kNumCells)
+		return;
+
+	int16 linkCell = _cellGrid[chainIdx * kFieldsPerCell + 8];
+	if (linkCell >= 0) {
+		int16 leadCell = _cellGrid[linkCell * kFieldsPerCell + 7];
+		evalAttrMatchAndAdvance(leadCell, linkCell, chainIdx);
+		if (cellStateIs(leadCell, kCellLocked, kCellMatched)) {
+			int16 outerCell = _cellGrid[leadCell * kFieldsPerCell + 7];
+			int16 outerLead = (outerCell >= 0) ? _cellGrid[outerCell * kFieldsPerCell + 7] : -1;
+			evalAttrMatchAndAdvance(outerLead, outerCell, leadCell);
+			if (cellStateIs(outerLead, kCellLocked, kCellMatched)) {
+				int16 cornerCell = _cellGrid[outerLead * kFieldsPerCell + 7];
+				int16 cornerLead = (cornerCell >= 0) ? _cellGrid[cornerCell * kFieldsPerCell + 6] : -1;
+				evalAttrMatchAndAdvance(cornerLead, cornerCell, outerLead);
+				if (cellStateIs(cornerLead, kCellLocked, kCellMatched)) {
+					int16 branchCell = _cellGrid[cornerLead * kFieldsPerCell + 5];
+					int16 branchLead = (branchCell >= 0) ? _cellGrid[branchCell * kFieldsPerCell + 4] : -1;
+					evalAttrMatchAndAdvance(branchLead, branchCell, cornerLead);
+					if (cellStateIs(branchLead, kCellLocked, kCellMatched)) {
+						int16 lastCell = _cellGrid[branchLead * kFieldsPerCell + 4];
+						if (lastCell >= 0)
+							evalAttrMatchAndAdvance(_cellGrid[lastCell * kFieldsPerCell + 4], lastCell, branchLead);
+					}
+				}
+			}
+		}
+	}
+
+	linkCell = _cellGrid[chainIdx * kFieldsPerCell + 6];
+	if (linkCell >= 0) {
+		int16 leadCell = _cellGrid[linkCell * kFieldsPerCell + 7];
+		evalAttrMatchAndAdvance(leadCell, linkCell, chainIdx);
+		if (cellStateIs(leadCell, kCellLocked, kCellMatched)) {
+			int16 outerCell = _cellGrid[leadCell * kFieldsPerCell + 7];
+			int16 outerLead = (outerCell >= 0) ? _cellGrid[outerCell * kFieldsPerCell + 7] : -1;
+			evalAttrMatchAndAdvance(outerLead, outerCell, leadCell);
+			if (cellStateIs(outerLead, kCellLocked, kCellMatched)) {
+				int16 cornerCell = _cellGrid[outerLead * kFieldsPerCell + 7];
+				int16 cornerLead = (cornerCell >= 0) ? _cellGrid[cornerCell * kFieldsPerCell + 8] : -1;
+				evalAttrMatchAndAdvance(cornerLead, cornerCell, outerLead);
+				if (cellStateIs(cornerLead, kCellLocked, kCellMatched)) {
+					int16 branchCell = _cellGrid[cornerLead * kFieldsPerCell + 3];
+					int16 branchLead = (branchCell >= 0) ? _cellGrid[branchCell * kFieldsPerCell + 4] : -1;
+					evalAttrMatchAndAdvance(branchLead, branchCell, cornerLead);
+					if (cellStateIs(branchLead, kCellLocked, kCellMatched)) {
+						int16 lastCell = _cellGrid[branchLead * kFieldsPerCell + 4];
+						if (lastCell >= 0)
+							evalAttrMatchAndAdvance(_cellGrid[lastCell * kFieldsPerCell + 4], lastCell, branchLead);
+					}
+				}
+			}
+		}
+	}
 }
 
-int16 ZoombiniPuzzleSlides::checkAttrMatchOutcome(int16 cellIdx, int16 snoidIdx) const {
+int16 ZoombiniPuzzleSlides::checkAttrMatchOutcome(int16 leftSortedIdx, int16 rightSortedIdx) {
 	// IDA: slides_checkAttrMatchOutcome @ 0x448D1C
-	return checkFirstAttrMatch(cellIdx, snoidIdx) ? 1 : 0;
+	return checkFirstAttrMatch(leftSortedIdx, rightSortedIdx) ? 1 : 0;
 }
 
 // =============================================================================
@@ -1220,13 +2286,43 @@ void ZoombiniPuzzleSlides::updateWaterLevelSFX() {
 	// Update water level sound effect based on progress
 }
 
-void ZoombiniPuzzleSlides::triggerSwapAnimation(int16 cellA, int16 cellB) {
+void ZoombiniPuzzleSlides::triggerSwapAnimation() {
 	// IDA: slides_triggerSwapAnimation @ 0x449509
-	debugC(kZmbDebugPage, "Slides: triggerSwapAnimation cells %d <-> %d", cellA, cellB);
+	debugC(kZmbDebugPage, "Slides: replaying %d active swap cells", _activeCellCount);
+
+	for (int16 i = 0; i < _activeCellCount; i++) {
+		int16 cellIdx = _activeCellList[i];
+		int16 runnerId = _activeCellRunnerIds[i];
+
+		if (cellIdx < 0 || cellIdx >= kNumCells || runnerId <= 0)
+			continue;
+
+		ZmbSnoid *snoid = getSnoid(runnerId);
+		if (!snoid)
+			continue;
+
+		Common::Point targetPos = kCellPositions[cellIdx];
+		if (_cellFeatures[cellIdx])
+			targetPos = _cellFeatures[cellIdx]->getPointLoc();
+
+		snoid->initWalkToTarget(targetPos);
+		_cellGrid[cellIdx * kFieldsPerCell + 1] = kCellOccupied;
+		_cellGrid[cellIdx * kFieldsPerCell + 2] = runnerId;
+		syncCellFeatureScript(cellIdx);
+	}
 }
 
 void ZoombiniPuzzleSlides::loadRunnerSCRB(uint16 runnerId, int16 scrbId) {
 	// IDA: slides_loadRunnerSCRB @ 0x44BA68
+	for (int16 cellIdx = 0; cellIdx < kNumCells; cellIdx++) {
+		if (_cellGrid[cellIdx * kFieldsPerCell + 0] != static_cast<int16>(runnerId) || !_cellFeatures[cellIdx])
+			continue;
+
+		setCellFeaturePreRenderHook(_cellFeatures[cellIdx], scrbId);
+		loadScrbOntoFeature(_cellFeatures[cellIdx], scrbId);
+		return;
+	}
+
 	ZmbSnoid *snoid = getSnoid(runnerId);
 	if (snoid) {
 		loadScrbOntoFeature(snoid, scrbId);
@@ -1239,37 +2335,61 @@ void ZoombiniPuzzleSlides::loadRunnerSCRB(uint16 runnerId, int16 scrbId) {
 
 void ZoombiniPuzzleSlides::unlockInteractiveSlots() {
 	// IDA: slides_unlockInteractiveSlots @ 0x445E20
-	for (int16 i = 0; i < _numSlots; i++) {
-		int16 cellIdx = _slotCellMap[i];
-		if (cellIdx >= 0) {
-			int16 state = _cellGrid[cellIdx * kFieldsPerCell + 1];
-			if (state == kCellLocked) {
-				_cellGrid[cellIdx * kFieldsPerCell + 1] = kCellOccupied;
-			}
-		}
-	}
+	// The original helper unlocks interaction and relinks slot/unplaced runners for
+	// linked-list ordering. ScummVM does not use runner-link ordering for Slides cell
+	// features, so this must not rewrite cell states or reload SCRBs.
 }
 
-void ZoombiniPuzzleSlides::placeNextZmbInCell(int16 cellIdx) {
+int16 ZoombiniPuzzleSlides::placeNextZmbInCell(int16 cellIdx) {
 	// IDA: slides_placeNextZmbInCell @ 0x445F75
-	// Find next available Zoombini and place in cell
+	int16 result = cellIdx * kFieldsPerCell;
+
 	for (int16 i = 0; i < _loadedZmbCount; i++) {
-		if (_usedFlags[i])
+		if (_sortedZmbIndices[i] == -1)
 			continue;
 
-		ZmbSnoid *snoid = getSnoid(10000 + i);
-		if (snoid && snoid->getAnimState() == kSnoidAnimIdle) {
-			_usedFlags[i] = 1;
-			assignZmbToSlot(snoid, cellIdx);
-			break;
-		}
+		int16 runnerId = _zmbRunnerIdxArr[_sortedZmbIndices[i]];
+		_cellGrid[cellIdx * kFieldsPerCell + 1] = kCellOccupied;
+		_cellGrid[cellIdx * kFieldsPerCell + 2] = runnerId;
+		_sortedZmbIndices[i] = -1;
+		syncCellFeatureScript(cellIdx);
+		break;
 	}
+
+	for (int16 j = 0; j < _loadedZmbCount; j++) {
+		if (_sortedZmbIndices[j] == -1)
+			continue;
+
+		int16 pairedCell = cellIdx + 5;
+		if (pairedCell < kNumCells) {
+			int16 runnerId = _zmbRunnerIdxArr[_sortedZmbIndices[j]];
+			_cellGrid[pairedCell * kFieldsPerCell + 1] = kCellOccupied;
+			_cellGrid[pairedCell * kFieldsPerCell + 2] = runnerId;
+			_sortedZmbIndices[j] = -1;
+			syncCellFeatureScript(pairedCell);
+		}
+		break;
+	}
+
+	if (cellStateIs(cellIdx, kCellOccupied)) {
+		int16 matched = placeMatchingZmbInCell(cellIdx, 8);
+		if (matched != -1)
+			placeMatchingZmbInCell(cellIdx, 9);
+	}
+
+	if (cellIdx + 5 < kNumCells && cellStateIs(cellIdx + 5, kCellOccupied)) {
+		result = placeMatchingZmbInCell(cellIdx + 5, 6);
+		if (result != -1)
+			result = placeMatchingZmbInCell(cellIdx + 5, 7);
+	}
+
+	return result;
 }
 
 bool ZoombiniPuzzleSlides::hasPendingZmb() const {
 	// IDA: slides_hasPendingZmb @ 0x4484AA
 	for (int16 i = 0; i < _loadedZmbCount; i++) {
-		if (!_usedFlags[i])
+		if (_sortedZmbIndices[i] != -1)
 			return true;
 	}
 	return false;
@@ -1278,58 +2398,233 @@ bool ZoombiniPuzzleSlides::hasPendingZmb() const {
 void ZoombiniPuzzleSlides::scanAndResetActiveCells() {
 	// IDA: slides_scanAndResetActiveCells @ 0x4484CF
 	_activeCellCount = 0;
-	for (int16 i = 0; i < _numSlots; i++) {
-		int16 cellIdx = _slotCellMap[i];
-		if (cellIdx >= 0) {
-			int16 state = _cellGrid[cellIdx * kFieldsPerCell + 1];
-			if (state == kCellOccupied || state == kCellLocked) {
-				_activeCellList[_activeCellCount++] = cellIdx;
-			}
+	for (int16 cellIdx = 0; cellIdx < kNumCells; cellIdx++) {
+		int16 &state = _cellGrid[cellIdx * kFieldsPerCell + 1];
+		if (state == kCellConnector) {
+			state = kCellPath;
+			syncCellFeatureScript(cellIdx);
 		}
+
+		if (state == kCellOccupied && _activeCellCount < ARRAYSIZE(_activeCellList)) {
+			_activeCellList[_activeCellCount++] = cellIdx;
+			_activeCellRunnerIds[_activeCellCount - 1] = _cellGrid[cellIdx * kFieldsPerCell + 2];
+		}
+	}
+	debugC(kZmbDebugPage, "Slides: scanAndResetActiveCells collected %d occupied cells", _activeCellCount);
+
+	auto cellState = [this](int16 cellIdx) -> int16 {
+		return _cellGrid[cellIdx * kFieldsPerCell + 1];
+	};
+
+	if (cellState(2) == kCellPath && cellState(19) == kCellPath) {
+		clearCellToEmpty(2);
+		clearCellToEmpty(19);
+		clearCellToEmpty(10);
+		clearCellToEmpty(11);
+		clearCellToEmpty(28);
+		clearCellLinkBits(kAdjNW, 0, 38);
+		clearCellLinkBits(kAdjNW, 0, 21);
+	}
+
+	if (cellState(91) == kCellPath && cellState(110) == kCellPath) {
+		clearCellToEmpty(91);
+		clearCellToEmpty(110);
+		clearCellToEmpty(100);
+		clearCellToEmpty(82);
+		clearCellToEmpty(101);
+		clearCellLinkBits(kAdjSW, 2, 74);
+		clearCellLinkBits(kAdjSW, 2, 93);
+	}
+
+	if (cellState(112) == kCellPath) {
+		clearCellToEmpty(112);
+		clearCellToEmpty(102);
+		clearCellToEmpty(103);
+		clearCellLinkBits(kAdjSE, 3, 93);
+		clearCellLinkBits(kAdjSW, 2, 95);
+	}
+
+	if (cellState(114) == kCellPath) {
+		clearCellToEmpty(114);
+		clearCellToEmpty(104);
+		clearCellToEmpty(105);
+		clearCellLinkBits(kAdjSE, 3, 95);
+		clearCellLinkBits(kAdjSW, 2, 97);
+	}
+
+	if (cellState(4) == kCellPath) {
+		clearCellToEmpty(4);
+		clearCellToEmpty(12);
+		clearCellToEmpty(13);
+		clearCellLinkBits(kAdjNE, 5, 21);
+		clearCellLinkBits(kAdjNW, 0, 23);
+	}
+
+	if (cellState(6) == kCellPath) {
+		clearCellToEmpty(6);
+		clearCellToEmpty(14);
+		clearCellToEmpty(15);
+		clearCellLinkBits(kAdjNE, 5, 23);
+		clearCellLinkBits(kAdjNW, 0, 25);
+	}
+
+	if (cellState(97) == kCellPath && cellState(80) == kCellPath) {
+		clearCellToEmpty(97);
+		clearCellToEmpty(80);
+		clearCellToEmpty(88);
+		clearCellToEmpty(87);
+		clearCellToEmpty(70);
+		clearCellToEmpty(105);
+		clearCellLinkBits(kAdjSE, 3, 78);
+		clearCellLinkBits(kAdjSE, 3, 61);
+		clearCellLinkBits(kAdjNE, 5, 114);
+	}
+
+	if (cellState(25) == kCellPath && cellState(44) == kCellPath) {
+		clearCellToEmpty(25);
+		clearCellToEmpty(44);
+		clearCellToEmpty(34);
+		clearCellToEmpty(15);
+		clearCellToEmpty(33);
+		clearCellToEmpty(52);
+		clearCellLinkBits(kAdjNE, 5, 42);
+		clearCellLinkBits(kAdjNE, 5, 61);
+		clearCellLinkBits(kAdjSE, 3, 6);
 	}
 }
 
-int16 ZoombiniPuzzleSlides::findMatchingZmbForCell(int16 cellIdx) const {
+int16 ZoombiniPuzzleSlides::findMatchingZmbForCell(int16 matchCellIdx, int16 outResult) {
 	// IDA: slides_findMatchingZmbForCell @ 0x448760
-	// Find a Zoombini that would match neighbors at cellIdx
-	return -1; // Simplified
-}
+	auto getLink = [this](int16 cellIdx, int16 dir) -> int16 {
+		if (cellIdx < 0 || cellIdx >= kNumCells || dir < 0 || dir >= 6)
+			return -1;
+		return _cellGrid[cellIdx * kFieldsPerCell + 3 + dir];
+	};
 
-void ZoombiniPuzzleSlides::reassignDeadSlots() {
-	// IDA: slides_reassignDeadSlots @ 0x44899D
-	// Reassign any disconnected slots
-}
+	int16 midCell = getLink(matchCellIdx, outResult);
+	if (midCell < 0)
+		return -2;
 
-int16 ZoombiniPuzzleSlides::pickNextCellForLink(int16 currentCell, uint16 dirMask) const {
-	// IDA: slides_pickNextCellForLink @ 0x4495C2
-	int16 base = currentCell * kFieldsPerCell;
+	int16 destCell = getLink(midCell, outResult);
+	if (destCell < 0)
+		return -2;
 
-	for (int16 dir = 0; dir < 6; dir++) {
-		if (!(dirMask & (1 << dir)))
+	ZmbSnoid *sourceSnoid = getSnoid(_cellGrid[matchCellIdx * kFieldsPerCell + 2]);
+	if (!sourceSnoid)
+		return -1;
+
+	int16 attrCursor = _vm->_rnd->getRandomNumber(0, 3);
+	for (int16 i = 0; i < _loadedZmbCount; i++) {
+		int16 runnerListIdx = _sortedZmbIndices[i];
+		if (runnerListIdx == -1)
 			continue;
 
-		int16 neighbor = _cellGrid[base + 3 + dir];
-		if (neighbor >= 0 && neighbor < kNumCells) {
-			int16 neighborState = _cellGrid[neighbor * kFieldsPerCell + 1];
-			if (neighborState == kCellConnector || neighborState == kCellSlotBase1 ||
-				neighborState == kCellSlotBase2) {
-				return neighbor;
+		ZmbSnoid *candidateSnoid = getSnoid(_zmbRunnerIdxArr[runnerListIdx]);
+		if (!candidateSnoid)
+			continue;
+
+		bool noMatch = true;
+		int16 tries = 4;
+		while (noMatch && 0 < tries) {
+			if ((attrCursor == 0 && candidateSnoid->_trait._head == sourceSnoid->_trait._head) ||
+				(attrCursor == 1 && candidateSnoid->_trait._eye == sourceSnoid->_trait._eye) ||
+				(attrCursor == 2 && candidateSnoid->_trait._nose == sourceSnoid->_trait._nose) ||
+				(attrCursor == 3 && candidateSnoid->_trait._foot == sourceSnoid->_trait._foot)) {
+				noMatch = false;
+			} else {
+				tries--;
+				attrCursor++;
+				if (3 < attrCursor)
+					attrCursor = 0;
 			}
+		}
+
+		if (!noMatch) {
+			_cellGrid[destCell * kFieldsPerCell + 1] = kCellOccupied;
+			_cellGrid[destCell * kFieldsPerCell + 2] = candidateSnoid->getId();
+			_cellGrid[midCell * kFieldsPerCell + 1] = kCellPath;
+			_cellGrid[midCell * kFieldsPerCell + 2] = attrCursor + kAttrHair;
+			_sortedZmbIndices[i] = -1;
+			syncCellFeatureScript(destCell);
+			syncCellFeatureScript(midCell);
+			return i;
 		}
 	}
 
 	return -1;
 }
 
+void ZoombiniPuzzleSlides::reassignDeadSlots() {
+	// IDA: slides_reassignDeadSlots @ 0x44899D
+	static const int16 kReassignCells[22] = {
+		55, 57, 59, 61, 38, 74, 40, 76, 42, 78, 44, 80, 21, 93, 23, 95, 25, 97, 4, 112, 19, 25
+	};
+
+	for (uint i = 0; i < ARRAYSIZE(kReassignCells); i++) {
+		int16 cellIdx = kReassignCells[i];
+		if (cellStateIs(cellIdx, kCellOccupied))
+			continue;
+
+		for (int16 sortedIdx = 0; sortedIdx < _loadedZmbCount; sortedIdx++) {
+			int16 runnerListIdx = _sortedZmbIndices[sortedIdx];
+			if (runnerListIdx == -1)
+				continue;
+
+			_cellGrid[cellIdx * kFieldsPerCell + 2] = _zmbRunnerIdxArr[runnerListIdx];
+			_sortedZmbIndices[sortedIdx] = -1;
+			setCellStateAndReload(cellIdx, kCellOccupied);
+			break;
+		}
+
+		if (!hasPendingZmb())
+			break;
+	}
+}
+
+void ZoombiniPuzzleSlides::pickNextCellForLink(int16 cellIdx, int16 nextCell, int16 direction) {
+	// IDA: slides_pickNextCellForLink @ 0x4495C2
+	if (cellIdx < 0 || nextCell < 0 || direction < 0 || cellIdx >= kNumCells || nextCell >= kNumCells || direction >= kNumCells)
+		return;
+
+	int16 directionData = _cellGrid[direction * kFieldsPerCell + 2];
+	int16 nextData = _cellGrid[nextCell * kFieldsPerCell + 2];
+	int16 cellState = _cellGrid[cellIdx * kFieldsPerCell + 1];
+
+	if (directionData < kAttrHair && nextData < kAttrHair && cellState == kCellPath) {
+		resetCellToEmpty(direction);
+		resetCellToEmpty(nextCell);
+		resetCellToEmpty(cellIdx);
+		return;
+	}
+
+	if (directionData < kAttrHair && nextData < kAttrHair && cellState == kCellOccupied) {
+		resetCellToEmpty(nextCell);
+		return;
+	}
+
+	if (directionData < kAttrHair && kAttrHair <= nextData && cellState == kCellOccupied) {
+		resetCellToEmpty(direction);
+		return;
+	}
+
+	if (kAttrHair <= directionData && nextData < kAttrHair && cellState == kCellOccupied)
+		resetCellToEmpty(nextCell);
+}
+
 void ZoombiniPuzzleSlides::markMatchedRunnersDone() {
 	// IDA: slides_markMatchedRunnersDone @ 0x4447E2
-	for (int16 i = 0; i < _numSlots; i++) {
-		int16 cellIdx = _slotCellMap[i];
-		if (cellIdx >= 0 && _cellGrid[cellIdx * kFieldsPerCell + 1] == kCellLocked) {
-			// Mark the Zoombini as matched/done
-			// int16 zmbId = _cellGrid[cellIdx * kFieldsPerCell + 2];
-			// In original, this would set a completion flag
-		}
+	// Writes runner+295 = 1 for each locked Slides cell. That byte is
+	// core259.unk00F7, which ScummVM maps to _packIsOccupied.
+	for (int16 cellIdx = 0; cellIdx < kNumCells; cellIdx++) {
+		if (_cellGrid[cellIdx * kFieldsPerCell + 1] != kCellLocked)
+			continue;
+
+		ZmbSnoid *snoid = getSnoid(_cellGrid[cellIdx * kFieldsPerCell + 2]);
+		if (!snoid)
+			continue;
+
+		// Matched Slides runners leave the active pack on departure.
+		snoid->_packIsOccupied = false;
 	}
 }
 
@@ -1338,76 +2633,305 @@ void ZoombiniPuzzleSlides::markMatchedRunnersDone() {
 // IDA: slides_checkVictoryCondition @ 0x44943A
 // =============================================================================
 
-bool ZoombiniPuzzleSlides::checkVictoryCondition() const {
-	// All slots must be filled and locked (matched)
-	for (int16 i = 0; i < _numSlots; i++) {
-		int16 cellIdx = _slotCellMap[i];
-		if (cellIdx < 0)
-			continue;
-
-		int16 state = _cellGrid[cellIdx * kFieldsPerCell + 1];
-		if (state != kCellLocked)
-			return false;
+void ZoombiniPuzzleSlides::checkVictoryCondition() {
+	int16 matchedCellCount = 0;
+	for (int16 cellIdx = 0; cellIdx < kNumCells; cellIdx++) {
+		if (_cellGrid[cellIdx * kFieldsPerCell + 1] == kCellLocked)
+			matchedCellCount++;
 	}
-	return true;
+
+	setGoButtonsEnabled(matchedCellCount >= _loadedZmbCount);
+
+	if (!_celebrationActive && matchedCellCount >= _loadedZmbCount) {
+		_matchCount++;
+		uint16 sndId = _vm->_rnd->getRandomNumber(20055, 20063);
+		_vm->_sound->playZmbSound(
+			ZmbResource(ZmbArchiveKind::kSystem, sndId),
+			Audio::Mixer::kSFXSoundType);
+	}
 }
 
 // =============================================================================
 // Callback Functions
 // =============================================================================
 
+void ZoombiniPuzzleSlides::ensureCellFeature(int16 cellIdx) {
+	if (cellIdx < 0 || cellIdx >= kNumCells || _cellFeatures[cellIdx])
+		return;
+	if (_cellGrid[cellIdx * kFieldsPerCell + 1] == kCellInert)
+		return;
+
+	ZmbFeature::EventHooks slotHooks;
+	slotHooks.setPreRenderShapeFunc(
+		reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleSlides::filterCommandByFlags));
+
+	ZmbFeature *slotFeature = loadScrbFeature(
+		ZmbResource(ZmbArchiveKind::kPage, 7000), 7013, 7,
+		kCellPositions[cellIdx],
+		ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
+			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00800000_POS_DELTA |
+			ZmbFeature::FLAG_01000000_DEFER_RENDER,
+		slotHooks);
+	slotFeature->activateRender();
+	slotFeature->deactivateAnimate();
+	_cellFeatures[cellIdx] = slotFeature;
+	_cellGrid[cellIdx * kFieldsPerCell + 0] = static_cast<int16>(slotFeature->getRegistrationIndex());
+}
+
+int16 ZoombiniPuzzleSlides::getBackwardChainLink(int16 cellIdx) const {
+	if (cellIdx < 0 || cellIdx >= kNumCells)
+		return -1;
+
+	int16 base = cellIdx * kFieldsPerCell;
+	if (_cellGrid[base + 3] != -1)
+		return _cellGrid[base + 3];
+	if (_cellGrid[base + 4] != -1)
+		return _cellGrid[base + 4];
+	return _cellGrid[base + 5];
+}
+
+int16 ZoombiniPuzzleSlides::getForwardChainLink(int16 cellIdx) const {
+	if (cellIdx < 0 || cellIdx >= kNumCells)
+		return -1;
+
+	int16 base = cellIdx * kFieldsPerCell;
+	if (_cellGrid[base + 8] != -1)
+		return _cellGrid[base + 8];
+	if (_cellGrid[base + 7] != -1)
+		return _cellGrid[base + 7];
+	return _cellGrid[base + 6];
+}
+
+bool ZoombiniPuzzleSlides::cellStateIs(int16 cellIdx, int16 stateA, int16 stateB, int16 stateC) const {
+	if (cellIdx < 0 || cellIdx >= kNumCells)
+		return false;
+
+	int16 state = _cellGrid[cellIdx * kFieldsPerCell + 1];
+	return state == stateA || state == stateB || state == stateC;
+}
+
+bool ZoombiniPuzzleSlides::cellsMatchAttr(int16 leftCellIdx, int16 rightCellIdx, int16 attrType) const {
+	if (!cellStateIs(leftCellIdx, kCellOccupied, kCellLocked) || !cellStateIs(rightCellIdx, kCellOccupied, kCellLocked))
+		return false;
+
+	ZmbSnoid *leftSnoid = getSnoid(_cellGrid[leftCellIdx * kFieldsPerCell + 2]);
+	ZmbSnoid *rightSnoid = getSnoid(_cellGrid[rightCellIdx * kFieldsPerCell + 2]);
+	if (!leftSnoid || !rightSnoid)
+		return false;
+
+	switch (attrType) {
+	case kAttrHair:
+		return leftSnoid->_trait._head == rightSnoid->_trait._head;
+	case kAttrEyes:
+		return leftSnoid->_trait._eye == rightSnoid->_trait._eye;
+	case kAttrNose:
+		return leftSnoid->_trait._nose == rightSnoid->_trait._nose;
+	case kAttrLegs:
+		return leftSnoid->_trait._foot == rightSnoid->_trait._foot;
+	default:
+		return false;
+	}
+}
+
+bool ZoombiniPuzzleSlides::setCellStateAndReload(int16 cellIdx, int16 state, int16 scrbId) {
+	if (cellIdx < 0 || cellIdx >= kNumCells)
+		return false;
+
+	ensureCellFeature(cellIdx);
+	int16 base = cellIdx * kFieldsPerCell;
+	bool changed = (_cellGrid[base + 1] != state);
+	_cellGrid[base + 1] = state;
+	loadRunnerSCRB(_cellGrid[base + 0], scrbId);
+	return changed;
+}
+
+int16 ZoombiniPuzzleSlides::findCellIdxForFeature(const ZmbFeature *feature) const {
+	if (!feature)
+		return -1;
+
+	for (int16 cellIdx = 0; cellIdx < kNumCells; cellIdx++) {
+		if (_cellFeatures[cellIdx] == feature)
+			return cellIdx;
+	}
+
+	return -1;
+}
+
+void ZoombiniPuzzleSlides::setCellFeaturePreRenderHook(ZmbFeature *feature, int16 scrbId) {
+	if (!feature)
+		return;
+
+	ZmbFeature::OnPreRenderShapeFunc callback =
+		reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleSlides::filterCommandByFlags);
+
+	if (scrbId == 7000) {
+		callback = reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleSlides::filterHotspotScript);
+	} else if (scrbId == 7002) {
+		callback = reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleSlides::processCommandQueue);
+	}
+
+	feature->setPreRenderShapeFunc(callback);
+}
+
+void ZoombiniPuzzleSlides::syncCellFeatureScript(int16 cellIdx) {
+	if (cellIdx < 0 || cellIdx >= kNumCells)
+		return;
+
+	ensureCellFeature(cellIdx);
+	ZmbFeature *feature = _cellFeatures[cellIdx];
+	if (!feature)
+		return;
+
+	int16 scrbId = 7013;
+	int16 state = _cellGrid[cellIdx * kFieldsPerCell + 1];
+
+	if (state == kCellInert) {
+		feature->deactivateRender();
+		feature->deactivateAnimate();
+		return;
+	}
+
+	if (state == kCellMatched || state == kCellLocked || state == kCellOccupied) {
+		scrbId = 7000;
+	}
+
+	setCellFeaturePreRenderHook(feature, scrbId);
+	loadScrbOntoFeature(feature, scrbId, false);
+	feature->activateRender();
+	feature->deactivateAnimate();
+}
+
+uint16 ZoombiniPuzzleSlides::getAdjMaskForCommand(int16 cmd) {
+	switch (cmd) {
+	case 4:
+		return kAdjNW;
+	case 8:
+		return kAdjW;
+	case 12:
+		return kAdjSW;
+	case 16:
+		return kAdjSE;
+	case 20:
+		return kAdjE;
+	case 24:
+		return kAdjNE;
+	default:
+		return 0;
+	}
+}
+
 void ZoombiniPuzzleSlides::filterHotspotScript(ZmbFeature *feature, ZmbHotspotGroup *hsGroup,
                                                Common::Array<ZmbHotspot> &hotspots) {
 	// IDA: slides_filterHotspotScript @ 0x443D75
-	// SCRB preRenderShapeFunc callback that filters hotspot commands based on cell state.
-	//
-	// Original logic extracts cell index from SCRB metadata: v2 = scriptData[4].pos.x - cellGrid[0]
-	// Then for each hotspot (shapeid/opcode):
-	//   - opcode 4:  remove if (adjBitFlags[cell] & 0x01) == 0
-	//   - opcode 8:  remove if (adjBitFlags[cell] & 0x02) == 0
-	//   - opcode 24: remove if (adjBitFlags[cell] & 0x20) == 0
-	//   - opcode 73: remove if cellState[cell*9+2] != 513 (kAttrLegs)
-	//   - opcode 74: remove if cellState[cell*9+2] != 510 (kAttrHair)
-	//   - opcode 75: remove if cellState[cell*9+2] != 512 (kAttrNose)
-	//   - opcode 76: remove if cellState[cell*9+2] != 511 (kAttrEyes)
-	//   - opcode 103: remove if cellState[cell*9+1] != 506 (kCellConnector)
-	//   - opcode 109: remove if state(502/504/508) && _slotBaseState != 505
-	//   - opcode 110: remove if state(502/505/508) && _slotBaseState == 505
-	//
-	// This callback is NOT currently wired to any feature. The gameplay works without it,
-	// but extra animation frames may display when cells are in certain states.
-	//
-	// TODO: Implement full logic when the feature needing this callback is identified.
+	if (!hsGroup)
+		return;
+
+	int16 cellIdx = findCellIdxForFeature(feature);
+	if (cellIdx < 0 || hotspots.size() <= 8)
+		return;
+
+	int16 base = cellIdx * kFieldsPerCell;
+	uint16 adjFlags = _adjBitFlags[cellIdx];
+	int16 cellState = _cellGrid[base + 1];
+	int16 cellData = _cellGrid[base + 2];
+
+	for (uint32 i = 8; i < hotspots.size();) {
+		int16 cmd = hotspots[i]._shapeIdx;
+		bool keep = true;
+
+		if ((cmd == 4 || cmd == 8 || cmd == 24) && (adjFlags & getAdjMaskForCommand(cmd)) == 0) {
+			keep = false;
+		} else if (cmd == 73) {
+			keep = (cellData == kAttrLegs);
+		} else if (cmd == 74) {
+			keep = (cellData == kAttrHair);
+		} else if (cmd == 75) {
+			keep = (cellData == kAttrNose);
+		} else if (cmd == 76) {
+			keep = (cellData == kAttrEyes);
+		} else if (cmd == 103) {
+			keep = (cellState == kCellConnector);
+		} else if (cmd == 109) {
+			keep = !((cellState == kCellMatched || cellState == kCellSlotBase1 || cellState == kCellLocked) &&
+				_slotBaseState != kCellSlotBase2);
+		} else if (cmd == 110) {
+			keep = !((cellState == kCellMatched || cellState == kCellSlotBase2 || cellState == kCellLocked) &&
+				_slotBaseState == kCellSlotBase2);
+		}
+
+		if (!keep) {
+			hotspots.remove_at(i);
+		} else {
+			i++;
+		}
+	}
 }
 
-bool ZoombiniPuzzleSlides::filterCommandByFlags(int16 cmd, int16 flags) const {
+void ZoombiniPuzzleSlides::filterCommandByFlags(ZmbFeature *feature, ZmbHotspotGroup *hsGroup,
+                                                Common::Array<ZmbHotspot> &hotspots) {
 	// IDA: slides_filterCommandByFlags @ 0x444028
-	// Filters a command based on adjacency bit flags.
-	// Original adjusts hotspot positions (x -= 22, y += 6) before checking.
-	//
-	// Opcode mapping to flag bit:
-	//   - opcode 4:  check adjBitFlags[cell] & 0x01
-	//   - opcode 8:  check adjBitFlags[cell] & 0x02
-	//   - opcode 12: check adjBitFlags[cell] & 0x04
-	//   - opcode 16: check adjBitFlags[cell] & 0x08
-	//   - opcode 20: check adjBitFlags[cell] & 0x10
-	//   - opcode 24: check adjBitFlags[cell] & 0x20
-	//
-	// Returns true if the command passes the filter (flag bit set), false to remove.
-	// Currently returns true (no filtering) - gameplay unaffected.
-	return true;
+	if (!hsGroup)
+		return;
+
+	int16 cellIdx = findCellIdxForFeature(feature);
+	if (cellIdx < 0 || hotspots.size() <= 8)
+		return;
+
+	uint16 adjFlags = _adjBitFlags[cellIdx];
+
+	for (uint32 i = 8; i < hotspots.size();) {
+		ZmbHotspot &hotspot = hotspots[i];
+		hotspot._x -= 22;
+		hotspot._y += 6;
+
+		uint16 mask = getAdjMaskForCommand(hotspot._shapeIdx);
+		if (mask != 0 && (adjFlags & mask) == 0) {
+			hotspots.remove_at(i);
+		} else {
+			i++;
+		}
+	}
 }
 
-void ZoombiniPuzzleSlides::processCommandQueue() {
+void ZoombiniPuzzleSlides::processCommandQueue(ZmbFeature *feature, ZmbHotspotGroup *hsGroup,
+                                               Common::Array<ZmbHotspot> &hotspots) {
 	// IDA: slides_processCommandQueue @ 0x444144
-	// Processes command queue, similar to filterHotspotScript but also modifies shapeid.
-	//
-	// For opcodes 4/8/24: if flag bit set, adds _cellSpacing to shapeid
-	// For opcodes 109/110: removes if cell state conditions match (same as filterHotspotScript)
-	//
-	// This modifies the SCRB command queue in-place to apply cell-spacing offsets
-	// to animation frame indices. Without it, the puzzle may show slightly wrong
-	// frame offsets but gameplay is unaffected.
+	if (!hsGroup)
+		return;
+
+	int16 cellIdx = findCellIdxForFeature(feature);
+	if (cellIdx < 0 || hotspots.size() <= 8)
+		return;
+
+	int16 base = cellIdx * kFieldsPerCell;
+	uint16 adjFlags = _adjBitFlags[cellIdx];
+	int16 cellState = _cellGrid[base + 1];
+
+	for (uint32 i = 8; i < hotspots.size();) {
+		int16 cmd = hotspots[i]._shapeIdx;
+		bool keep = true;
+
+		if (cmd == 4 || cmd == 8 || cmd == 24) {
+			uint16 mask = getAdjMaskForCommand(cmd);
+			if ((adjFlags & mask) != 0) {
+				hotspots[i]._shapeIdx += _cellSpacing;
+			} else {
+				keep = false;
+			}
+		} else if (cmd == 109) {
+			keep = !((cellState == kCellMatched || cellState == kCellSlotBase1 || cellState == kCellLocked) &&
+				_slotBaseState != kCellSlotBase2);
+		} else if (cmd == 110) {
+			keep = !((cellState == kCellMatched || cellState == kCellSlotBase2 || cellState == kCellLocked) &&
+				_slotBaseState == kCellSlotBase2);
+		}
+
+		if (!keep) {
+			hotspots.remove_at(i);
+		} else {
+			i++;
+		}
+	}
 }
 
 void ZoombiniPuzzleSlides::invalidateVisualRects(uint16 rectIdx, ZmbFeature *feature) {

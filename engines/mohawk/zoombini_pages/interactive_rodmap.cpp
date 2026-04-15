@@ -488,6 +488,10 @@ ZmbEventHandleResult ZoombiniInteractiveRodMap::legendLevel1004_onLButtonDown(Zm
 	return ZmbEventHandleResult::kPassthrough;
 }
 
+/**
+ * Keyboard shortcuts for level selection in practice mode: Ctrl+1 ~ Ctrl+4 to select levels 1 to 4.
+ * Only works when already in practice mode, does not toggle practice mode on.
+ */
 ZmbEventHandleResult ZoombiniInteractiveRodMap::legendLevel1004_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat) {
 	if (kbdRepeat)
 		return ZmbEventHandleResult::kPassthrough;
@@ -495,6 +499,9 @@ ZmbEventHandleResult ZoombiniInteractiveRodMap::legendLevel1004_onKeyDown(ZmbFea
 	if (!kbd.hasFlags(0))
 		return ZmbEventHandleResult::kPassthrough;
 
+	if (_vm->_state->_practiceLevel == 0)
+		return ZmbEventHandleResult::kPassthrough;
+		
 	uint16 selectedLevel = 0;
 	switch (kbd.keycode) {
 	case Common::KEYCODE_1:

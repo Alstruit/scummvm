@@ -39,6 +39,27 @@ const Common::Point ZoombiniPuzzleFleens::kSnoidPositions[16] = {
 // IDA: raft DRAW_ON_REG position at 0x4A1028
 const Common::Point ZoombiniPuzzleFleens::kRaftPosition(438, 357);
 
+// IDA: Fleen creature trait-to-shape lookup tables at 0x4A0FB8..0x4A0FE7.
+// Each table maps trait values (0-5) to sub-image base offsets in tBMP 4000.
+// Index 0 is unused (trait values 1-5 only). Read from IDA binary data section.
+const int16 ZoombiniPuzzleFleens::kFleenHairTable[6] = {0, 275, 290, 305, 328, 347};
+const int16 ZoombiniPuzzleFleens::kFleenEyeTable[6]  = {0,  15,  30,  45,  60,  75};
+const int16 ZoombiniPuzzleFleens::kFleenNoseTable[6]  = {0,  90, 109, 128, 147, 166};
+const int16 ZoombiniPuzzleFleens::kFleenFeetTable[6]  = {0, 185, 203, 221, 239, 257};
+
+// ---------------------------------------------------------------------------
+// FleenCreature
+// ---------------------------------------------------------------------------
+FleenCreature::~FleenCreature() {
+	clearFrames();
+}
+
+void FleenCreature::clearFrames() {
+	for (auto it = hsFrameMap.begin(); it != hsFrameMap.end(); ++it)
+		delete it->_value;
+	hsFrameMap.clear();
+}
+
 ZoombiniPuzzleFleens::ZoombiniPuzzleFleens(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kFleens) {
 }
 
@@ -164,8 +185,23 @@ void ZoombiniPuzzleFleens::loadFeatures() {
 
 	// IDA: ferry_buildZmbRunners_41D9F4 — builds zoombini trait runners
 	// Sets up trait transformation data for puzzle matching logic.
-	// The visual trait runners (fleens_spawnRunner) are not fully implemented yet.
 	buildZmbTraitSetup();
+
+	// Spawn visual Fleen creatures on the beehive.
+	// IDA: fleens_spawnRunner_41DE8B loop — creates composite sprite runners.
+	spawnFleenCreatures();
+
+	// Register virtual feature for Fleen creature rendering.
+	// IDA: fleens_spawnRunner creates runners with caves_renderShapeHotspots_41D04E
+	// as the post-render callback. In ScummVM, we use a single virtual feature
+	// with custom render hooks to draw all Fleen creatures.
+	{
+		ZmbFeature::EventHooks fleenHooks;
+		fleenHooks.setPreRenderFunc(reinterpret_cast<ZmbFeature::OnPreRenderFunc>(&ZoombiniPuzzleFleens::fleenCreatures_preRender));
+		fleenHooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniPuzzleFleens::fleenCreatures_render));
+		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
+			ZmbFeature::FLAG_04000000_OVERLAY, fleenHooks);
+	}
 
 	// IDA: 7× word_4AA848[scrbId] = runner_registerAndAllocate(..., 6, scrbId, standard, standard, flags)
 	// Overlay runners (SCRB 1200-1206)
@@ -768,19 +804,355 @@ void ZoombiniPuzzleFleens::buildZmbTraitSetup() {
 		}
 	} else if (_traitSlotOrder[0] == 0 || _difficultyLevel == kPuzzleDiffLevel4) {
 		// For higher difficulty, generate slot order using non-repeat random
-		// IDA: e2GetPoolValue_nonRepeatRandom with 4 positions
+		// IDA: ferry_buildZmbRunners_41D9F4 — first slot = nextRand(4, 2),
+		// then e2GetPoolValue_nonRepeatRandom for remaining 3 slots.
 		_traitSlotOrder[0] = static_cast<uint8>(_vm->_rnd->getRandomNumber(2, 4));
-		// Simplified: just assign 1-4 for slot ordering
-		uint32 usedMask = 1 << (_traitSlotOrder[0] - 1);
+		uint32 poolState = 1u << (_traitSlotOrder[0] - 1);
 		for (int i = 1; i < 4; i++) {
-			uint8 slot;
-			do {
-				slot = static_cast<uint8>(_vm->_rnd->getRandomNumber(1, 4));
-			} while (usedMask & (1 << (slot - 1)));
-			_traitSlotOrder[i] = slot;
-			usedMask |= (1 << (slot - 1));
+			_traitSlotOrder[i] = static_cast<uint8>(_vm->_rnd->getNonRepeatRandom(4, poolState) + 1);
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// readFleenPositionRegs: Read count-prefixed x,y pair data from REGS resource.
+// IDA: regs_loadAndByteSwap(ptr, 0x1388/0x1389) — REGS 5000/5001
+// Format: [count:int16BE] [x0:int16BE] [y0:int16BE] [x1:int16BE] ...
+// ---------------------------------------------------------------------------
+void ZoombiniPuzzleFleens::readFleenPositionRegs(uint16 regsResId, Common::Array<Common::Point> &positions) {
+	Common::SeekableReadStream *stream = _vm->getResource(ID_REGS, ZmbResource(ZmbArchiveKind::kPage, regsResId));
+	if (!stream)
+		return;
+
+	int16 count = stream->readSint16BE();
+	for (int16 i = 0; i < count && !stream->eos(); i++) {
+		int16 x = stream->readSint16BE();
+		int16 y = stream->readSint16BE();
+		positions.push_back(Common::Point(x, y));
+	}
+
+	delete stream;
+}
+
+// ---------------------------------------------------------------------------
+// getFleenBodyLayerOffset: Compute trait shape offset for a Fleen body layer.
+// IDA: fleens_parseZmbPositions_41D2AB body-code dispatch at 0x41D33F.
+//
+// Body code determines body part ordering:
+//   code 0: [hair, body(0), eye, nose, feet]
+//   code 1: [hair, eye, body(0), nose, feet]
+//   code 2: [body(0), nose, eye, hair, feet]
+//   code 3: [body(0), hair, eye, nose, feet]
+//
+// Trait bytes at creature.traits[0..3] map to:
+//   [0] = feet (used with kFleenFeetTable)
+//   [1] = nose (used with kFleenNoseTable)
+//   [2] = eye  (used with kFleenEyeTable)
+//   [3] = hair (used with kFleenHairTable)
+// ---------------------------------------------------------------------------
+int16 ZoombiniPuzzleFleens::getFleenBodyLayerOffset(const FleenCreature &creature, int layer) const {
+	uint8 hair = CLIP<uint8>(creature.traits[3], 0, 5);
+	uint8 eye  = CLIP<uint8>(creature.traits[2], 0, 5);
+	uint8 nose = CLIP<uint8>(creature.traits[1], 0, 5);
+	uint8 feet = CLIP<uint8>(creature.traits[0], 0, 5);
+
+	switch (creature.bodyCode) {
+	case 0: // [hair, body(0), eye, nose, feet]
+		switch (layer) {
+		case 0: return kFleenHairTable[hair];
+		case 1: return 0;
+		case 2: return kFleenEyeTable[eye];
+		case 3: return kFleenNoseTable[nose];
+		case 4: return kFleenFeetTable[feet];
+		default: return 0;
+		}
+	case 1: // [hair, eye, body(0), nose, feet]
+		switch (layer) {
+		case 0: return kFleenHairTable[hair];
+		case 1: return kFleenEyeTable[eye];
+		case 2: return 0;
+		case 3: return kFleenNoseTable[nose];
+		case 4: return kFleenFeetTable[feet];
+		default: return 0;
+		}
+	case 2: // [body(0), nose, eye, hair, feet]
+		switch (layer) {
+		case 0: return 0;
+		case 1: return kFleenNoseTable[nose];
+		case 2: return kFleenEyeTable[eye];
+		case 3: return kFleenHairTable[hair];
+		case 4: return kFleenFeetTable[feet];
+		default: return 0;
+		}
+	case 3: // [body(0), hair, eye, nose, feet]
+	default:
+		switch (layer) {
+		case 0: return 0;
+		case 1: return kFleenHairTable[hair];
+		case 2: return kFleenEyeTable[eye];
+		case 3: return kFleenNoseTable[nose];
+		case 4: return kFleenFeetTable[feet];
+		default: return 0;
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// loadFleenCreatureScrs: Parse a SCRS resource for a Fleen creature.
+// IDA: fleens_initRunnerSCRBState_41D7E6 + scrb_loadAndByteswapResource.
+// ---------------------------------------------------------------------------
+void ZoombiniPuzzleFleens::loadFleenCreatureScrs(FleenCreature &creature, int16 scrsIndex) {
+	creature.clearFrames();
+	creature.scrsIndex = scrsIndex;
+
+	uint16 scrsResId = 4000 + scrsIndex;
+	Common::SeekableReadStream *stream = _vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+		ZmbResource(ZmbArchiveKind::kPage, scrsResId));
+	if (!stream) {
+		warning("Fleens: Failed to load SCRS %d", scrsResId);
+		creature.frameCount = 0;
+		return;
+	}
+
+	// SCRS header: [frameCount: uint16BE] [variant/bodyCode: uint16BE]
+	creature.frameCount = stream->readSint16BE();
+	creature.bodyCode = stream->readSint16BE();
+
+	// Parse frames using the same format as ZmbFeature::parseFrames
+	for (int32 frameIdx = 0; frameIdx < creature.frameCount; frameIdx++) {
+		ZmbHotspotGroup *hsGroup = new ZmbHotspotGroup(0, frameIdx);
+		creature.hsFrameMap[frameIdx] = hsGroup;
+
+		for (uint16 idx = 0; !stream->eos(); idx++) {
+			int16 shapeId = stream->readSint16BE();
+			if (shapeId < 0) {
+				// 0xFF00: end of frame
+				// 0xFFxx: end of frame, with event code in low byte
+				// 0xFExx: end of frame, with extra int16 (sound resource id)
+				if (shapeId < -256) {
+					int16 soundResId = stream->readSint16BE();
+					// IDA: resolveSoundId — 1000..19999 -> kPage, else kSystem
+					ZmbArchiveKind archiveKind =
+						(1000 <= soundResId && soundResId < 20000)
+						? ZmbArchiveKind::kPage : ZmbArchiveKind::kSystem;
+					hsGroup->assignSoundRes(ZmbResource(archiveKind, soundResId));
+				} else if (shapeId > -256) {
+					hsGroup->assignEventCode(static_cast<uint8>(shapeId & 0xFF));
+				}
+				break;
+			}
+
+			int16 x = stream->readSint16BE();
+			int16 y = stream->readSint16BE();
+			ZmbHotspot hs(idx, shapeId, frameIdx, x, y);
+			hsGroup->appendHotspot(hs);
+		}
+	}
+
+	delete stream;
+
+	// IDA: fleens_initRunnerSCRBState sets currentFrame=0, frameAdvance=2
+	creature.currentFrame = 0;
+	creature.frameAdvance = 2;
+}
+
+// ---------------------------------------------------------------------------
+// spawnFleenCreatures: Create visual Fleen creature entries for each occupied
+// Zoombini. Assigns positions from REGS 5000 (mismatch) / 5001 (normal),
+// computes transformed traits, and loads initial SCRS.
+// IDA: fleens_spawnRunner_41DE8B loop in ferry_buildZmbRunners_41D9F4.
+// ---------------------------------------------------------------------------
+void ZoombiniPuzzleFleens::spawnFleenCreatures() {
+	ZmbStateFile &f = _vm->_state->_f;
+
+	// Read position data from REGS resources
+	_mismatchPositions.clear();
+	_normalPositions.clear();
+	readFleenPositionRegs(5000, _mismatchPositions);
+	readFleenPositionRegs(5001, _normalPositions);
+
+	// Load Fleen shape registration point REGS (4000, 4001)
+	_fleenShapeRegs.parseStreams(_vm, ZmbArchiveKind::kPage, 4000, 4001);
+
+	int16 mismatchPosIdx = 0;
+	int16 normalPosIdx = 0;
+	_fleenCreatureCount = 0;
+
+	int16 zmbCount = 0;
+	for (int16 i = 0; i < f._zmbPackActive._wPackZmbCount; i++) {
+		if (f._zmbPackActive._entries[i]._bIsOccupied)
+			zmbCount++;
+	}
+
+	int16 zmbIdx = 0;
+	for (int16 i = 0; i < f._zmbPackActive._wPackZmbCount && _fleenCreatureCount < 16; i++) {
+		ZmbStateActiveEntry &entry = f._zmbPackActive._entries[i];
+		if (!entry._bIsOccupied)
+			continue;
+
+		zmbIdx++;
+		FleenCreature &creature = _fleenCreatures[_fleenCreatureCount];
+
+		// Compute transformed traits: (offset[j] + trait[j] - 2) % 5 + 1
+		// IDA: ferry_buildZmbRunners_41D9F4 trait transform loop
+		uint8 zmbTraits[4] = {
+			entry._traits._head,
+			entry._traits._eye,
+			entry._traits._nose,
+			entry._traits._foot
+		};
+
+		uint8 traitBytes[4] = {0, 0, 0, 0}; // bytes 188-191 in original layout
+		for (int j = 0; j < 4; j++) {
+			uint8 transformed = static_cast<uint8>(
+				(static_cast<int>(_traitOffsets[j]) + static_cast<int>(zmbTraits[j]) - 2) % 5 + 1);
+			if (_traitSlotOrder[j] != 0) {
+				traitBytes[_traitSlotOrder[j] - 1] = transformed;
+			} else {
+				traitBytes[j] = transformed;
+			}
+		}
+
+		// Store traits in Fleen ordering:
+		// byte 188 = traitBytes[0] -> feet (kFleenFeetTable)
+		// byte 189 = traitBytes[1] -> nose (kFleenNoseTable)
+		// byte 190 = traitBytes[2] -> eye  (kFleenEyeTable)
+		// byte 191 = traitBytes[3] -> hair (kFleenHairTable)
+		creature.traits[0] = traitBytes[0];
+		creature.traits[1] = traitBytes[1];
+		creature.traits[2] = traitBytes[2];
+		creature.traits[3] = traitBytes[3];
+
+		// Assign position: mismatch Fleens get REGS 5000, others get REGS 5001
+		// IDA: linkPairIdx for mismatch, regsResource1 for normal
+		bool isMismatch = (zmbIdx == _mismatchIdx[0] ||
+		                   zmbIdx == _mismatchIdx[1] ||
+		                   zmbIdx == _mismatchIdx[2]);
+
+		if (isMismatch && mismatchPosIdx < static_cast<int16>(_mismatchPositions.size())) {
+			creature.basePos = _mismatchPositions[mismatchPosIdx++];
+			creature.isMismatch = true;
+		} else if (normalPosIdx < static_cast<int16>(_normalPositions.size())) {
+			creature.basePos = _normalPositions[normalPosIdx++];
+			creature.isMismatch = false;
+		} else {
+			continue; // No position available
+		}
+
+		// IDA: Rand_410705 = nextRand_410705(80, 0) for idle anim start
+		creature.idleDelay = _vm->_rnd->getRandomNumber(0, 79);
+
+		// Load initial SCRS (index 0 = SCRS 4000)
+		// IDA: fleens_initRunnerSCRBState(0, 0, runner) — scrbIdx=0
+		loadFleenCreatureScrs(creature, 0);
+		creature.active = true;
+
+		_fleenCreatureCount++;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// fleenCreatures_preRender: Per-frame animation tick for Fleen creatures.
+// IDA: fleens_runnerAnimTick (0x41D133) — advances frame, handles idle cycling.
+// ---------------------------------------------------------------------------
+bool ZoombiniPuzzleFleens::fleenCreatures_preRender(ZmbFeature *feature) {
+	for (int16 i = 0; i < _fleenCreatureCount; i++) {
+		FleenCreature &creature = _fleenCreatures[i];
+		if (!creature.active || creature.frameCount <= 0)
+			continue;
+
+		// Advance frame
+		// IDA: fleens_runnerAnimTick advances current frame by frameAdvance
+		creature.currentFrame += creature.frameAdvance;
+
+		// Wrap frame or cycle to next idle SCRS
+		if (creature.currentFrame >= creature.frameCount) {
+			creature.currentFrame = 0;
+
+			// IDA: fleens_runnerAnimTick idle cycling — after delay, switch to
+			// random idle SCRS type 2 or 3 (SCRS index ranges).
+			// Type 2: SCRS 4000-4029 (indices 0-29) — 30 idle anims
+			// Type 3: SCRS 4030-4058 (indices 30-58) — 29 idle anims
+			if (creature.idleDelay > 0) {
+				creature.idleDelay--;
+			} else {
+				// Pick random idle animation type (2 or 3) and variant
+				int16 newScrsIndex;
+				if (_vm->_rnd->getRandomNumber(0, 1) == 0) {
+					newScrsIndex = _vm->_rnd->getRandomNumber(0, 29);  // type 2
+				} else {
+					newScrsIndex = 30 + _vm->_rnd->getRandomNumber(0, 28);  // type 3
+				}
+				loadFleenCreatureScrs(creature, newScrsIndex);
+				creature.idleDelay = 16 + _vm->_rnd->getRandomNumber(0, 79);
+			}
+		}
+	}
+
+	return true; // Continue to render
+}
+
+// ---------------------------------------------------------------------------
+// fleenCreatures_render: Draw all active Fleen creatures as composite sprites.
+// IDA: caves_renderShapeHotspots_41D04E — walks hotspot array, draws shapes
+// from tBMP 4000 with trait-based body part offsets.
+// ---------------------------------------------------------------------------
+ZmbRenderResult ZoombiniPuzzleFleens::fleenCreatures_render(ZmbFeature *feature) {
+	ZmbResource fleenBitmapRes(ZmbArchiveKind::kPage, 4000);
+
+	for (int16 i = 0; i < _fleenCreatureCount; i++) {
+		const FleenCreature &creature = _fleenCreatures[i];
+		if (!creature.active || creature.frameCount <= 0)
+			continue;
+
+		// Get current frame's hotspot group
+		int32 frameIdx = creature.currentFrame;
+		if (frameIdx >= creature.frameCount)
+			frameIdx = creature.frameCount - 1;
+
+		auto it = creature.hsFrameMap.find(frameIdx);
+		if (it == creature.hsFrameMap.end())
+			continue;
+
+		ZmbHotspotGroup *hsGroup = it->_value;
+		if (!hsGroup || hsGroup->getHotspotCount() == 0)
+			continue;
+
+		Common::Array<ZmbHotspot> hotspots = hsGroup->copyHotspots();
+		for (uint32 j = 0; j < hotspots.size(); j++) {
+			ZmbHotspot &hs = hotspots[j];
+
+			if (hs._shapeIdx <= 0)
+				continue;
+
+			// Apply body-code dependent trait offset
+			// IDA: fleens_parseZmbPositions_41D2AB builds v29[1..5] from body code
+			int16 traitOffset = getFleenBodyLayerOffset(creature, hs._hsId);
+			int16 finalShapeId = hs._shapeIdx + traitOffset;
+
+			if (finalShapeId <= 0)
+				continue;
+
+			// Apply base position offset
+			// IDA: render_x = -baseX + SCRS_x, render_y = -baseY + SCRS_y
+			int16 drawX = hs._x - creature.basePos.x;
+			int16 drawY = hs._y - creature.basePos.y;
+
+			// Apply REGS registration point correction (0-based sub-image)
+			// IDA: unk_4AB220/224 loaded from REGS 4000/4001
+			const Common::Point regsDelta = _fleenShapeRegs.getSubImageDelta(static_cast<uint16>(finalShapeId));
+			drawX -= regsDelta.x;
+			drawY -= regsDelta.y;
+
+			// Draw shape from tBMP 4000 using 0-based sub-image index.
+			// IDA: caves_renderShapeHotspots_41D04E uses direct shape table access
+			// (no facing direction, no 2*n-1 mirroring — Fleen shapes are pre-rendered).
+			_vm->_gfx->drawSubImage(ZoombiniGraphics::kShapeScreen, fleenBitmapRes,
+				static_cast<uint16>(finalShapeId), Common::Point(drawX, drawY), false);
+		}
+	}
+
+	return ZmbRenderResult::kRendered;
 }
 
 bool ZoombiniPuzzleFleens::attrSlots_preRender(ZmbFeature *feature) {

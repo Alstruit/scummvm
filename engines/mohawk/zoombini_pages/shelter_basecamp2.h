@@ -150,6 +150,7 @@ protected:
 		kResSound996_Go = 996,
 		kResSound999_Button = 999,
 		kResSound20082_BC2Voice1 = 20082,
+		kResSound20083_BC2Voice4 = 20083,
 		kResSound20084_BC2Voice2 = 20084,
 		kResSound20085_BC2Voice3 = 20085,
 	};

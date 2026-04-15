@@ -75,9 +75,15 @@ public:
 	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;
 
 protected:
+	void debugPrepareForDeparture() override;
 	void onGoButtonActivated() override;
+	void executeDeparture() override;
 
 private:
+	void beginSolvedDepartureSequence();
+	bool isSolvedDepartureSequenceActive() const;
+	void finishSolvedDepartureSequence();
+
 	// =========================================================================
 	// Cell Grid Constants
 	// =========================================================================
@@ -208,12 +214,14 @@ private:
 	 * @param cellIdx Target cell index.
 	 */
 	void assignZmbToSlot(ZmbSnoid *snoid, int16 cellIdx);
+	int16 assignZmbToSlot(int16 slotBaseCell);
 
 	/**
 	 * Move a Zoombini to a cell position.
 	 * IDA: slides_moveZmbToCell @ 0x4481FE
 	 */
 	void moveZmbToCell(ZmbSnoid *snoid, int16 cellIdx);
+	int16 moveZmbToCell(int16 moveData);
 
 	/**
 	 * Clear a cell to empty state.
@@ -231,7 +239,7 @@ private:
 	 * Clear link bits from a cell.
 	 * IDA: slides_clearCellLinkBits @ 0x449048
 	 */
-	void clearCellLinkBits(int16 cellIdx, uint16 bitsToClear);
+	void clearCellLinkBits(uint16 bitMask, int16 linkField, int16 cellIdx);
 
 	/**
 	 * Update neighbor flags after cell state change.
@@ -244,17 +252,17 @@ private:
 	// =========================================================================
 
 	/**
-	 * Build a chain sequence of linked cells.
+	 * Build the Slides chain-link sequence.
 	 * IDA: slides_buildChainSequence @ 0x444C16
 	 */
-	int16 buildChainSequence(int16 startCell, int16 *outChain, int16 maxLen);
+	void buildChainSequence();
 
 	/**
 	 * Validate a chain and mark matched cells.
 	 * IDA: slides_validateChainAndMarkMatched @ 0x4442A9
 	 * @return Number of matches found.
 	 */
-	int16 validateChainAndMarkMatched();
+	int16 validateChainAndMarkMatched(int16 startCellIdx);
 
 	/**
 	 * Find a runner in locked (508) state.
@@ -266,7 +274,7 @@ private:
 	 * Find a runner by matching attribute.
 	 * IDA: slides_findRunnerByMatchingAttr @ 0x444DC8
 	 */
-	int16 findRunnerByMatchingAttr(int16 attrType, int16 attrValue) const;
+	int16 findRunnerByMatchingAttr(int16 runnerIdx);
 
 	/**
 	 * Sort Zoombinis by overlap count for optimal pairing.
@@ -278,13 +286,13 @@ private:
 	 * Place a matching Zoombini in a cell.
 	 * IDA: slides_placeMatchingZmbInCell @ 0x4450A3
 	 */
-	void placeMatchingZmbInCell(int16 cellIdx, int16 attrType);
+	int16 placeMatchingZmbInCell(int16 matchCellIdx, int16 outSlot);
 
 	/**
-	 * Pick a random matching attribute type.
+	 * Pick the first matching attribute between two occupied cells.
 	 * IDA: slides_pickRandomMatchingAttr @ 0x44533D
 	 */
-	int16 pickRandomMatchingAttr(int16 snoidIdx) const;
+	int16 pickRandomMatchingAttr(int16 cellIdx, int16 otherCellIdx) const;
 
 	/**
 	 * Activate a link in the chain sequence.
@@ -299,16 +307,16 @@ private:
 	void confirmEndpointMatches();
 
 	/**
-	 * Check first attribute match for a cell.
+	 * Check the first matching trait between two sorted Zoombini candidates.
 	 * IDA: slides_checkFirstAttrMatch @ 0x448119
 	 */
-	bool checkFirstAttrMatch(int16 cellIdx, int16 snoidIdx) const;
+	bool checkFirstAttrMatch(int16 leftSortedIdx, int16 rightSortedIdx);
 
 	/**
 	 * Evaluate attribute match and advance chain.
 	 * IDA: slides_evalAttrMatchAndAdvance @ 0x445A1B
 	 */
-	void evalAttrMatchAndAdvance(int16 cellIdx);
+	void evalAttrMatchAndAdvance(int16 leadCellIdx, int16 middleCellIdx, int16 tailCellIdx);
 
 	/**
 	 * Evaluate neighbor states for chain propagation.
@@ -320,13 +328,43 @@ private:
 	 * Propagate match through the chain.
 	 * IDA: slides_propagateMatchChain @ 0x446073
 	 */
-	void propagateMatchChain();
+	void propagateMatchChain(int16 chainIdx);
 
 	/**
 	 * Check attribute match outcome.
 	 * IDA: slides_checkAttrMatchOutcome @ 0x448D1C
 	 */
-	int16 checkAttrMatchOutcome(int16 cellIdx, int16 snoidIdx) const;
+	int16 checkAttrMatchOutcome(int16 leftSortedIdx, int16 rightSortedIdx);
+
+	/**
+	 * Ensure a grid cell has a draw-on-reg feature backing its SCRB transitions.
+	 */
+	void ensureCellFeature(int16 cellIdx);
+
+	/**
+	 * Find the first backward-side chain link (fields 3, 4, 5).
+	 */
+	int16 getBackwardChainLink(int16 cellIdx) const;
+
+	/**
+	 * Find the first forward-side chain link (fields 8, 7, 6).
+	 */
+	int16 getForwardChainLink(int16 cellIdx) const;
+
+	/**
+	 * Check whether a cell is currently in one of the supplied states.
+	 */
+	bool cellStateIs(int16 cellIdx, int16 stateA, int16 stateB = -1, int16 stateC = -1) const;
+
+	/**
+	 * Compare two occupied cells on a single attribute kind.
+	 */
+	bool cellsMatchAttr(int16 leftCellIdx, int16 rightCellIdx, int16 attrType) const;
+
+	/**
+	 * Set the cell state and reload its visual SCRB when a feature exists.
+	 */
+	bool setCellStateAndReload(int16 cellIdx, int16 state, int16 scrbId = 7000);
 
 	// =========================================================================
 	// Animation and Travel
@@ -351,10 +389,10 @@ private:
 	void updateWaterLevelSFX();
 
 	/**
-	 * Trigger swap animation between two cells.
+	 * Trigger swap animation for the collected active-cell buffer.
 	 * IDA: slides_triggerSwapAnimation @ 0x449509
 	 */
-	void triggerSwapAnimation(int16 cellA, int16 cellB);
+	void triggerSwapAnimation();
 
 	/**
 	 * Load SCRB data onto a runner feature.
@@ -376,7 +414,7 @@ private:
 	 * Place next Zoombini in a cell.
 	 * IDA: slides_placeNextZmbInCell @ 0x445F75
 	 */
-	void placeNextZmbInCell(int16 cellIdx);
+	int16 placeNextZmbInCell(int16 cellIdx);
 
 	/**
 	 * Check if there's a pending Zoombini to place.
@@ -394,7 +432,7 @@ private:
 	 * Find a matching Zoombini for a cell.
 	 * IDA: slides_findMatchingZmbForCell @ 0x448760
 	 */
-	int16 findMatchingZmbForCell(int16 cellIdx) const;
+	int16 findMatchingZmbForCell(int16 matchCellIdx, int16 outResult);
 
 	/**
 	 * Reassign dead slots.
@@ -406,7 +444,7 @@ private:
 	 * Pick next cell for chain linking.
 	 * IDA: slides_pickNextCellForLink @ 0x4495C2
 	 */
-	int16 pickNextCellForLink(int16 currentCell, uint16 dirMask) const;
+	void pickNextCellForLink(int16 cellIdx, int16 nextCell, int16 direction);
 
 	/**
 	 * Mark matched runners as done.
@@ -421,9 +459,28 @@ private:
 	/**
 	 * Check if victory condition is met.
 	 * IDA: slides_checkVictoryCondition @ 0x44943A
-	 * @return true if all Zoombinis are matched.
 	 */
-	bool checkVictoryCondition() const;
+	void checkVictoryCondition();
+
+	/**
+	 * Resolve the grid cell that owns a draw-on-reg slot feature.
+	 */
+	int16 findCellIdxForFeature(const ZmbFeature *feature) const;
+
+	/**
+	 * Select the proper pre-render callback for a slot SCRB.
+	 */
+	void setCellFeaturePreRenderHook(ZmbFeature *feature, int16 scrbId);
+
+	/**
+	 * Reload the slot SCRB that matches the current cell state.
+	 */
+	void syncCellFeatureScript(int16 cellIdx);
+
+	/**
+	 * Map Slides hotspot opcodes onto adjacency mask bits.
+	 */
+	static uint16 getAdjMaskForCommand(int16 cmd);
 
 	// =========================================================================
 	// Filter/Callback Functions
@@ -440,13 +497,15 @@ private:
 	 * Filter command by flags.
 	 * IDA: slides_filterCommandByFlags @ 0x444028
 	 */
-	bool filterCommandByFlags(int16 cmd, int16 flags) const;
+	void filterCommandByFlags(ZmbFeature *feature, ZmbHotspotGroup *hsGroup,
+	                         Common::Array<ZmbHotspot> &hotspots);
 
 	/**
 	 * Process command queue.
 	 * IDA: slides_processCommandQueue @ 0x444144
 	 */
-	void processCommandQueue();
+	void processCommandQueue(ZmbFeature *feature, ZmbHotspotGroup *hsGroup,
+	                       Common::Array<ZmbHotspot> &hotspots);
 
 	/**
 	 * Invalidate visual rects for redraw.
@@ -616,6 +675,12 @@ private:
 	int16 _activeCellList[26];
 
 	/**
+	 * Runner ids for the active cell list.
+	 * IDA: word_4B1C1A
+	 */
+	int16 _activeCellRunnerIds[26];
+
+	/**
 	 * Number of active cells in list.
 	 */
 	int16 _activeCellCount = 0;
@@ -643,6 +708,18 @@ private:
 
 	/** Round complete flag for visual updates. IDA: slides_roundComplete (0x4B1006) */
 	int16 _roundComplete = 0;
+	/** High-difficulty victory state. 0 = inactive, 1 = active. IDA: slides_victoryFlag */
+	int16 _victoryState = 0;
+	/** Frame counter used by the original victory palette rotation path. IDA: dword_4B1C08 */
+	uint32 _victoryLastFrame = 0;
+	/** Ensure the completion notification is shown only once per victory arm. */
+	bool _victoryNotified = false;
+	/** One-shot completion-setup guard. IDA: slides_roundInitialized */
+	int16 _roundInitialized = 0;
+	/** First solved-cell feature used to gate completion choreography. IDA: slides_animHotspotId */
+	ZmbFeature *_completionAnimFeature = nullptr;
+	/** True while solved-board completion setup is active and direct departure is deferred. */
+	bool _completionSequenceActive = false;
 
 	/** Drag state flag. */
 	int16 _isDragging = 0;

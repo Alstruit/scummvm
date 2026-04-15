@@ -1485,40 +1485,50 @@ ZmbSnoid *ZoombiniPuzzleHotel::findSnoidAtPoint(const Common::Point &pos) {
 // getDropTargetSlot: Find closest room slot to the drop position.
 // ---------------------------------------------------------------------------
 int16 ZoombiniPuzzleHotel::getDropTargetSlot(const Common::Point &dropPos) const {
-	// IDA: getDropTargetResult_453571 checks registered click-zone runners.
-	// We approximate with a proximity check against known room positions.
-	const int32 kDropRadiusSq = 55 * 55; // ~55px radius
+	// IDA: beginDragFeatureRunner_45360F slot detection with rect_isPointInside.
+	// Original builds a rect of +/-zmb_clickZoneRadius around the snoid position
+	// and checks each slot's center point against it (L-inf / Chebyshev distance).
+	// IDA: hotel_registerDisplayScrbs sets zmb_clickZoneRadius:
+	//   Diff 0-2 (level 1-3): base 15 + 10 = 25
+	//   Diff 3   (level 4):   hard-set 10
+	const int16 radius = (_difficultyLevel >= kPuzzleDiffLevel4) ? 10 : 25;
 
 	if (_difficultyLevel == kPuzzleDiffLevel4) {
 		int16 best = -1;
-		int32 bestDist = kDropRadiusSq;
+		int32 bestDist = INT32_MAX;
 		for (int i = 0; i < 125; i++) {
-			int32 dx = dropPos.x - kRoomPositions125[i].x;
-			int32 dy = dropPos.y - kRoomPositions125[i].y;
-			int32 d = dx * dx + dy * dy;
-			if (d < bestDist) { bestDist = d; best = (int16)i; }
+			int32 dx = ABS(dropPos.x - kRoomPositions125[i].x);
+			int32 dy = ABS(dropPos.y - kRoomPositions125[i].y);
+			if (dx <= radius && dy <= radius) {
+				int32 d = dx + dy; // Manhattan tiebreak
+				if (d < bestDist) { bestDist = d; best = static_cast<int16>(i); }
+			}
 		}
 		return best;
 	} else if (_difficultyLevel == kPuzzleDiffLevel1) {
 		// Only slots 4, 9, 14, 19, 24
 		int16 best = -1;
-		int32 bestDist = kDropRadiusSq;
+		int32 bestDist = INT32_MAX;
 		for (int i = 4; i < 25; i += 5) {
-			int32 dx = dropPos.x - kRoomPositions25[i].x;
-			int32 dy = dropPos.y - kRoomPositions25[i].y;
-			int32 d = dx * dx + dy * dy;
-			if (d < bestDist) { bestDist = d; best = (int16)i; }
+			int32 dx = ABS(dropPos.x - kRoomPositions25[i].x);
+			int32 dy = ABS(dropPos.y - kRoomPositions25[i].y);
+			if (dx <= radius && dy <= radius) {
+				int32 d = dx + dy;
+				if (d < bestDist) { bestDist = d; best = static_cast<int16>(i); }
+			}
 		}
 		return best;
 	} else {
-		// Diff 1–2: all 25 slots
+		// Diff 2-3: all 25 slots
 		int16 best = -1;
-		int32 bestDist = kDropRadiusSq;
+		int32 bestDist = INT32_MAX;
 		for (int i = 0; i < 25; i++) {
-			int32 dx = dropPos.x - kRoomPositions25[i].x;
-			int32 dy = dropPos.y - kRoomPositions25[i].y;
-			int32 d = dx * dx + dy * dy;
-			if (d < bestDist) { bestDist = d; best = (int16)i; }
+			int32 dx = ABS(dropPos.x - kRoomPositions25[i].x);
+			int32 dy = ABS(dropPos.y - kRoomPositions25[i].y);
+			if (dx <= radius && dy <= radius) {
+				int32 d = dx + dy;
+				if (d < bestDist) { bestDist = d; best = static_cast<int16>(i); }
+			}
 		}
 		return best;
 	}

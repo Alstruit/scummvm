@@ -241,6 +241,11 @@ public:
 	 */
 	bool readPalette(uint16 id, byte *destBuf, size_t destBufSize);
 	void clearPalette();
+	/**
+	 * Rotate a contiguous palette span one entry to the right and apply it.
+	 * Updates the stored palette state so repeated calls continue the animation.
+	 */
+	void rotatePaletteRight(uint16 startEntry, uint16 count);
 
 	enum PredefinedColor : uint32 {
 		kTransparentKey = 0x00,

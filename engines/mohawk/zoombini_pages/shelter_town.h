@@ -119,10 +119,12 @@ protected:
 	bool _playEntrySoundImmediately = false;
 
 	/**
-	 * Town develop animation timer (frames to wait before playing town develop cutscene).
-	 * 0 = no develop animation, 10/20/25 = animate after this many frames.
+	 * Number of pending celebration walkers ("fireworks") to spawn.
+	 * Set from development level thresholds in loadFeatures().
+	 * Decremented each time a walker is spawned.
+	 * IDA: town_nPendingFireworks (word_4B7966)
 	 */
-	uint16 _developAnimTimer = 0;
+	int16 _developAnimTimer = 0;
 
 	/**
 	 * Pointers to the four overlay SCRB features, saved for sub-feature linking.
@@ -144,15 +146,18 @@ protected:
 
 	/**
 	 * Walking Zoombini snoid count. Up to 20 can be spawned from stored chunk data.
-	 * Original: word_4B7956
+	 * Original: town_nPlacedWalkerZmbs (word_4B7956)
 	 */
 	uint16 _walkingZmbCount = 0;
 
 	/**
-	 * Stored chunk entry indices for walking Zoombinis. Up to 20 entries.
-	 * Original: word_4B6D4C[20]
+	 * Snoid IDs for walking Zoombinis. Up to 20 entries.
+	 * Original: slides_zmbRunnerIdxArr[] (shared global used by Town for walker runner IDs)
+	 * These are the snoid feature IDs registered via loadSnoidFromPack(), with bitmask
+	 * changed from TYPE_SNOID to TYPE_TOWN_ENTITY after creation.
+	 * Snoid IDs use range 20000+ to avoid collision with inhabitant IDs (0-15).
 	 */
-	int16 _walkingZmbStoredIdx[20] = {};
+	uint16 _walkingZmbSnoidIds[20] = {};
 
 	/**
 	 * Town inhabitant position data (16 x,y coordinate pairs).
@@ -194,6 +199,93 @@ protected:
 	uint8 _statueMinuteDial = 0;
 	/** Frame counter of last dial update. IDA: town_statueUpdateState */
 	uint32 _statueUpdateTimer = 0;
+
+	// --- Celebration walker state (IDA: town_spawnAmbientWalker @ 0x4599F3) ---
+
+	/**
+	 * Active celebration walker features. Up to 3 concurrent walkers.
+	 * Created from SCRB 8000-8043 with PLAY_ONCE animation.
+	 * IDA: town_activeWalkerHandles[3] (word_4B7942)
+	 */
+	ZmbFeature *_celebWalkerFeatures[3] = {nullptr, nullptr, nullptr};
+
+	/**
+	 * Number of celebration walkers pending removal (animation completed).
+	 * IDA: town_nPendingWalkerRemovals (word_4B7964)
+	 */
+	int16 _nPendingWalkerRemovals = 0;
+
+	/**
+	 * Spawn one celebration walker if _developAnimTimer > 0 and a slot is free.
+	 * IDA: town_spawnAmbientWalker (0x4599F3)
+	 */
+	void spawnCelebrationWalker();
+
+	/**
+	 * Remove completed celebration walkers whose animation has ended.
+	 * IDA: cleanup loop in town_onHoverPerFrame (0x45895D)
+	 */
+	void cleanupFinishedWalkers();
+
+	// --- Ambient sound cycling state (IDA: town_onHoverPerFrame @ 0x458A05) ---
+
+	/**
+	 * Current ambient sound resource ID (raw uint16).
+	 * Cycles between music (3000-3002) and voice (20089-20093).
+	 * IDA: town_currentAmbientSoundId (word_4B6D3C)
+	 */
+	int16 _ambientSoundId = 0;
+
+	/**
+	 * Whether the current ambient sound has finished playing.
+	 * When set, triggers the delay timer. Cleared after delay starts.
+	 * IDA: town_bSoundPlaybackDone (word_4B6D40)
+	 */
+	bool _ambientSoundDone = false;
+
+	/**
+	 * First-play flag: when set, next sound selection picks from voice pool.
+	 * When clear, next selection advances music track.
+	 * Toggled each cycle to alternate voice/music.
+	 * IDA: town_bSoundFirstPlayFlag (word_4B6D3E)
+	 */
+	bool _ambientSoundFirstPlay = false;
+
+	/**
+	 * Frame counter when the last ambient sound finished.
+	 * IDA: town_soundLastPlayTime (dword_4B6D44)
+	 */
+	uint32 _ambientSoundLastTime = 0;
+
+	/**
+	 * Random delay duration before the next ambient sound (150-300 frames).
+	 * IDA: town_soundDelayDuration (word_4B6D48)
+	 */
+	int16 _ambientSoundDelay = 0;
+
+	/**
+	 * Non-repeat random pool state for ambient voice selection.
+	 * Pool of 5 entries: [20089, 20090, 20091, 20092, 20093].
+	 * IDA: dword_4A7288
+	 */
+	uint32 _ambientVoicePoolState = 0;
+
+	/**
+	 * Ambient voice pool: IDA word_4A727E[5].
+	 */
+	static const int16 kAmbientVoicePool[5];
+
+	/**
+	 * Returns the correct archive kind for a town sound ID.
+	 * IDs 1000-19999 are page sounds (TOWN.MHK), others are system (ZOOMBINI.MHK).
+	 */
+	ZmbArchiveKind getAmbientSoundArchiveKind(int16 id) const;
+
+	/**
+	 * Compute route-based music sound ID from maze page flag.
+	 * IDA: rodmap_getScrbIdFromRoute (0x4588ED)
+	 */
+	int16 computeRouteMusicId() const;
 
 	// --- Idle animation state (IDA: town_onHoverPerFrame @ 0x458B40) ---
 

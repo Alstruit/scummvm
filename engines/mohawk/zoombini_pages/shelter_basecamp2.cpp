@@ -958,32 +958,64 @@ bool ZoombiniShelterBasecampTwo::updateButtonAnimations(const Common::Point &cur
 }
 
 void ZoombiniShelterBasecampTwo::playArrivalVoice() {
-	// IDA: bc2_initAndSetupPuzzle (~0x4133E0–0x4134CD)
-	// Plays a random arrival voice line.
-	// Simplified: plays a random voice from the available BC2 voice set.
+	// IDA: bc2_initAndSetupPuzzle (0x4133E0–0x4134CD)
+	// Difficulty-based arrival voice selection, gated by _lastPageBeforeContainer.
+	ZmbStateFile &f = _vm->_state->_f;
 
-	ZmbResource soundId;
+	uint16 toPlaySoundId = 0;
+	int16 difficultyId = -1; // -1 = sentinel: not coming from a puzzle
 
-	// Random selection from available voices
-	int rand = _vm->_rnd->getRandomNumber(3);
-	switch (rand) {
-	case 0:
-		soundId = ZmbResource(ZmbArchiveKind::kSystem, kResSound20082_BC2Voice1);
+	if (_vm->_state->_lastPageBeforeContainer != 0) {
+		difficultyId = static_cast<int16>(_vm->_state->getDifficultyIdFromPageFlag(f._pageFlagBasecamp2));
+		_vm->_state->_lastPageBeforeContainer = 0;
+	}
+
+	// Demote level2 to level1 if Caves never visited and few Zoombinis stored
+	if (difficultyId == ZMB_DIFFICULTY_LEVEL2_02 &&
+		!f._pageFlagCaves && static_cast<int16>(f._zmbStoredBC2Count) <= 16) {
+		difficultyId = ZMB_DIFFICULTY_LEVEL1_01;
+		f._pageFlagBasecamp2 &= 0xCFFFu;
+	}
+
+	// Expand random choice range once BC2 has been entered multiple times (bits 12-13 of flag)
+	const int16 voiceRandMax = ((f._pageFlagBasecamp2 >> 8) & 0x30) ? 4 : 3;
+
+	switch (difficultyId) {
+	case ZMB_DIFFICULTY_NOTVISITED_00: {
+		// Random from voiceRandMax voices
+		const int16 r = static_cast<int16>(_vm->_rnd->getRandomNumber(1, static_cast<uint16>(voiceRandMax)));
+		switch (r) {
+		case 1:
+			toPlaySoundId = kResSound20084_BC2Voice2;
+			break;
+		case 2:
+			toPlaySoundId = kResSound20085_BC2Voice3;
+			break;
+		case 3:
+			toPlaySoundId = kResSound20082_BC2Voice1;
+			break;
+		case 4:
+			toPlaySoundId = kResSound20083_BC2Voice4;
+			break;
+		default:
+			break;
+		}
 		break;
-	case 1:
-		soundId = ZmbResource(ZmbArchiveKind::kSystem, kResSound20084_BC2Voice2);
+	}
+	case ZMB_DIFFICULTY_LEVEL1_01:
+	case ZMB_DIFFICULTY_LEVEL3_05:
+		toPlaySoundId = kResSound20082_BC2Voice1;
 		break;
-	case 2:
-		soundId = ZmbResource(ZmbArchiveKind::kSystem, kResSound20085_BC2Voice3);
+	case ZMB_DIFFICULTY_LEVEL2_02:
+	case ZMB_DIFFICULTY_LEVEL4_12:
+		toPlaySoundId = kResSound20083_BC2Voice4;
 		break;
 	default:
-		soundId = ZmbResource(ZmbArchiveKind::kSystem, 20051);
 		break;
 	}
 
-	if (soundId.hasId()) {
-		_vm->_sound->playZmbSound(soundId, Audio::Mixer::kSpeechSoundType, false);
-	}
+	if (toPlaySoundId)
+		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, toPlaySoundId), Audio::Mixer::kSpeechSoundType, false);
 }
 
 void ZoombiniShelterBasecampTwo::executeDeparture() {

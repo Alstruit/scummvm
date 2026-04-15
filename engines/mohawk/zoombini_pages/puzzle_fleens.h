@@ -27,6 +27,34 @@
 namespace Mohawk {
 
 /**
+ * State for a visual Fleen creature runner on the beehive.
+ * IDA: CFeatureRunner236 allocated by fleens_spawnRunner_41DE8B.
+ * Each creature is a composite sprite with body parts from tBMP 4000,
+ * animated via SCRS 4000-4058 resources.
+ */
+struct FleenCreature {
+	Common::Point basePos;      ///< Base position from REGS 5000/5001
+	uint8 traits[4] = {};       ///< Transformed trait bytes [0]=feet, [1]=nose, [2]=eye, [3]=hair
+	int16 scrsIndex = 0;        ///< Current SCRS resource index (0-58, maps to SCRS 4000+)
+	int16 bodyCode = 0;         ///< Body part ordering from SCRS variant (0-3)
+	int16 currentFrame = 0;     ///< Current animation frame
+	int16 frameCount = 0;       ///< Total frames in current SCRS
+	int16 frameAdvance = 2;     ///< Frame advance per tick (IDA: initialized to 2)
+	int16 idleDelay = 0;        ///< Random idle delay before switching SCRS
+	bool active = false;        ///< Whether this creature should render
+	bool isMismatch = false;    ///< Whether this is a mismatch Fleen (captured by bees)
+
+	/**
+	 * Parsed SCRS frame data. Each frame contains an array of hotspot entries.
+	 * The hotspot entries store raw shape IDs before trait offsets are applied.
+	 */
+	Common::HashMap<int32, ZmbHotspotGroup *> hsFrameMap;
+
+	~FleenCreature();
+	void clearFrames();
+};
+
+/**
  * Fleens puzzle page (ZoombiniPageType::kFleens).
  * Route 3, Puzzle 1
  *
@@ -113,6 +141,37 @@ private:
 	// Attribute slot render callbacks
 	bool attrSlots_preRender(ZmbFeature *feature);
 	ZmbRenderResult attrSlots_render(ZmbFeature *feature);
+
+	// Fleen creature render callbacks (IDA: caves_renderShapeHotspots_41D04E)
+	bool fleenCreatures_preRender(ZmbFeature *feature);
+	ZmbRenderResult fleenCreatures_render(ZmbFeature *feature);
+
+	/**
+	 * Spawn visual Fleen creature runners for each occupied Zoombini.
+	 * IDA: fleens_spawnRunner_41DE8B loop inside ferry_buildZmbRunners_41D9F4.
+	 */
+	void spawnFleenCreatures();
+
+	/**
+	 * Load and parse a SCRS resource for a Fleen creature.
+	 * IDA: fleens_initRunnerSCRBState_41D7E6.
+	 */
+	void loadFleenCreatureScrs(FleenCreature &creature, int16 scrsIndex);
+
+	/**
+	 * Compute the body-code dependent shape offset for a given layer.
+	 * IDA: fleens_parseZmbPositions_41D2AB body code table logic.
+	 * @param creature The Fleen creature
+	 * @param layer    0-based body part layer index
+	 * @return Shape offset to add to raw SCRS shape ID
+	 */
+	int16 getFleenBodyLayerOffset(const FleenCreature &creature, int layer) const;
+
+	/**
+	 * Read REGS position data for Fleen beehive positions.
+	 * Parses the count-prefixed x,y pair format of REGS 5000/5001.
+	 */
+	void readFleenPositionRegs(uint16 regsResId, Common::Array<Common::Point> &positions);
 
 	// --- Constants ---
 	static const Common::Point kSnoidPositions[16];
@@ -258,6 +317,33 @@ private:
 
 	/** Saved drag origin. */
 	Common::Point _savedDragOrigin;
+
+	// === Fleen creature visual runners (IDA: fleens_spawnRunner system) ===
+
+	/** Visual Fleen creature data (one per occupied Zoombini). */
+	FleenCreature _fleenCreatures[16];
+
+	/** Number of active Fleen creatures. */
+	int16 _fleenCreatureCount = 0;
+
+	/** Mismatch Fleen positions from REGS 5000. */
+	Common::Array<Common::Point> _mismatchPositions;
+
+	/** Normal Fleen positions from REGS 5001. */
+	Common::Array<Common::Point> _normalPositions;
+
+	/** REGS 4000/4001 for Fleen shape registration points. */
+	ZmbRegs _fleenShapeRegs;
+
+	/**
+	 * Fleen SCRS trait lookup tables (IDA: word_4A0FB8..4A0FDC).
+	 * Maps trait values (0-5) to shape base offsets in tBMP 4000.
+	 * Index 0 is unused (trait values are 1-5).
+	 */
+	static const int16 kFleenHairTable[6];
+	static const int16 kFleenEyeTable[6];
+	static const int16 kFleenNoseTable[6];
+	static const int16 kFleenFeetTable[6];
 };
 
 } // End of namespace Mohawk

@@ -73,6 +73,27 @@
 
 namespace Mohawk {
 
+namespace {
+
+bool parsePracticeBootParam(int32 bootParam, ZoombiniPageType &pageType, uint16 &level) {
+	if (bootParam <= 0)
+		return false;
+
+	int32 levelVal = bootParam % 100;
+	int32 pageVal = bootParam / 100;
+	if (levelVal < 1 || 4 < levelVal)
+		return false;
+	if (pageVal < static_cast<int32>(ZoombiniPageType::kBridge) ||
+		static_cast<int32>(ZoombiniPageType::kMaze) < pageVal)
+		return false;
+
+	pageType = static_cast<ZoombiniPageType>(pageVal);
+	level = static_cast<uint16>(levelVal);
+	return true;
+}
+
+} // End of anonymous namespace.
+
 MohawkEngine_Zoombini::MohawkEngine_Zoombini(OSystem *syst, const MohawkGameDescription *gamedesc) : MohawkEngine(syst, gamedesc) {
 	DebugMan.addDebugChannel(kZmbDebugSaveLoad, "SaveLoad", "Track Save/Load Function");
 	DebugMan.addDebugChannel(kZmbDebugPage, "Page", "Track Page Execution");
@@ -135,9 +156,26 @@ Common::Error MohawkEngine_Zoombini::run() {
 	// Load a roster of game saves
 	_state->loadRoster();
 
-	// Load default page
+	// Load default page or a direct practice-mode target encoded as page*100+level.
 	setActiveResourceKind(ZmbArchiveKind::kPage);
-	setNextPage(ZoombiniPageType::kLogo);
+	ZoombiniPageType bootPracticePage = ZoombiniPageType::kNone;
+	uint16 bootPracticeLevel = 0;
+	int32 bootParam = ConfMan.getInt("boot_param");
+	if (parsePracticeBootParam(bootParam, bootPracticePage, bootPracticeLevel)) {
+		_state->_practiceLevel = bootPracticeLevel;
+		_state->generateRandomPack();
+		setNextPage(bootPracticePage);
+		debug("Zoombini: boot_param=%d -> practice page=%d level=%u",
+		      bootParam, static_cast<int32>(bootPracticePage), bootPracticeLevel);
+		debugC(kZmbDebugPage, "Zoombini: boot_param=%d -> practice page=%d level=%u",
+		       bootParam, static_cast<int32>(bootPracticePage), bootPracticeLevel);
+	} else {
+		if (bootParam != 0) {
+			warning("Zoombini: ignoring unsupported boot_param %d (expected puzzlePage*100 + level, e.g. 1204 for Slides level 4)",
+			        bootParam);
+		}
+		setNextPage(ZoombiniPageType::kLogo);
+	}
 	loadNextPage();
 
 	// Main game loop

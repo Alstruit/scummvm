@@ -82,6 +82,8 @@ void ZoombiniTransitionXfer::computeXferRoute() {
 		_xferBackgroundResId = kResBackground1000_BigBadHungry;
 		_xferShapesId = kResShapes1100_BigBadHungry;
 		_xferScrbCount = 3;
+		// IDA: puzzleDispatch_switchToPending sets wLastContainerPuzzleId for container-bound routes
+		_vm->_state->_lastPageBeforeContainer = static_cast<uint16>(src);
 		break;
 	case ZMB_SI_BC1_NORTH_05: // Basecamp 1 north exit -> Ferry (Route 2 Path 1)
 		_xferView = XFER_ROUTE2_WHOS_BAYOU;
@@ -110,6 +112,7 @@ void ZoombiniTransitionXfer::computeXferRoute() {
 		_xferBackgroundResId = kResBackground2000_WhosBayou;
 		_xferShapesId = kResShapes2100_WhosBayou;
 		_xferScrbCount = 3;
+		_vm->_state->_lastPageBeforeContainer = static_cast<uint16>(src);
 		break;
 	case ZMB_SI_BC1_SOUTH_09: // Basecamp 1 south exit -> Fleens (Route 3 Path 1)
 		_xferView = XFER_ROUTE3_DEEP_DARK_FOREST;
@@ -138,6 +141,7 @@ void ZoombiniTransitionXfer::computeXferRoute() {
 		_xferBackgroundResId = kResBackground3000_DeepDarkForest;
 		_xferShapesId = kResShapes3100_DeepDarkForest;
 		_xferScrbCount = 3;
+		_vm->_state->_lastPageBeforeContainer = static_cast<uint16>(src);
 		break;
 	case ZMB_SI_BASECAMP2_13: // Basecamp 2 -> Caves (Route 4 Path 1)
 		_xferView = XFER_ROUTE4_MOUNTAIN_OF_DESPAIR;
@@ -166,6 +170,7 @@ void ZoombiniTransitionXfer::computeXferRoute() {
 		_xferBackgroundResId = kResBackground6000_ToTown;
 		_xferShapesId = kResShapes6100_ToTown;
 		_xferScrbCount = 9;
+		_vm->_state->_lastPageBeforeContainer = static_cast<uint16>(src);
 		break;
 	default:
 		error("ZoombiniTransitionXfer: unknown source SI page %d", static_cast<int>(src));
@@ -177,8 +182,11 @@ void ZoombiniTransitionXfer::computeXferRoute() {
 // wRouteLevel = readRouteLevel_4569EC() + 1, wDifficulty = getDifficultyIdFromPuzzleFlag(&wPuzzleFlag).
 // Returns SND resource ID (20000-20103) or 0 if none.
 uint16 ZoombiniTransitionXfer::selectXferSound() const {
-	// IDA: wDifficulty derived from destination puzzle flag (wPuzzleFlagIdx = dest page)
-	uint16 difficulty = _vm->_state->getDifficultyIdFromPageType(_nextPageType);
+	// IDA: wDifficulty derived from destination puzzle flag (wPuzzleFlagIdx = dest page).
+	// Original uses a LOCAL COPY of the page flag so getDifficultyIdFromPuzzleFlag
+	// does not increment the real state counter.
+	uint16 pageFlagCopy = _vm->_state->getPageFlagFromPageType(_nextPageType);
+	uint16 difficulty = static_cast<uint16>(_vm->_state->getDifficultyIdFromPageFlag(pageFlagCopy));
 	// IDA: wRouteLevel = readRouteLevel_4569EC() + 1
 	int16 routeLevel = _vm->_state->readActivePageRouteLevel() + 1;
 

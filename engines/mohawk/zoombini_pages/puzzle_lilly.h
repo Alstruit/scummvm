@@ -319,6 +319,12 @@ private:
 	void spawnObstacleRunner();
 
 	/**
+	 * Remove a completed zoombini BFS runner from the live tracking array.
+	 * IDA: word_4AE3EC membership compaction from maze_runnerSnapPosAndClearCell.
+	 */
+	void removeActiveBfsRunner(int16 runnerIdx);
+
+	/**
 	 * Advance obstacle runner forward one step (reuse mode).
 	 * IDA: maze_zmbAdvanceForwardStep (0x4297D3)
 	 * @return SCRB ID for direction animation, 10069 for exit, or 0 for no move.
@@ -423,6 +429,8 @@ private:
 
 	/** 12x13 occupancy grid. 0=empty, nonzero=occupied. IDA: byte_4AC684 */
 	byte _gridOccupancy[12][13];
+	/** 12x13 exit reservation grid for the enter/rotate/cross handoff. IDA: byte_4AC691 */
+	byte _gridExitReservation[12][13];
 	/** 12x13 attribute type 1 grid (hair). IDA: byte_4AC685 */
 	byte _gridAttr1[12][13];
 	/** 12x13 attribute type 2 grid (eyes). IDA: byte_4AC686 */
@@ -487,9 +495,11 @@ private:
 	Common::Array<int16> _regsDeltaY;    // REGS 200 Y deltas (path interpolation)
 
 	// --- Per-runner state ---
-	static const int kMaxRunners = 21;
+	static const int kMaxRunners = 36;
 	ZmbLillyRunnerState _runnerStates[kMaxRunners];
 	ZmbFeature *_zmbRunners[kMaxRunners] = {};
+	int16 _activeBfsRunners[kMaxRunners] = {};
+	int16 _activeBfsRunnerCount = 0;
 
 	// --- Obstacle runners ---
 	int16 _obstacleRunners[kMaxRunners];

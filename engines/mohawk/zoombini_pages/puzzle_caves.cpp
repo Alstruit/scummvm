@@ -866,9 +866,10 @@ void ZoombiniPuzzleCaves::handleCorrectPlacement(ZmbSnoid *snoid, int16 entrance
 	// The walk-in is handled by the queue, not the door animation chain.
 
 	if (_placedZmbCount == 1) {
-		// IDA: First placement — enable advance button, merge dirty rect
+		// IDA: First placement — enable advance button, merge dirty rect.
+		// Original called dirty_mergeDrawnRectIntoRMap for the advance button rect;
+		// not needed in ScummVM because the Go button feature re-renders every frame.
 		_bAdvanceEnabled = true;
-		// TODO: dirty_mergeDrawnRectIntoRMap for advance button rect
 	}
 
 	if (_placedZmbCount == _loadedZmbCount) {
@@ -914,9 +915,10 @@ void ZoombiniPuzzleCaves::handleWrongPlacement(ZmbSnoid *snoid, int16 droppedSlo
 	// In ScummVM, pending runner slot is N/A with per-frame sorted rendering.
 
 	if (_placedZmbCount == 1) {
-		// IDA: First placement — enable advance button
+		// IDA: First placement — enable advance button.
+		// Original called dirty_mergeDrawnRectIntoRMap for the advance button rect;
+		// not needed in ScummVM because the Go button feature re-renders every frame.
 		_bAdvanceEnabled = true;
-		// TODO: dirty_mergeDrawnRectIntoRMap for advance button rect
 	} else if (_placedZmbCount == _loadedZmbCount) {
 		// IDA: All Zoombinis placed — random cheer sound
 		uint16 soundId = static_cast<uint16>(_vm->_rnd->getRandomNumber(20055, 20063));
