@@ -162,6 +162,7 @@ void ZoombiniDialogMsgBox::longButtons_onPostRender(ZmbFeature *feature) {
 		bodyConf._outlineEffect = true;
 		bodyConf._outlinePalette = ZoombiniGraphics::kColor0E_VeryLightGray;
 		bodyConf._textPalette = ZoombiniGraphics::kBlackKey;
+		bodyConf._wordWrap = true;
 		_vm->_gfx->drawText(screenKind, _msgKey, _msgBoxDialogBodyRect, bodyConf);
 	}
 

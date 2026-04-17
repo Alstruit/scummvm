@@ -369,6 +369,21 @@ void ZoombiniInteractive::saveSnoidsToPack() {
 			ZmbSnoid *snoid = *it;
 			if (!snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 				continue;
+			// IDA `ui_getFeatureRunnerZmbOrButton(1)` walks the runner list
+			// for `save_updateZmbPacksOnPuzzleComplete`, but only registered
+			// PACK runners (snoidId 10000+) are actual zoombinis. SCRS-based
+			// reject/normal animation pools (Ferry IDs 1900-1907 and 1000-
+			// 1009) also carry FLAG_00000001_TYPE_SNOID — they were ignored
+			// here only because their `_packIsOccupied` defaults to false
+			// while pack snoids loaded from BC1 had it set to true, so a
+			// `_packIsOccupied != wantOccupied` mismatch on pass 0 (occupied)
+			// filtered them out. The map-button "Yes" path now flips every
+			// pack snoid to non-occupied first, which would let the pool
+			// snoids slip through pass 1 and clobber active entries with
+			// trait=(0,0,0,0). Gate by snoidId range instead so the partition
+			// holds regardless of who toggles `_packIsOccupied`.
+			if (snoid->getId() < 10000)
+				continue;
 			if (snoid->_packIsOccupied != wantOccupied)
 				continue;
 
@@ -432,13 +447,23 @@ void ZoombiniInteractive::routeNonOccupiedToRestingPack() {
 
 	if (nonOccupiedCount > 0) {
 		// ---------------------------------------------------------------
-		// Snoids were lost: clear perfect streak and route non-occupied
-		// snoids to resting packs (container puzzles only).
-		// IDA: 0x45569A-8F9
+		// Snoids were lost (or all flagged non-occupied via the rodmap-
+		// button "Yes" path that calls snoid_scheduleRender(0,0)): clear
+		// perfect streak and route non-occupied snoids to resting packs.
+		// IDA: 0x45569A-8F9 — the routing block is gated only by
+		// `RouteIdxAndContainerFlag` (= routeIdx ≠ 0), NOT by the
+		// container flag (`v37`). Ferry/Lilly/Hotel/etc. non-container
+		// puzzles must still route lost snoids back to BC1 (or wherever
+		// their route's resting pack lives), otherwise rodmap-exit from a
+		// non-container puzzle silently drops every snoid that was loaded
+		// into the active pack on entry.
+		//
+		// `v37` (container) only gates the memorial / route-level-advance
+		// block further down (and there is none on the snoid-lost path).
 		// ---------------------------------------------------------------
 		_vm->_state->_perfectStreakFlag = false;
 
-		if (isContainer) {
+		{
 			// Determine destination pack based on route.
 			// IDA: Route 1 → BC0 (Isle), Route 2-3 → BC1, Route 4 → BC2.
 			ZmbStateActivePack *destPack = nullptr;
@@ -642,35 +667,53 @@ bool ZoombiniInteractive::isDepartSfxDone() const {
 }
 
 void ZoombiniInteractive::onMapButtonActivated() {
-	// IDA: Every page's cleanup calls puzzleDispatch_sharedCleanup() →
-	// save_updateZmbPacksOnPuzzleComplete(0, 1) to write snoid runners
-	// back to the active pack. Replicate that here.
-	saveSnoidsToPack();
+	// IDA `dlg_askReturnToMap` @ 0x462885 → opens MHK_DIALOG_ASK_04
+	// ("지도를 보면, 지금 있는 줌비니들을 잃어버리게 됩니다." with
+	//  "지도 보기" / "되돌아가기"). Per-puzzle frame handlers poll
+	// `dlg_wResult` and on YES (=3) clear every snoid's occupied bit
+	// (snoid_scheduleRender(0,0) @ 0x455AFC) before invoking the shared
+	// cleanup chain `puzzleDispatch_sharedCleanup → save_updateZmbPacksOn
+	// PuzzleComplete(0, 1)` which APPENDS the now-non-occupied snoids
+	// onto the route's resting pack (BC0/BC1/BC2). Practice mode skips
+	// the dialog and exits directly without flagging snoids.
+	//
+	// The previous port skipped the dialog entirely AND used `copyTo` to
+	// overwrite the resting pack with the active pack — so when entering
+	// Ferry from BC1 (which moves all 16 snoids BC1 → active and
+	// decrements BC1's count to 0) and then immediately rodmap-exiting,
+	// the overwrite blew away whatever BC1 was *expected* to hold,
+	// dropping all 16 snoids from the player's roster.
+	const bool isPractice = _vm->_state->inPracticeMode();
+	if (!isPractice) {
+		ZoombiniDialogResult result = _vm->openMsgBoxDialog(ZoombiniMsgBoxType::kAskGoMapWillLost);
+		if (result != ZoombiniDialogResult::kYes) {
+			// IDA dlg_wResult==2 path: clear puzzle_pendingTransitionTarget
+			// and stay in the puzzle. Nothing else to undo here because we
+			// haven't mutated state yet.
+			return;
+		}
 
-	// Copy active pack to the resting pack for the current route so snoids
-	// are preserved when the player returns via rodmap.
-	// Route 1 (Bridge/Tunnels/Pizza) → BC0 (Isle/Picker)
-	// Route 2 (Ferry/Lilly/Slides) → BC1
-	// Route 3 (Fleens/Hotel/Net) → BC1
-	// Route 4 (Caves/Smoke/Maze) → BC2
-	ZmbStateFile &f = _vm->_state->_f;
-	ZMB_DI_PAGE currentPage = f._currentPage;
-	if (currentPage >= ZMB_DI_BRIDGE_07 && currentPage <= ZMB_DI_PIZZA_09) {
-		// Route 1 → BC0
-		f._zmbPackActive.copyTo(f._zmbPackIsle);
-		f._wZmbPackIsleVal = f._wZmbPackActiveVal;
-		f._zmbPackActive._wPackZmbCount = 0;
-	} else if (currentPage >= ZMB_DI_FERRY_10 && currentPage <= ZMB_DI_NET_15) {
-		// Route 2/3 → BC1
-		f._zmbPackActive.copyTo(f._zmbPackBC1);
-		f._wZmbPackBC1Val = f._wZmbPackActiveVal;
-		f._zmbPackActive._wPackZmbCount = 0;
-	} else if (currentPage >= ZMB_DI_CAVES_16 && currentPage <= ZMB_DI_MAZE_18) {
-		// Route 4 → BC2
-		f._zmbPackActive.copyTo(f._zmbPackBC2);
-		f._wZmbPackBC2Val = f._wZmbPackActiveVal;
-		f._zmbPackActive._wPackZmbCount = 0;
+		// IDA 0x41AB1A-20 (and parallel sites in every other puzzle's
+		// frame handler): on Yes-without-practice, mark every snoid as
+		// non-occupied so the shared cleanup routes them all back to the
+		// route's resting pack instead of treating any as "delivered".
+		for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+			ZmbSnoid *snoid = *it;
+			if (snoid && snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+				snoid->_packIsOccupied = false;
+		}
 	}
+
+	// IDA: puzzleDispatch_sharedCleanup → save_updateZmbPacksOnPuzzle
+	// Complete(0, 1). Two halves:
+	//   (1) saveSnoidsToPack — write loaded snoid runners back to
+	//       _zmbPackActive (occupied first, then non-occupied).
+	//   (2) routeNonOccupiedToRestingPack — split active into "delivered"
+	//       (kept) and "non-occupied" (returned to BC). Non-occupied are
+	//       APPENDED to the route's resting pack at the first free slot;
+	//       the active count is reduced by exactly that many.
+	saveSnoidsToPack();
+	routeNonOccupiedToRestingPack();
 
 	_vm->setNextPage(ZoombiniPageType::kRodMap);
 	close();

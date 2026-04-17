@@ -829,8 +829,18 @@ void ZoombiniTransitionXfer::loadFeatures() {
 
 	// Draw route name text for mid-route views (XFER_1-4).
 	// IDA: drawOutlinedText_410D48 with pStrTableRouteNames_Pre1Idx_4A4F0C[view],
-	//      palette 10 (fg=white), 0x2D=45 (outline/shadow=black).
+	//      palette 10 (fg=white), 0x2D=45 (outline/shadow=black). The original
+	//      blits the rendered text directly onto the back screen port via the
+	//      memcpy that follows the call (xfer_initAndRunTransition @ 0x46735A-
+	//      0x46737E), so the text is baked into the persistent background and
+	//      survives subsequent shape-screen redraws.
+	//
 	// Text rects from IDA data at 0x4A7E4E / 0x4A7E52 (leftTop/rightBottom pairs indexed by view).
+	//
+	// Previously we drew into kShapeScreen, but the shape screen is rebuilt
+	// every frame from registered features — so the route name flashed for one
+	// frame at most and disappeared. Drawing into kBackScreen matches the IDA
+	// behavior of baking the text into the permanent background bitmap.
 	if (_xferView >= XFER_ROUTE1_BIG_BAD_HUNGRY && _xferView <= XFER_ROUTE4_MOUNTAIN_OF_DESPAIR) {
 		// Exact rects from IDA binary analysis:
 		//   View 1 (BigBadHungry):    left=43,  top=54,  right=226, bottom=107
@@ -847,12 +857,17 @@ void ZoombiniTransitionXfer::loadFeatures() {
 		const Common::Rect &textRect = kRouteTextRects[_xferView - 1];
 
 		ZoombiniGraphics::TextConf tc;
+		// IDA xfer_initAndRunTransition @ 0x467301: loads `g_pGulimCheInst_Title`
+		// before drawOutlinedText — i.e. the larger 18pt title font, not the
+		// regular text font. Without this override the route name renders in
+		// the default 12pt body font and looks visibly small vs the original.
+		tc._fontUsage = ZoombiniFontUsage::kFontTitle;
 		tc._outlineEffect = true;
 		tc._textPalette = ZoombiniGraphics::kColor0A_White;    // palette #10 (fg)
 		tc._outlinePalette = ZoombiniGraphics::kColor2D_Black; // palette #45 (shadow)
 		tc._hAlign = Graphics::kTextAlignCenter;
 		tc._vAlign = Graphics::kTextAlignCenter;
-		_vm->_gfx->drawText(ZoombiniGraphics::kShapeScreen, textKey, textRect, tc);
+		_vm->_gfx->drawText(ZoombiniGraphics::kBackScreen, textKey, textRect, tc);
 	}
 }
 

@@ -708,13 +708,26 @@ void ZoombiniInteractiveRodMap::buildPageRouteLevelMap() {
 					_pageRouteLevelMap[routeKey] = routeLevel + 1;
 				}
 			} else { // Level 1 or Unvisited, detemine which one is true from level flags.
-				// Route 0: 3, 4, 5
-				// Route 1: 6, 7, 8
-				// Route 2: 9, 10, 11
-				// Route 3: 12, 13, 14
+				// IDA `readPuzzleLevelValArr_42C1EC` indexes pbPuzzleLevelFlagArr
+				// directly by puzzle slot when routeLevel == 0:
+				//   Route 0 (BBH):  pbPuzzleLevelFlagArr[3..5]   = Bridge/Tunnels/Pizza
+				//   Route 1 (WB):   pbPuzzleLevelFlagArr[6..8]   = Ferry/Lilly/Slides
+				//   Route 2 (DDF):  pbPuzzleLevelFlagArr[9..11]  = Fleens/Hotel/Net
+				//   Route 3 (MD):   pbPuzzleLevelFlagArr[12..14] = Caves/Smoke/Maze
+				// Combined offset: `3 * routeIdx + 3 + i` (matches the IDA loop
+				// indices `v2`, `v4`, `v6`, `v8` which scan 1-3, 5-7, 8-10, 12-14
+				// with per-route +N offsets that all collapse to that formula).
+				//
+				// The previous port used `routeKey` (a shape resource ID in
+				// [17..32]) as the array index — out-of-bounds against the
+				// 15-byte _levelFlagPageArr, reading garbage memory and producing
+				// arbitrary route-progress colors on the rodmap. routeKey stays
+				// the StableMap key (it identifies the rodmap shape slot) but
+				// the source data must be looked up by puzzle index.
 				for (uint32 i = 0; i < 3; i++) {
 					uint16 routeKey = 4 * routeIdx + i + kResShapeRouteBigBadHungryP0_17;
-					uint16 levelFlag = _vm->_state->_f._levelFlagPageArr[routeKey] & 0x0F;
+					uint16 puzzleIdx = 3 * routeIdx + 3 + i;
+					uint16 levelFlag = _vm->_state->_f._levelFlagPageArr[puzzleIdx] & 0x0F;
 					_pageRouteLevelMap[routeKey] = levelFlag;
 				}
 				uint16 levelFlagVal = 0;
