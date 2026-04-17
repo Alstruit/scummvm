@@ -2117,6 +2117,49 @@ bool ZoombiniConsole::Cmd_GoXfer(int argc, const char **argv) {
 	if (0 < level)
 		_vm->_state->_practiceLevel = level;
 
+	// Simulate completion of the source puzzle so its per-puzzle level flag is
+	// up-to-date. In a normal play-through, ZoombiniInteractive::executeDeparture
+	// calls routeNonOccupiedToRestingPack right before triggering the xfer, which
+	// ORs the current routeLevel bit (and the perfect-clear high-nibble bit) into
+	// _levelFlagPageArr[srcDi - 4]. goXfer skips the puzzle entirely, so without
+	// this fix-up the destination xfer's previous-segment color reflects the
+	// stale pre-source-puzzle state — e.g. for `goXfer lilly`, the BC1→Ferry
+	// segment band reads Ferry's flag *before* this run's Ferry completion and
+	// shows the lower level color. Mirroring the IDA `[DI - 4]` write here
+	// makes goXfer match a natural play-through that reaches the same xfer.
+	struct SiToDi { ZMB_SI_PAGE si; ZMB_DI_PAGE di; };
+	static const SiToDi kPuzzleSiDiMap[] = {
+		{ ZMB_SI_BRIDGE_02,  ZMB_DI_BRIDGE_07  },
+		{ ZMB_SI_TUNNELS_03, ZMB_DI_TUNNELS_08 },
+		{ ZMB_SI_PIZZA_04,   ZMB_DI_PIZZA_09   },
+		{ ZMB_SI_FERRY_07,   ZMB_DI_FERRY_10   },
+		{ ZMB_SI_LILLY_08,   ZMB_DI_LILLY_11   },
+		{ ZMB_SI_SLIDES_09,  ZMB_DI_SLIDES_12  },
+		{ ZMB_SI_FLEENS_10,  ZMB_DI_FLEENS_13  },
+		{ ZMB_SI_HOTEL_11,   ZMB_DI_HOTEL_14   },
+		{ ZMB_SI_NET_12,     ZMB_DI_NET_15     },
+		{ ZMB_SI_CAVES_14,   ZMB_DI_CAVES_16   },
+		{ ZMB_SI_SMOKE_15,   ZMB_DI_SMOKE_17   },
+		{ ZMB_SI_MAZE_16,    ZMB_DI_MAZE_18    },
+	};
+	ZMB_DI_PAGE srcDi = static_cast<ZMB_DI_PAGE>(0);
+	for (const SiToDi &entry : kPuzzleSiDiMap) {
+		if (entry.si == srcSiPage) {
+			srcDi = entry.di;
+			break;
+		}
+	}
+	if (srcDi != static_cast<ZMB_DI_PAGE>(0) && !_vm->_state->inPracticeMode()) {
+		ZmbStateFile &f = _vm->_state->_f;
+		uint16 srcRouteIdx = static_cast<uint16>((srcDi - ZMB_DI_BRIDGE_07) / 3 + 1);
+		uint16 srcRouteLevel = f._routeLevels[srcRouteIdx - 1];
+		uint8 srcBitmask = static_cast<uint8>(1 << (srcRouteLevel & 3));
+		// Match IDA save_updateZmbPacksOnPuzzleComplete: set both low (played)
+		// and high (perfect) nibble — the simulated jump assumes a perfect run.
+		f._levelFlagPageArr[srcDi - 4] |= srcBitmask;
+		f._levelFlagPageArr[srcDi - 4] |= static_cast<uint8>(srcBitmask << 4);
+	}
+
 	// Close the current page and queue the xfer transition
 	_vm->_xferSrcPage = srcSiPage;
 	_vm->setNextPage(ZoombiniPageType::kXfer);
