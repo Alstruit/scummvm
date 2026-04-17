@@ -519,6 +519,129 @@ void ZoombiniPuzzlePizza::distributeToppings() {
 
 	debugC(kZmbDebugPage, "Pizza Level %d: correct=%d, wrongA=%d, wrongB=%d",
 		   _difficultyLevel, correctCount, wrongACount, wrongBCount);
+
+	// IDA pizza_toppingDistribution_43E0E0 @ 0x43E455-0x43E548:
+	// At max difficulty (IDA level 3 = ScummVM kPuzzleDiffLevel4), pre-show 4 paired
+	// example combinations to the player. Pick the dominant category, then 2 from it +
+	// 1 each from the other two; sequence them as 4 distinct pairs.
+	if (_difficultyLevel == kPuzzleDiffLevel4) {
+		int16 dominant = 0; // 0=correct, 1=wrongA, 2=wrongB
+		if (correctCount >= wrongACount) {
+			if (correctCount < wrongBCount)
+				dominant = 2;
+		} else {
+			dominant = 1;
+			if (wrongACount < wrongBCount)
+				dominant = 2;
+		}
+
+		int16 a = pickRandomToppingFromCategory(dominant);
+		int16 b;
+		// IDA: keep picking until distinct (do/while)
+		// Guard against infinite loop if dominant has only one entry.
+		int16 tries = 0;
+		do {
+			b = pickRandomToppingFromCategory(dominant);
+			if (++tries > 64)
+				break;
+		} while (b == a);
+
+		int16 c, d;
+		switch (dominant) {
+		case 0:
+			c = pickRandomToppingFromCategory(1);
+			d = pickRandomToppingFromCategory(2);
+			break;
+		case 1:
+			c = pickRandomToppingFromCategory(0);
+			d = pickRandomToppingFromCategory(2);
+			break;
+		default:
+			c = pickRandomToppingFromCategory(0);
+			d = pickRandomToppingFromCategory(1);
+			break;
+		}
+
+		// IDA pizza_animateToppingSequence(seqIdx=d, animData=b, frameCount=c, animFlags=a)
+		playL3DemoSequence(d, b, c, a);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// pickRandomToppingFromCategory: IDA pizza_pickRandomTopping @ 0x43E554
+// category 0 → _correctToppings, 1 → _wrongToppingsA, 2 → _wrongToppingsB.
+// Spins random indices until one with a non-zero entry is found.
+// ---------------------------------------------------------------------------
+int16 ZoombiniPuzzlePizza::pickRandomToppingFromCategory(int16 category) {
+	const uint8 *table = _correctToppings;
+	if (category == 1)
+		table = _wrongToppingsA;
+	else if (category == 2)
+		table = _wrongToppingsB;
+
+	// Safety: scan first to confirm at least one entry is set; if not, return 0.
+	bool anySet = false;
+	for (int16 i = 0; i < _totalToppingSlots; i++) {
+		if (table[i]) {
+			anySet = true;
+			break;
+		}
+	}
+	if (!anySet)
+		return 0;
+
+	for (int16 attempt = 0; attempt < 256; attempt++) {
+		int16 idx = _vm->_rnd->getRandomNumber(0, _totalToppingSlots - 1);
+		if (table[idx])
+			return idx;
+	}
+	return 0;
+}
+
+// ---------------------------------------------------------------------------
+// playL3DemoSequence: IDA pizza_animateToppingSequence @ 0x4416D8
+// Pre-shows 4 example topping pairs to the player at max difficulty.
+// Each step: clear ingredient flags, set 2 indices, pack into mask history,
+// register a new topping runner overlay, then render frame.
+// ---------------------------------------------------------------------------
+void ZoombiniPuzzlePizza::playL3DemoSequence(int16 seqIdx, int16 animData, int16 frameCount, int16 animFlags) {
+	// IDA loops 4 times across these (a,b) pairs:
+	//   (animFlags, frameCount)
+	//   (animData,  frameCount)
+	//   (animData,  seqIdx)
+	//   (animFlags, seqIdx)
+	const int16 pairs[4][2] = {
+		{ animFlags, frameCount },
+		{ animData,  frameCount },
+		{ animData,  seqIdx },
+		{ animFlags, seqIdx },
+	};
+
+	const int16 savedOrderType = _currentOrderType;
+	_currentOrderType = 4; // generic overlay path in registerToppingRunner
+
+	for (int step = 0; step < 4; step++) {
+		// IDA: memset(word_4B0DAC, 0, 16); set [a]=1, [b]=1; packToppingBitmask().
+		// In ScummVM, _currentMeal[8] mirrors word_4B0DAC[0..7].
+		memset(_currentMeal, 0, sizeof(_currentMeal));
+		int16 a = pairs[step][0];
+		int16 b = pairs[step][1];
+		if (a >= 0 && a < 8)
+			_currentMeal[a] = 1;
+		if (b >= 0 && b < 8)
+			_currentMeal[b] = 1;
+
+		_toppingMaskHistoryIdx++;
+		if (_toppingMaskHistoryIdx < 28) {
+			_toppingMaskHistory[_toppingMaskHistoryIdx] = packToppingBitmask();
+		}
+
+		registerToppingRunner();
+	}
+
+	// IDA: final memset clears word_4B0DAC.
+	memset(_currentMeal, 0, sizeof(_currentMeal));
+	_currentOrderType = savedOrderType;
 }
 
 // ---------------------------------------------------------------------------
@@ -937,10 +1060,18 @@ void ZoombiniPuzzlePizza::endDrag(const Common::Point &dropPos) {
 			snoid->setPointLoc(kAnswerDisplayPosition);
 			snoid->setAnimState(kSnoidAnimArrive);
 
-			// Initialize the celebration animation system for this interaction
+			// Initialize the celebration animation system for this interaction.
+			// IDA pizza_init @ 0x43be11: maxIdleAnims = 3, clamped to (zmbCount-1)
+			// when zmbCount < 3 so we don't try to celebrate with more snoids
+			// than exist.
 			_celebrationActive = true;
 			_celebrationsPlayed = 0;
-			_celebrationTarget = 3;
+			int16 maxIdle = 3;
+			int16 zmbCount = static_cast<int16>(_snoidMap.size());
+			if (zmbCount > 0 && zmbCount < 3)
+				maxIdle = zmbCount - 1;
+			if (maxIdle < 0) maxIdle = 0;
+			_celebrationTarget = maxIdle;
 			_lastCelebrationFrame = getCurrentFrameCounter();
 
 			debugC(kZmbDebugPage, "Pizza: Zoombini placed at answer area (packIdx=%d)",
@@ -1914,15 +2045,27 @@ void ZoombiniPuzzlePizza::onToppingDelivered() {
 	_hasMaskMatch = checkToppingMaskMatch() ? 1 : 0;
 
 	if (_hasMaskMatch) {
-		// IDA: Route via _currentOrderType set by previous delivery's serveNextTopping
-		if (_currentOrderType == 5) {
-			placeTopping(1, 0); // order0 partial subset
-		} else if (_currentOrderType == 6) {
-			placeTopping(1, 1); // order1 partial subset
-		} else if (_currentOrderType == 7) {
-			placeTopping(1, 2); // order2 partial subset
-		} else {
-			placeTopping(0, 0); // dead path / auto-select
+		// IDA pizza_onFrameUpdate slot 30 @ 0x43c52b: iterate orders 0,1,2
+		// in priority order. For each ACTIVE (state==1) order, ask
+		// classifyOrderType(i) — if it returns 1 (partial subset match),
+		// place the topping there and stop. The `v3` guard prevents
+		// double-placement across orders.
+		bool placed = false;
+		if (_orderState[0] == 1 && classifyOrderType(0) == 1) {
+			placeTopping(1, 0);
+			placed = true;
+		}
+		if (!placed && _orderState[1] == 1 && classifyOrderType(1) == 1) {
+			placeTopping(1, 1);
+			placed = true;
+		}
+		if (!placed && _orderState[2] == 1 && classifyOrderType(2) == 1) {
+			placeTopping(1, 2);
+			placed = true;
+		}
+		if (!placed) {
+			// IDA fallback: placeTopping(0, 2) — non-match for order 2.
+			placeTopping(0, 2);
 		}
 	} else {
 		// IDA: New combination — serve to first active order line

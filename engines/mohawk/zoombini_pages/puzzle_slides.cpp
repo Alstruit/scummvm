@@ -1169,17 +1169,22 @@ void ZoombiniPuzzleSlides::onEveryFrame() {
 	}
 
 	// Celebration scheduling.
-	// Once _celebrationActive is set, it stays set (one celebration per match event).
-	// Resets when _celebrationIndex reaches _celebrationTarget (= loaded zmb count).
-	if (_celebrationActive || !_matchCount || _celebrationIndex >= _celebrationTarget) {
+	// IDA pattern: re-enter every tick while a match is queued and target not
+	// reached. The 30-frame timer paces individual SCRS plays. Previously the
+	// `_celebrationActive` flag latched after the first fire and blocked all
+	// subsequent celebrations until target was met — but target only advances
+	// when celebrations actually play, causing a stall.
+	if (!_matchCount || _celebrationIndex >= _celebrationTarget) {
 		if (_celebrationIndex >= _celebrationTarget) {
 			_celebrationPoolState = 0;
 			_celebrationLastFrame = 0;
 			_matchCount = 0;
 			_celebrationIndex = 0;
+			_celebrationActive = false;
 		}
 	} else {
-		debugC(1, kZmbDebugAnimation, "Slides: celebration triggered, matchCount=%d", _matchCount);
+		debugC(1, kZmbDebugAnimation, "Slides: celebration tick, matchCount=%d, idx=%d/%d",
+		       _matchCount, _celebrationIndex, _celebrationTarget);
 		_celebrationActive = true;
 		if (getCurrentFrameCounter() - _celebrationLastFrame > 30) {
 			_celebrationLastFrame = getCurrentFrameCounter();
@@ -1215,7 +1220,7 @@ void ZoombiniPuzzleSlides::beginSolvedDepartureSequence() {
 	if (_completionSequenceActive || !_roundComplete || _roundInitialized != 0)
 		return;
 
-	_departXferSrcSiPage = ZMB_SI_SLIDES_08;
+	_departXferSrcSiPage = ZMB_SI_SLIDES_09;
 	_roundInitialized = 1;
 	_completionSequenceActive = true;
 	_completionAnimFeature = nullptr;
@@ -2282,8 +2287,43 @@ void ZoombiniPuzzleSlides::beginZmbTravel(ZmbSnoid *snoid, int16 targetCell) {
 }
 
 void ZoombiniPuzzleSlides::updateWaterLevelSFX() {
-	// IDA: slides_updateWaterLevelSFX @ 0x44664B
-	// Update water level sound effect based on progress
+	// IDA slides_updateWaterLevelSFX @ 0x44664B:
+	// Plays a 4-tier audio feedback based on the current-vs-target water level:
+	//   SFX 8500 — low (empty bucket / bubbling)
+	//   SFX 8501 — approaching target (rising)
+	//   SFX 8502 — at target (filled)
+	//   SFX 8504 — slight overflow (warning)
+	//   SFX 8505 — full overflow (round complete)
+	// The "water level" in ScummVM maps to the match count relative to the
+	// loaded zoombini count (target = _loadedZmbCount for a full solve).
+	// Without IDA's `_prevWaterLevel`/`_currWaterLevel` tracking, we pace the
+	// SFX via match-count delta so the feedback fires once per filling stage.
+	if (_loadedZmbCount <= 0)
+		return;
+	const int16 curr = _matchCount;
+	const int16 target = _loadedZmbCount;
+	const int16 prev = _prevWaterLevelSFX;
+	if (curr == prev)
+		return;
+
+	uint16 sfxId = 0;
+	if (curr >= target + 2) {
+		sfxId = 8505; // full overflow
+		_roundComplete = true;
+	} else if (curr > target) {
+		sfxId = 8504; // warning overflow
+	} else if (curr == target) {
+		sfxId = 8502; // at target — filled
+	} else if (curr >= (target * 2) / 3) {
+		sfxId = 8501; // approaching target
+	} else {
+		sfxId = 8500; // low
+	}
+
+	if (sfxId != 0)
+		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, sfxId),
+			Audio::Mixer::kSFXSoundType);
+	_prevWaterLevelSFX = curr;
 }
 
 void ZoombiniPuzzleSlides::triggerSwapAnimation() {

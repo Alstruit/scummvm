@@ -338,11 +338,14 @@ void ZoombiniPuzzleNet::loadFeatures() {
 	// IDA: sound_activeHandle = 20064 — net narrator voice (F1 key replay)
 	_activeHelpSoundId = ZmbResource(ZmbArchiveKind::kSystem, 20064);
 
-	// Idle animation state
-	// IDA: net_idleAnimMax = 3; if (*(_WORD*)(g_pGameState + 32)) net_idleAnimMax = 2;
+	// Idle animation state.
+	// IDA net_puzzleInit @ 0x436543: net_idleAnimMax = 3; then
+	//   if (*(_WORD*)(g_pGameState + 32)) net_idleAnimMax = 2;
+	// Offset +32 (0x20) of CGameState is `_lessActionFlag` — when set,
+	// the engine throttles ambient/idle animations to 2/cycle instead of 3.
 	_idleAnimTrigger = false;
 	_idleAnimCount = 0;
-	_idleAnimMax = 3;
+	_idleAnimMax = (_vm->_state->_f._lessActionFlag != 0) ? 2 : 3;
 	_idleAnimPoolState = 0;
 	_idleAnimLastFrame = 0;
 	_roundCompletedFlag = false;

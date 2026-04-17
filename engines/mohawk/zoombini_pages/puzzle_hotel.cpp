@@ -1194,6 +1194,15 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 	// IDA: hotel_onHoverPerFrame_41F6D2 (0x41F6D2)
 	// hotel_bPuzzleComplete is NOT checked here — onEveryFrame runs always.
 
+	// IDA setNextRenderFrameWithDebug_46EB56 freeze: skip interactive dispatch
+	// until the deadline elapses. This holds the overflow visual stable for the
+	// 60-frame window without dispatching new state transitions.
+	if (_freezeUntilFrame != 0) {
+		if (getCurrentFrameCounter() < _freezeUntilFrame)
+			return;
+		_freezeUntilFrame = 0;
+	}
+
 	// [Priority 1] Counter-step-rejection hotspot: word_4AB778
 	// Fires after counter animation during rejection. If overflow happened (word_4AB76E > 0)
 	// and diff != 3, load SCRB 7503+rand on guide → registers as word_4AB77E.
@@ -1320,11 +1329,17 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 			_bPuzzleComplete = true;
 			setGoButtonsEnabled(true);
 
-			// First placement in this room → reload display SCRB
+			// First placement in this room → reload display SCRB.
+			// IDA hotel_onHoverPerFrame @ 0x420072:
+			//   if (diff >= 3) maze_loadScrbObstacleA(targetSlot)
+			//                  → scrb_initRunnerWithScript(0,0, (slot%5)+9002, positionRunnerArr[slot]);
+			//   else           scrb_initRunnerWithScript(0,0, slot+6013, roomScrbRunnerArr[slot]);
 			if (_roomGrid[_targetRoomSlot] == 0) {
-				if (_difficultyLevel < kPuzzleDiffLevel4 && _roomDisplayFeatures[_targetRoomSlot]) {
-					loadScrbOntoFeature(_roomDisplayFeatures[_targetRoomSlot],
-						(uint16)(_targetRoomSlot + 6013));
+				if (_roomDisplayFeatures[_targetRoomSlot]) {
+					uint16 scrbId = (_difficultyLevel < kPuzzleDiffLevel4)
+						? (uint16)(_targetRoomSlot + 6013)
+						: (uint16)((_targetRoomSlot % 5) + 9002);
+					loadScrbOntoFeature(_roomDisplayFeatures[_targetRoomSlot], scrbId);
 				}
 				_roomGrid[_targetRoomSlot] = 1;
 			}
@@ -1341,9 +1356,21 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 
 			// IDA 0x4200D1: Rejection icon/checkpoint handling
 			if (_difficultyLevel >= kPuzzleDiffLevel4) {
+				// IDA maze_loadScrbObstacleB(targetSlot):
+				//   scrb_initRunnerWithScript(0,0, (slot%5)+9007, bgScrbRunnerArr[slot])
+				// ScummVM doesn't keep separate bgScrbFeatures, so we reload
+				// the (existing) display feature with the rejection-overlay SCRB.
+				if (_roomDisplayFeatures[_targetRoomSlot]) {
+					uint16 obstBId = (uint16)((_targetRoomSlot % 5) + 9007);
+					loadScrbOntoFeature(_roomDisplayFeatures[_targetRoomSlot], obstBId);
+				}
+				// IDA 0x420125: at step>=11 + !wMoreActionFlag0020, install
+				// maze_checkRunnerAtCheckpoint as the bgScrbRunner's
+				// onHotspotShapeOrFrameFunc. We approximate via the existing
+				// reject-anim active flag — the runner-timer pipeline picks
+				// it up next tick.
 				if (_stepCounter >= 11) {
-					// IDA 0x420111+0x420125: diff4 step>=11 checkpoint
-					// maze_loadScrbObstacleB on target slot
+					_bRejectAnimActive = true;
 				}
 			} else if (_stepCounter >= 11) {
 				registerWinCheckpoints();
@@ -1394,6 +1421,10 @@ void ZoombiniPuzzleHotel::onEveryFrame() {
 			if (_stepCounter >= 12) {
 				_overflowCounter++;
 				_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, 6006));
+				// IDA setNextRenderFrameWithDebug_46EB56(1, 0, 60, 0):
+				// hold the overflow animation for 60 frames before resuming
+				// interactive dispatch.
+				_freezeUntilFrame = getCurrentFrameCounter() + 60;
 				if (_difficultyLevel == kPuzzleDiffLevel4) {
 					_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, 7500));
 				}

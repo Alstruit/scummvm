@@ -103,6 +103,8 @@ private:
 
 	// --- Topping runner management ---
 	void registerToppingRunner();
+	int16 pickRandomToppingFromCategory(int16 category);
+	void playL3DemoSequence(int16 seqIdx, int16 animData, int16 frameCount, int16 animFlags);
 	void linkToppingRunners();
 	void toppingRunner_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
 

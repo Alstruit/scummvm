@@ -242,10 +242,13 @@ void ZoombiniShelterBasecampOne::loadFeatures() {
 			_storageMaxCellIdx = findLastOccupiedIdx();
 			calcStorageColumns();
 
-			// If normal (non-overflow) insertion, scroll the view to show the newly arrived zoombinis.
-			// IDA: sets wBC1StorageLeftmostColumnIdx to the column of the first new entry.
+			// IDA bc1_initAndSetupPuzzle @ 0x411322:
+			//   bc1_storageScrollColumn = (prevFreeSlotIdx + 1) / 5 % bc1_storageTotalColumns;
+			// The `+1` advances past the last-occupied slot into the column of
+			// the next free slot. Without it, when (prevMaxCellIdx % 5 == 4)
+			// the scroll column lands one column too early.
 			if (storeResult == 1) {
-				_storageLeftmostColumnIdx = static_cast<int16>((prevMaxCellIdx / 5) % _storageColumnCount);
+				_storageLeftmostColumnIdx = static_cast<int16>(((prevMaxCellIdx + 1) / 5) % _storageColumnCount);
 				calcStorageColumns();
 			}
 		}
@@ -379,7 +382,7 @@ void ZoombiniShelterBasecampOne::executeDeparture() {
 	if (_departRouteDirection == 1)
 		_vm->_xferSrcPage = ZMB_SI_BC1_NORTH_05;
 	else
-		_vm->_xferSrcPage = ZMB_SI_BC1_SOUTH_09;
+		_vm->_xferSrcPage = ZMB_SI_BC1_SOUTH_06;
 	_vm->setNextPage(ZoombiniPageType::kXfer);
 	close();
 }
@@ -953,27 +956,17 @@ void ZoombiniShelterBasecampOne::onMapButtonActivated() {
 // ---------------------------------------------------------------------------
 
 int16 ZoombiniShelterBasecampOne::findNearestEmptyPedestal(const Common::Point &pos) const {
+	// IDA bc1_findNearestEmptyPedestal pairs with scrb_drawOnRegFlagArr[]: each
+	// pedestal slot tracks the seated runner index (0 = empty). Iterate the slot
+	// array to determine occupancy rather than testing spatial proximity to other
+	// snoids — clustered snoids near (but not on) a pedestal can otherwise falsely
+	// mark it occupied.
 	int16 bestIdx = -1;
 	int32 bestDistSq = kPedestalSnapRadiusSq;
 
 	for (int16 i = 0; i < 16; i++) {
-		// Check if this pedestal is already occupied by another snoid
-		bool isOccupied = false;
-		for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-			const ZmbSnoid *other = *it;
-			if (other == _draggedSnoid)
-				continue;
-			if (!other->_packIsOccupied)
-				continue;
-			const Common::Point &opos = other->getPointLoc();
-			int32 dx = opos.x - _pedestalPoints[i].x;
-			int32 dy = opos.y - _pedestalPoints[i].y;
-			if (dx * dx + dy * dy < 100) { // within 10px of pedestal center
-				isOccupied = true;
-				break;
-			}
-		}
-		if (isOccupied)
+		ZmbSnoid *seated = _pedestalSnoids[i];
+		if (seated && seated != _draggedSnoid)
 			continue;
 
 		int32 dx = pos.x - _pedestalPoints[i].x;
@@ -1001,13 +994,22 @@ void ZoombiniShelterBasecampOne::endDrag(const Common::Point &dropPos) {
 
 	ZmbStateFile &f = _vm->_state->_f;
 
+	// Clear any previous pedestal assignment for this snoid before re-evaluating.
+	for (int16 i = 0; i < 16; i++) {
+		if (_pedestalSnoids[i] == snoid)
+			_pedestalSnoids[i] = nullptr;
+	}
+
 	// Check drop target: pedestal, storage, or free space
 	int16 pedestalIdx = findNearestEmptyPedestal(dropPos);
 
 	if (pedestalIdx >= 0) {
 		// --- Drop on pedestal ---
-		// IDA: wFeatureRunnerIdxArr_4B7E38[dropSlotIdx] = origRunnerIdx
+		// IDA: wFeatureRunnerIdxArr_4B7E38[dropSlotIdx] = origRunnerIdx —
+		// also write to the pedestal-occupancy slot array so subsequent
+		// findNearestEmptyPedestal calls treat this slot as filled.
 		snoid->_packIsOccupied = true;
+		_pedestalSnoids[pedestalIdx] = snoid;
 		snoid->setAnimTargetPos(_pedestalPoints[pedestalIdx]);
 		snoid->setAnimState(kSnoidAnimArrive);
 	} else if (_storageRect.contains(dropPos)) {
@@ -1194,21 +1196,8 @@ void ZoombiniShelterBasecampOne::updatePedestalHover(const Common::Point &snoidP
 	int32 nearestDistSq = (kPedestalHoverRadius + 1) * (kPedestalHoverRadius + 1);
 
 	for (int16 i = 0; i < 16; i++) {
-		// Check if pedestal is occupied by another snoid
-		bool isOccupied = false;
-		for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-			if (*it == _draggedSnoid)
-				continue; // Skip the currently dragged snoid
-			Common::Point opos = (*it)->getPointLoc();
-			int32 dx = opos.x - _pedestalPoints[i].x;
-			int32 dy = opos.y - _pedestalPoints[i].y;
-			if (dx * dx + dy * dy < 100) { // within 10px of pedestal center
-				isOccupied = true;
-				break;
-			}
-		}
-
-		if (isOccupied)
+		ZmbSnoid *seated = _pedestalSnoids[i];
+		if (seated && seated != _draggedSnoid)
 			continue;
 
 		// Check distance from snoid to pedestal
@@ -1270,10 +1259,12 @@ int16 ZoombiniShelterBasecampOne::loadZoombinisFromPack(ZmbStateActivePack &pack
 		// IDA: occupied → sub_4535B5(++v9, &posLoc) uses pedestal positions
 		//      non-occupied → position from entry data (wUnk04/wUnk06)
 		Common::Point pos;
+		int16 assignedPedestalIdx = -1;
 		if (isOccupied) {
 			if (occupiedPosIdx >= 16)
 				continue;
 			pos = _pedestalPoints[occupiedPosIdx];
+			assignedPedestalIdx = occupiedPosIdx;
 			occupiedPosIdx++;
 		} else {
 			pos = Common::Point(entry._posX,
@@ -1289,6 +1280,10 @@ int16 ZoombiniShelterBasecampOne::loadZoombinisFromPack(ZmbStateActivePack &pack
 			snoid->_name = entry.getU32Name(_vm);
 			snoid->_packIsOccupied = isOccupied;
 			snoid->setupIdleHotspots();
+			// Seed the pedestal-occupancy slot for already-seated snoids so
+			// findNearestEmptyPedestal/updatePedestalHover skip these slots.
+			if (assignedPedestalIdx >= 0)
+				_pedestalSnoids[assignedPedestalIdx] = snoid;
 		}
 
 		count++;

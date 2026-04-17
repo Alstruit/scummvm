@@ -86,6 +86,23 @@ protected:
 private:
 	void loadZoombinisFromPack();
 
+	// --- Fleens 12x12 grid / cell-swap (IDA 0x4286A5 / 0x427719 / 0x427955) ---
+
+	/** Initialize the 12x12 attribute grid based on difficulty. IDA `fleens_initGridWithAttributes @ 0x427955`. */
+	void fleensInitGridWithAttributes();
+
+	/** Generate 12 challenge pattern triplets from difficulty pools. IDA `fleens_generateChallengePatterns @ 0x427719`. */
+	void fleensGenerateChallengePatterns();
+
+	/** Interactive cell-pair swap state machine. IDA `fleens_interactiveCellSelectLoop @ 0x4286A5`. */
+	void fleensProcessCellSelectClick(int16 cellRow, int16 cellCol);
+
+	/** Perform a swap of two cells' attribute values. Called after both cells are selected. */
+	void fleensSwapCells(int16 cellA, int16 cellB);
+
+	/** After `_fleensSwapUnlockThreshold` swaps, fire an unlock step. At 6 unlocks, celebration. */
+	void fleensCheckSwapUnlock();
+
 	/**
 	 * Build trait transformation data for Zoombinis.
 	 * IDA: ferry_buildZmbRunners_41D9F4
@@ -188,6 +205,9 @@ private:
 	/** Whether the raft is ready to depart. IDA: fleens_bRaftReady (0x4AB202) */
 	bool _bRaftReady = false;
 
+	/** "Pending link to raft" flag set by raft anim state-machine event 4. IDA: word_4AB1CC */
+	bool _bRaftLinkPending = false;
+
 	/** Whether player interaction is allowed. IDA: fleens_bInteractionAllowed (0x4AB204) */
 	bool _bInteractionAllowed = false;
 
@@ -215,10 +235,54 @@ private:
 	/** Trait slot order indices (for higher difficulty). */
 	uint8 _traitSlotOrder[4] = {0, 0, 0, 0};
 
+	// --- 12x12 Attribute Grid (IDA fleens_initGridWithAttributes @ 0x427955) ---
+
+	/**
+	 * IDA: fleens_attrGrid1/2/3 — 12×12 grids per attribute layer.
+	 * Populated by initGridWithAttributes; read during path-step validation
+	 * and during interactive cell-pair swap.
+	 */
+	uint8 _fleensGridAttr1[12][12] = {};
+	uint8 _fleensGridAttr2[12][12] = {};
+	uint8 _fleensGridAttr3[12][12] = {};
+
+	/**
+	 * Challenge patterns (12 triplets: type/value/extra). IDA
+	 * `fleens_generateChallengePatterns @ 0x427719`.
+	 */
+	uint8 _fleensPatternType[12] = {};
+	uint8 _fleensPatternValue[12] = {};
+	uint8 _fleensPatternExtra[12] = {};
+
+	/**
+	 * Cell-pair swap mechanic state. IDA `fleens_interactiveCellSelectLoop @
+	 * 0x4286A5`: states 1-6 drive a two-phase cell selection UI. After
+	 * `_fleensSwapUnlockThreshold` swaps, an unlock animation fires; 6
+	 * unlocks triggers `fleens_countMatchesAndPlaySound`.
+	 */
+	int16 _fleensCellSelectState = 0;
+	int16 _fleensFirstSelectedCell = -1;
+	int16 _fleensSecondSelectedCell = -1;
+	int16 _fleensSwapCount = 0;
+	int16 _fleensSwapUnlockThreshold = 0;
+	int16 _fleensUnlockProgress = 0;
+
 	// --- Raft seat tracking ---
 
-	/** Seat occupied flags (16 seats). IDA: byte_4AB24A[16] */
-	bool _seatOccupied[16] = {};
+	/**
+	 * Per-seat 3-state status (16 seats). IDA: byte_4AB24A[16].
+	 *   0 = empty
+	 *   1 = pending (snoid dropped, raft animation hasn't started yet)
+	 *   2 = captured (raft departed with this snoid)
+	 * The 3 states are needed by event 6 (capture) to distinguish "this seat
+	 * has a snoid but the raft hasn't moved" from "this seat is final".
+	 */
+	enum SeatStatus : uint8 {
+		kSeatEmpty = 0,
+		kSeatPending = 1,
+		kSeatCaptured = 2
+	};
+	uint8 _seatOccupied[16] = {};
 
 	/** Snoid IDs occupying each seat. IDA: word_4AB22A[16] */
 	uint16 _seatSnoidId[16] = {};

@@ -334,6 +334,12 @@ void ZoombiniPuzzleMaze::loadFeatures() {
 		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE);
 
 	loadZoombinisFromPack();
+
+	// IDA 0x42ea24: if difficulty 3 (0-based = kPuzzleDiffLevel4) and fewer than 5 zoombinis,
+	// bump to difficulty 4 (0-based), which uses the fixed single REGS 16609 layout.
+	if (_difficultyLevel == kPuzzleDiffLevel4 && _loadedZmbCount < 5)
+		_difficultyLevel = static_cast<ZmbPuzzleDifficultyLevel>(kPuzzleDiffLevel4 + 1);
+
 	loadRegsConfigByLevel();
 	loadAndParseRegsData();
 	createCreatureFeatures();
@@ -424,29 +430,33 @@ void ZoombiniPuzzleMaze::loadZoombinisFromPack() {
 
 void ZoombiniPuzzleMaze::loadRegsConfigByLevel() {
 	// IDA: maze_loadRegsConfigByLevel (0x4319C9)
+	// REGS resource ID is base + s_variantIdxN (cycled deterministically across plays).
+	// NOT random — initGridAndSelectPaths bumps the matching s_variantIdxN counter
+	// after each play to step through the variant set.
 	switch (_difficultyLevel) {
 	case kPuzzleDiffLevel1:
-		_levelVariantIdx = _vm->_rnd->getRandomNumber(0, 1);
+		_levelVariantIdx = s_variantIdx0;
 		_regsResourceId = 16600 + _levelVariantIdx;
 		break;
 	case kPuzzleDiffLevel2:
-		_levelVariantIdx = _vm->_rnd->getRandomNumber(0, 1);
+		_levelVariantIdx = s_variantIdx1;
 		_regsResourceId = 16602 + _levelVariantIdx;
 		break;
 	case kPuzzleDiffLevel3:
-		_levelVariantIdx = _vm->_rnd->getRandomNumber(0, 1);
+		_levelVariantIdx = s_variantIdx2;
 		_regsResourceId = 16604 + _levelVariantIdx;
 		break;
 	case kPuzzleDiffLevel4:
-		_levelVariantIdx = _vm->_rnd->getRandomNumber(0, 2);
+		_levelVariantIdx = s_variantIdx3;
 		_regsResourceId = 16606 + _levelVariantIdx;
 		break;
 	default:
+		// IDA case 4 (raw): difficulty bumped to max — fixed REGS 16609.
 		_regsResourceId = 16609;
 		_levelVariantIdx = 0;
 		break;
 	}
-	
+
 	debugC(kZmbDebugPage, "Maze: level %d, variant %d, REGS %d",
 	       _difficultyLevel, _levelVariantIdx, _regsResourceId);
 }
@@ -674,7 +684,10 @@ void ZoombiniPuzzleMaze::initGridAndSelectPaths() {
 			s_variantIdx3 = 0;
 		break;
 	default:
-		// Unreachable: difficulty is always 1-4
+		// IDA case 4 (raw): triggered when difficulty 3 + zmbCount<5 path bumps
+		// _difficultyLevel to kPuzzleDiffLevel4+1. Calls net_selectPathSlots without
+		// touching any variant counter (REGS 16609 fixed layout).
+		selectPathSlots();
 		break;
 	}
 
@@ -1713,6 +1726,8 @@ void ZoombiniPuzzleMaze::buildZmbAssignmentList() {
 void ZoombiniPuzzleMaze::initGridRunners() {
 	// IDA: net_initGridRunners_431C3A
 	_gridRegsReadIdx = 0;
+	_runnerCount = 0;
+	memset(_waveGroupCount, 0, sizeof(_waveGroupCount));
 	for (int16 i = 0; i < _totalCreatureCount && i < kMaxRunners; i++) {
 		registerGridRunner();
 	}
@@ -1782,6 +1797,15 @@ void ZoombiniPuzzleMaze::registerGridRunner() {
 		rs.oldRow = row;
 		rs.oldCol = col;
 		rs.cellTypeAtPos = cellType;
+		rs.waveGroup = waveGroup;
+
+		// Assign to wave group. IDA: word_4B00E0[word_4B03CE++] = runnerIdx (switch waveGroup)
+		if (waveGroup >= 1 && waveGroup <= 8) {
+			int16 g = waveGroup - 1;
+			if (_waveGroupCount[g] < kMaxRunners)
+				_waveGroupRunners[g][_waveGroupCount[g]++] = _runnerCount;
+		}
+
 		_runnerCount++;
 	}
 
@@ -1832,6 +1856,18 @@ int16 ZoombiniPuzzleMaze::findRunnerByFeatureId(uint16 featureId) const {
 	return -1;
 }
 
+int16 ZoombiniPuzzleMaze::findSeatByFeatureId(uint16 featureId) const {
+	// IDA: runnerPtr[69] = node index. Grid node features are stored in
+	// _creatureObstacleFeatures[i] and _creatureShadowFeatures[i].
+	for (int16 i = 0; i < 14; i++) {
+		if (_creatureObstacleFeatures[i] && _creatureObstacleFeatures[i]->getId() == featureId)
+			return i;
+		if (_creatureShadowFeatures[i] && _creatureShadowFeatures[i]->getId() == featureId)
+			return i;
+	}
+	return -1;
+}
+
 // =================================================================
 // Animation event dispatch
 // IDA: net_scrbAnimCallback (0x43105B), net_trackRunnerCollisions (0x431354)
@@ -1847,6 +1883,19 @@ void ZoombiniPuzzleMaze::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode
 
 	switch (eventCode) {
 	case kZmbAnimEventM1_End:
+		// IDA: net_processRunnerExitFrame (0x430F06) — fires when SCRS 14006 ends.
+		// If this snoid is exiting (rs.exiting=true), push to arrival queue.
+		if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+			int16 runnerIdx = findRunnerByFeatureId(feature->getId());
+			if (runnerIdx >= 0) {
+				ZmbMazeRunnerState &rs = _runnerStates[runnerIdx];
+				if (rs.exiting) {
+					rs.exiting = false;
+					if (_arrivalQueueSize < kMaxQueueSize)
+						_arrivalQueue[_arrivalQueueSize++] = runnerIdx;
+				}
+			}
+		}
 		break;
 
 	case 0:
@@ -1924,65 +1973,90 @@ void ZoombiniPuzzleMaze::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode
 
 void ZoombiniPuzzleMaze::processScrbAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	// IDA: net_scrbAnimCallback (0x43105B)
-	int16 runnerIdx = findRunnerByFeatureId(feature->getId());
-	if (runnerIdx < 0)
+	// Find which seat index this creature-obstacle feature corresponds to.
+	// runnerPtr[68] = slot index; runnerPtr[69] = node index (same value here).
+	int16 seatIdx = findSeatByFeatureId(feature->getId());
+	if (seatIdx < 0)
 		return;
 
-	ZmbMazeRunnerState &rs = _runnerStates[runnerIdx];
+	// Find the zmb snoid runner currently placed at this seat.
+	// IDA: runner_findByIndex(word_4AF3F6[runnerPtr[69]]) = companion snoid runner.
+	int16 runnerIdx = -1;
+	for (int16 i = 0; i < _runnerCount; i++) {
+		if (_zmbRunnerSnoidIds[i] != 0 && _runnerStates[i].seatIdx == seatIdx && _runnerStates[i].placed) {
+			runnerIdx = i;
+			break;
+		}
+	}
 
 	switch (eventCode) {
-	case '2': // Load resting SCRB on companion runner
-		// IDA: scrb_loadOnRunner(1, word_4A1D08[runnerPtr[69]], companionRunner)
+	case '2': // Load resting SCRB on companion (shadow) runner
+		// IDA: foundRunner = runner_findByIndex(word_4AF3F6[runnerPtr[69]]);
+		//      scrb_loadOnRunner(1, word_4A1D08[runnerPtr[69]], foundRunner);
+		//      scrb_registerHotspotGroup(0, 0, 0, 0, compIdx, compIdx);
+		{
+			ZmbFeature *shadowFeature = _creatureShadowFeatures[seatIdx];
+			if (shadowFeature) {
+				int16 typeId = kCreatureTypeId[seatIdx];
+				loadScrbOntoFeature(shadowFeature, static_cast<uint16>(kCreatureTypeScrbs[typeId]));
+			}
+		}
 		break;
 
 	case '=': // Play traversal script (mode 0)
 	case 'G':
 	case 'Q':
-		// IDA: net_playTraversalScript(0, callback, traversalData, runner)
-		if (_scrsPlayQueueSize < kMaxQueueSize)
-			_scrsPlayQueue[_scrsPlayQueueSize++] = runnerIdx;
+		// IDA: net_playTraversalScript — plays companion traversal SCRS (visual only).
+		// In ScummVM's simplified architecture, companion SCRS traversal is not implemented.
 		break;
 
 	case '>': // Setup traversal step (mode 0)
-		// IDA: net_setupTraversalStep(0, callback, traversalData, runner)
-		if (_moveQueueSize < kMaxQueueSize)
-			_moveQueue[_moveQueueSize++] = runnerIdx;
+		// IDA: net_setupTraversalStep — updates companion position/SCRS (visual only).
+		// In ScummVM's simplified architecture, no companion to update.
 		break;
 
 	case '@': // Push companion to column-link queue
 	case 'T':
-		if (rs.companionIdx >= 0 && _columnLinkQueueSize < kMaxQueueSize)
-			_columnLinkQueue[_columnLinkQueueSize++] = rs.companionIdx;
+		// IDA: word_4AFF88[word_4B00CA++] = runnerPtr[74];
+		if (runnerIdx >= 0) {
+			ZmbMazeRunnerState &rs = _runnerStates[runnerIdx];
+			if (rs.companionIdx >= 0 && _columnLinkQueueSize < kMaxQueueSize)
+				_columnLinkQueue[_columnLinkQueueSize++] = rs.companionIdx;
+		}
 		break;
 
 	case 'A': // Spawn traversal runner (mode 1)
-		if (_moveQueueSize < kMaxQueueSize)
-			_moveQueue[_moveQueueSize++] = runnerIdx;
+		// IDA: net_spawnTraversalRunner — spawns overlay companion runner (visual only).
+		// In ScummVM's simplified architecture, companion runners are not spawned.
 		break;
 
 	case 'B': // Clear slot + seat assignment
 	case 'L':
 	case 'V':
-		if (rs.seatIdx >= 0 && rs.seatIdx < 14)
-			_seatAssignment[rs.seatIdx] = 0;
+		// IDA: scrb_setSlotFeatureRunnerIdx(0, runnerPtr[68]); word_4AF33C[runnerPtr[68]] = 0;
+		_seatAssignment[seatIdx] = 0;
 		break;
 
 	case 'H': // Setup traversal step (mode 1)
 	case 'R':
-		if (_moveQueueSize < kMaxQueueSize)
-			_moveQueue[_moveQueueSize++] = runnerIdx;
+		// IDA: net_setupTraversalStep — updates companion position/SCRS (visual only).
+		// In ScummVM's simplified architecture, no companion to update.
 		break;
 
 	case 'J': // Push companion to column-link queue + clear companion link
-		if (rs.companionIdx >= 0 && _columnLinkQueueSize < kMaxQueueSize)
-			_columnLinkQueue[_columnLinkQueueSize++] = rs.companionIdx;
-		rs.companionIdx = -1;
+		// IDA: word_4AFF88[word_4B00CA++] = runnerPtr[74]; runnerPtr[74] = 0;
+		if (runnerIdx >= 0) {
+			ZmbMazeRunnerState &rs = _runnerStates[runnerIdx];
+			if (rs.companionIdx >= 0 && _columnLinkQueueSize < kMaxQueueSize)
+				_columnLinkQueue[_columnLinkQueueSize++] = rs.companionIdx;
+			rs.companionIdx = -1;
+		}
 		break;
 
 	case 'K': // Spawn traversal runner (mode 0)
 	case 'U':
-		if (_moveQueueSize < kMaxQueueSize)
-			_moveQueue[_moveQueueSize++] = runnerIdx;
+		// IDA: net_spawnTraversalRunner — spawns overlay companion runner (visual only).
+		// In ScummVM's simplified architecture, companion runners are not spawned.
 		break;
 
 	default:
@@ -2199,14 +2273,19 @@ void ZoombiniPuzzleMaze::handleGridDrop(int16 seatIdx, ZmbSnoid *snoid) {
 // =================================================================
 
 void ZoombiniPuzzleMaze::processQueues() {
+	// IDA maze2_onHover_frameUpdate @ 0x42F8C1: rowChange (word_4B0028) is
+	// processed BEFORE arrival (word_4AFFB0). The previous (arrival → rowChange)
+	// order delayed turn-node arrivals by one frame because a runner that
+	// performed a row-change in frame N would not have its arrival animation
+	// processed until frame N+1.
 	processSetupNodeQueue();
 	processMoveQueue();
 	processLinkQueue();
 	processColumnLinkQueue();
 	processScrsPlayQueue();
 	processReorderFlags();
-	processArrivalQueue();
 	processRowChangeQueue();
+	processArrivalQueue();
 	processCrossAssignQueue();
 }
 
@@ -2264,10 +2343,6 @@ void ZoombiniPuzzleMaze::setupNodeScrb(int16 nodeIdx) {
 		snoid->startScrsPlayback(scrsStream, false, false);
 		rs.moving = true;
 	}
-
-	// Enqueue runner to move queue to start movement
-	if (_moveQueueSize < kMaxQueueSize)
-		_moveQueue[_moveQueueSize++] = runnerIdx;
 }
 
 void ZoombiniPuzzleMaze::processMoveQueue() {
@@ -2385,7 +2460,9 @@ void ZoombiniPuzzleMaze::processScrsPlayQueue() {
 			continue;
 
 		// IDA: snoidScript_initAndPlay(0, 0, *(char*)(runner+239) + 15090, runner+48)
-		uint16 exitScrs = rs.footTrait + 15090;
+		// runner+239 = 0-indexed foot trait (0-4). In ScummVM footTrait is 1-indexed (1-5),
+		// so correct SCRS = footTrait - 1 + 15090 = footTrait + 15089 → SCRS 15090-15094.
+		uint16 exitScrs = rs.footTrait + 15089;
 		Common::SeekableReadStream *scrsStream =
 			_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
 				ZmbResource(ZmbArchiveKind::kPage, exitScrs));
@@ -2434,8 +2511,21 @@ void ZoombiniPuzzleMaze::handleArrival(int16 direction, int16 runnerIdx) {
 	Common::Point arrivalPos = kArrivalPositions[20 * direction + posIdx];
 
 	if (snoid) {
-		snoid->setPointLoc(arrivalPos);
-		snoid->setupIdleHotspots();
+		if (direction == 3) {
+			// IDA: animateZoombini(0, 7, runner+48) = initWalkToTarget, then
+			// queue 5/10 plays snoidScript_initAndPlay(0, 0, foot+15090, runner+48).
+			// In ScummVM: teleport to arrivalPos and play foot+15089 celebration SCRS directly.
+			snoid->setPointLoc(arrivalPos);
+			uint16 celebScrs = rs.footTrait + 15089;
+			Common::SeekableReadStream *celebStream =
+				_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+					ZmbResource(ZmbArchiveKind::kPage, celebScrs));
+			if (celebStream)
+				snoid->startScrsPlayback(celebStream, false, false);
+		} else {
+			// IDA: animateZoombini(0, 7, runner+48) = initWalkToTarget
+			snoid->initWalkToTarget(arrivalPos);
+		}
 	}
 
 	// Clear grid cell
@@ -2519,12 +2609,12 @@ void ZoombiniPuzzleMaze::handleRowChange(int16 cellType, int16 runnerIdx) {
 		zmbSetupCollisionTracking(nodeRunnerIdx, runnerIdx);
 		break;
 
-	case 6: // Exit node: play sound, finalize, move
-		// IDA: scrb_enqueueSoundResource(0, 5103);
-		//      net_finalizeRunnerAtSlot(); fleens_moveZmbOnRaft();
+	case 6: // Exit node: play sound, finalize, then exit-walk (falls through to type 1 in IDA)
+		// IDA: scrb_enqueueSoundResource(0, 5103); net_finalizeRunnerAtSlot();
+		//      → falls through to case 1: net_zmbArriveAtNodeAlt()
 		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 5103));
 		finalizeRunnerAtSlot(nodeRunnerIdx);
-		moveZmbOnGrid(runnerIdx);
+		zmbArriveAtNodeAlt(nodeRunnerIdx, runnerIdx);
 		break;
 
 	case 20: case 21: case 22: case 23:
@@ -2557,26 +2647,50 @@ void ZoombiniPuzzleMaze::processCrossAssignQueue() {
 
 void ZoombiniPuzzleMaze::zmbArriveAtNode(int16 cellType, int16 runnerIdx) {
 	// IDA: net_zmbArriveAtNode (0x430049)
-	// Turn node: change direction based on cell type
+	// Turn node: only update direction. The IDA implementation loads SCRB 10040
+	// onto the node runner and starts a snoid idle SCRS — it does NOT call the
+	// movement function. Calling moveZmbOnGrid() here causes a double-move per
+	// turn (one in the IDA-equivalent SCRS playback, one in C++).
+	//
+	// Direction is consumed by the next normal moveZmbOnGrid() call from the
+	// caller's main update loop, after the SCRS turn-idle animation completes.
 	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
 		return;
 
 	ZmbMazeRunnerState &rs = _runnerStates[runnerIdx];
 	int16 turnDir = cellType - 20; // 20->0, 21->1, 22->2, 23->3
 	rs.direction = turnDir;
-
-	// Continue movement in new direction
-	moveZmbOnGrid(runnerIdx);
 }
 
 void ZoombiniPuzzleMaze::zmbArriveAtNodeAlt(int16 nodeRunnerIdx, int16 runnerIdx) {
 	// IDA: net_zmbArriveAtNodeAlt (0x434F8B)
-	// Straight node arrival - push to arrival queue
+	// Straight-through exit node: play SCRS 14006 (exit walk animation) on the snoid.
+	// Sets net_processRunnerExitFrame at snoid runner+16 so that when SCRS 14006 ends
+	// (kZmbAnimEventM1_End fires), the snoid is pushed to the arrival queue.
+	// IDA: snoidScript_initAndPlay(1, 0, 14006, a2+48)
 	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
 		return;
 
-	if (_arrivalQueueSize < kMaxQueueSize)
-		_arrivalQueue[_arrivalQueueSize++] = runnerIdx;
+	ZmbMazeRunnerState &rs = _runnerStates[runnerIdx];
+	uint16 snoidId = _zmbRunnerSnoidIds[runnerIdx];
+	ZmbSnoid *snoid = getSnoid(snoidId);
+	if (!snoid) {
+		// No snoid: push directly to arrival queue as fallback
+		if (_arrivalQueueSize < kMaxQueueSize)
+			_arrivalQueue[_arrivalQueueSize++] = runnerIdx;
+		return;
+	}
+
+	// Play SCRS 14006 (exit walk, 26 groups). When finished, kZmbAnimEventM1_End fires
+	// and processRunnerExitFrame pushes this runner to the arrival queue.
+	Common::SeekableReadStream *scrsStream =
+		_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+			ZmbResource(ZmbArchiveKind::kPage, 14006));
+	if (scrsStream)
+		snoid->startScrsPlayback(scrsStream, false, false);
+
+	rs.exiting = true;
+	rs.moving = false;
 }
 
 void ZoombiniPuzzleMaze::moveRunnerStep(int16 nodeRunnerIdx, int16 runnerIdx) {
@@ -2652,17 +2766,108 @@ void ZoombiniPuzzleMaze::moveRunnerStepAlt(int16 nodeRunnerIdx, int16 runnerIdx)
 
 void ZoombiniPuzzleMaze::zmbSetupCollisionTracking(int16 nodeRunnerIdx, int16 runnerIdx) {
 	// IDA: net_zmbSetupCollisionTracking (0x4354D8)
-	// Hitchhiker cell - setup tracking and continue
+	// The zmb arrives at a hitchhiker cell (type 5). It stops here and waits.
+	// The hitchhiker node records which zmb is waiting. When the wave exits (finalizeRunnerAtSlot),
+	// the stored zmb is ejected into the move queue with the same direction.
 	if (runnerIdx < 0 || runnerIdx >= kMaxRunners)
 		return;
 
-	moveZmbOnGrid(runnerIdx);
+	ZmbMazeRunnerState &rs = _runnerStates[runnerIdx];
+
+	// IDA: prevRow = row, prevCol = col
+	rs.oldRow = rs.row;
+	rs.oldCol = rs.col;
+
+	// IDA: hikerRunner->hsArr[14].pos.x = zmb's snoidRunnerIdx  (link zmb to hitchhiker node)
+	if (nodeRunnerIdx >= 0 && nodeRunnerIdx < kMaxRunners)
+		_runnerStates[nodeRunnerIdx].linkedZmbRunnerIdx = runnerIdx;
+
+	// IDA: nodeRunner loads SCRB (dir + 10036) and positions at hitchhiker pixel
+	// (companion visual handled by SCRB events; position is already at cell)
+
+	// IDA: snoidScript_initAndPlay — keep walking animation playing at rest
+	uint16 snoidId = _zmbRunnerSnoidIds[runnerIdx];
+	ZmbSnoid *snoid = getSnoid(snoidId);
+	if (snoid) {
+		// Use the direction walk SCRS (same as in-motion anim) while waiting.
+		// IDA: core[50+dir] from the runner's anim table (direction walk series).
+		int16 walkScrs = rs.scrsTable[rs.direction];
+		if (walkScrs > 0) {
+			Common::SeekableReadStream *scrsStream =
+				_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+					ZmbResource(ZmbArchiveKind::kPage, static_cast<uint16>(walkScrs)));
+			if (scrsStream)
+				snoid->startScrsPlayback(scrsStream, false, false);
+		}
+	}
+
+	// Do NOT advance the zmb — it waits at the hitchhiker cell.
+	// It will be ejected by finalizeRunnerAtSlot when the wave completes.
 }
 
 void ZoombiniPuzzleMaze::finalizeRunnerAtSlot(int16 nodeRunnerIdx) {
 	// IDA: net_finalizeRunnerAtSlot (0x434E1D)
-	// Exit node finalization
-	(void)nodeRunnerIdx;
+	// Called when a zmb reaches an exit cell (type 6). Processes every runner in the
+	// same wave group: intersection runners advance their direction frame; hitchhiker
+	// runners eject their waiting zmb into the move queue.
+	if (nodeRunnerIdx < 0 || nodeRunnerIdx >= kMaxRunners)
+		return;
+
+	ZmbMazeRunnerState &nodeRs = _runnerStates[nodeRunnerIdx];
+	// IDA: runner->byte292 = 2; runner->word70 = 0 (mark exit node complete)
+	nodeRs.arrived = true;
+	nodeRs.linkedZmbRunnerIdx = -1;
+
+	// IDA: slotType = runner->hsArr[11].shapeid (wave group 1-8)
+	// Wave group 1 uses count=0 in the original — no wave processing for group 1.
+	int16 waveGroup = nodeRs.waveGroup;
+	if (waveGroup < 2 || waveGroup > kMaxWaveGroups)
+		return;
+
+	int16 groupIdx = waveGroup - 1;
+	int16 count = _waveGroupCount[groupIdx];
+
+	// IDA: iterate wave group backwards: while (count > 0) { grpRunner = groupArr[--count]; ... }
+	for (int16 i = count - 1; i >= 0; i--) {
+		int16 memberIdx = _waveGroupRunners[groupIdx][i];
+		if (memberIdx < 0 || memberIdx >= kMaxRunners)
+			continue;
+
+		ZmbMazeRunnerState &memberRs = _runnerStates[memberIdx];
+		int16 row = memberRs.row;
+		int16 col = memberRs.col;
+		if (row < 0 || row >= kGridRows || col < 0 || col >= kGridCols)
+			continue;
+
+		int16 cellType = _cellTypes[row][col];
+
+		// IDA: type 4 (intersection) — advance to next available direction, reactivate
+		// Original: if (++frameIdx > 3) frameIdx = 0;
+		//           while (!frames[frameIdx]) { if (++frameIdx > 3) frameIdx = 0; }
+		//           state = 3;
+		if (cellType == 4) {
+			int16 &dir = _nodeDirection[row][col];
+			if (++dir > 3) dir = 0;
+			// Skip directions that are unavailable (dirFlag == 0)
+			int16 attempts = 0;
+			while (attempts < 4 && !_nodeDirFlags[row][col][dir]) {
+				if (++dir > 3) dir = 0;
+				attempts++;
+			}
+			debugC(2, kZmbDebugAnimation, "Maze: Wave %d advanced intersection [%d,%d] to dir %d",
+			       waveGroup, row, col, dir);
+		}
+
+		// IDA: type 5 (hitchhiker) — eject waiting zmb into move queue
+		// Original: word_4B0000[word_4B00CE++] = grpRunner->zmbId; grpRunner->zmbId = 0;
+		if (cellType == 5 && memberRs.linkedZmbRunnerIdx >= 0) {
+			if (_moveQueueSize < kMaxQueueSize)
+				_moveQueue[_moveQueueSize++] = memberRs.linkedZmbRunnerIdx;
+			debugC(2, kZmbDebugAnimation, "Maze: Wave %d ejected hitchhiker zmb runner %d from [%d,%d]",
+			       waveGroup, memberRs.linkedZmbRunnerIdx, row, col);
+			memberRs.linkedZmbRunnerIdx = -1;
+		}
+	}
 }
 
 void ZoombiniPuzzleMaze::assignCrossRunnerScrbs(int16 runner1Idx, int16 runner2Idx) {
@@ -2776,6 +2981,18 @@ void ZoombiniPuzzleMaze::spawnObstacle(int16 slotIdx) {
 	else
 		obs.speed = 12;
 
+	// IDA tier assignment by speed/spawn-roll. The score ladder maps speed
+	// tiers to the SCRB ID range used by maze_obstacleScore at hit time:
+	//   speed 8  → SCRB 1000 (basic)
+	//   speed 12 → SCRB 1005 (medium)
+	//   speed 16 → SCRB 1016 (hard)
+	if (obs.speed == 8)
+		obs.scrbId = 1000;
+	else if (obs.speed == 12)
+		obs.scrbId = 1005;
+	else
+		obs.scrbId = 1016;
+
 	obs.direction = _vm->_rnd->getRandomNumber(0, 7);
 	obs.timer = 0;
 	_activeObstacleCount++;
@@ -2810,33 +3027,72 @@ void ZoombiniPuzzleMaze::moveObstacles() {
 }
 
 void ZoombiniPuzzleMaze::checkObstacleCollisions() {
-	// IDA: maze_projectileTickAndCollide (0x42DE69)
+	// IDA: maze_projectileTickAndCollide (0x42DE69) + maze_obstacleScore tracking.
+	// On hit: score added per obstacle SCRB tier, _bonusCounter increments;
+	// _bonusCounter resets on consecutive frames with no collisions.
+	bool anyHitThisFrame = false;
+
+	// Refresh active runner rect pool for the IDA-style sized intersection test
+	// (dword_4AF264[]). The rect pool replaces single-pair distance-squared.
+	_activeRunnerRectCount = 0;
+	for (int16 j = 0; j < _runnerCount && _activeRunnerRectCount < 6; j++) {
+		const ZmbMazeRunnerState &rs = _runnerStates[j];
+		if (!rs.moving)
+			continue;
+		_activeRunnerRects[_activeRunnerRectCount++] =
+			Common::Rect(rs.pixelX - 15, rs.pixelY - 15, rs.pixelX + 15, rs.pixelY + 15);
+	}
+
 	for (int i = 0; i < kMaxObstacles; i++) {
 		ObstacleSlot &obs = _obstacles[i];
 		if (!obs.active)
 			continue;
 
-		// Check collision with runner rects
-		for (int16 j = 0; j < _runnerCount; j++) {
-			ZmbMazeRunnerState &rs = _runnerStates[j];
-			if (!rs.moving)
-				continue;
+		bool hit = false;
+		for (int16 r = 0; r < _activeRunnerRectCount && !hit; r++) {
+			if (_activeRunnerRects[r].contains(obs.col, obs.row)) {
+				hit = true;
+				// IDA tier scoring by obstacle SCRB id.
+				int16 tierScore = 1;
+				switch (obs.scrbId) {
+				case 1000: tierScore = 1; break;
+				case 1005: tierScore = 2; break;
+				case 1016: tierScore = 3; break;
+				case 1021: tierScore = 4; break;
+				default:   tierScore = 1; break;
+				}
 
-			int16 dx = obs.col - rs.pixelX;
-			int16 dy = obs.row - rs.pixelY;
-			if (dx * dx + dy * dy < 30 * 30) {
-				// Hit!
+				// IDA maze_projectileTickAndCollide @ 0x42DE69 bonus ladder:
+				//   maze_obstacleScore += tierScore;
+				//   if (maze_obstacleScore >= maze_nextBonusThreshold) {
+				//     ++maze_bonusCounter;
+				//     if (maze_bonusCounter > 9) maze_bonusCounter = 9;  // cap
+				//     maze_nextBonusThreshold += 100;
+				//   }
+				// The previous port incremented _bonusCounter on every hit
+				// and reset it when no hit occurred in a frame — that's a
+				// "combo" semantic, not IDA's "extra life per 100 points"
+				// ladder. Fix by gating on the 100-pt threshold and capping
+				// at 9.
+				_obstacleScore += tierScore;
+				if (_obstacleScore >= _scoreThreshold) {
+					_bonusCounter++;
+					if (_bonusCounter > 9)
+						_bonusCounter = 9;
+					_scoreThreshold += 100;
+				}
+				anyHitThisFrame = true;
+
 				_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 3001));
 				obs.active = false;
 				_activeObstacleCount--;
-
-				if (_lives > 0) {
+				if (_lives > 0)
 					_lives--;
-				}
-				break;
 			}
 		}
+		(void)hit;
 	}
+	(void)anyHitThisFrame;
 }
 
 // =================================================================
@@ -2897,6 +3153,99 @@ void ZoombiniPuzzleMaze::processIdleAnimations() {
 		_celebrationTrigger = false;
 		_celebrationsPlayed = 0;
 	}
+}
+
+// ============================================================================
+// Player projectile system (IDA maze_spawnProjectile + tickProjectilePosition)
+// ============================================================================
+
+void ZoombiniPuzzleMaze::spawnProjectile() {
+	// IDA maze_spawnProjectile @ 0x42D8E9: launches a projectile from the
+	// launcher at (320, 240) in the current 8-direction at 14 u/tick.
+	// Only one projectile active at a time; no-op if already flying.
+	if (_projectile.active)
+		return;
+
+	// IDA 8-direction velocity table. Dir 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW.
+	static const int16 kDx[8] = {   0,  14,  14,  14,   0, -14, -14, -14 };
+	static const int16 kDy[8] = { -14, -14,   0,  14,  14,  14,   0, -14 };
+
+	int16 dir = _launcherDirection & 7;
+	_projectile.active = true;
+	_projectile.x = 320;
+	_projectile.y = 240;
+	_projectile.dx = kDx[dir];
+	_projectile.dy = kDy[dir];
+	_projectile.lifeFrames = 0;
+
+	// Launch SFX — IDA enqueues a firing sound resource.
+	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 3000),
+		Audio::Mixer::kSFXSoundType);
+}
+
+void ZoombiniPuzzleMaze::tickProjectile() {
+	// IDA maze_tickProjectilePosition @ 0x42E2F2: advance position by
+	// (dx, dy); deactivate at frame > 15 OR when off-screen. Collision with
+	// obstacles handled by checkObstacleCollisions using the rect pool.
+	if (!_projectile.active)
+		return;
+
+	_projectile.x += _projectile.dx;
+	_projectile.y += _projectile.dy;
+	_projectile.lifeFrames++;
+
+	if (_projectile.lifeFrames > 15 ||
+	    _projectile.x < 0 || _projectile.x > 640 ||
+	    _projectile.y < 0 || _projectile.y > 480) {
+		_projectile.active = false;
+		return;
+	}
+
+	// Collision test: if projectile overlaps any active obstacle, score hit.
+	for (int i = 0; i < kMaxObstacles; i++) {
+		ObstacleSlot &obs = _obstacles[i];
+		if (!obs.active)
+			continue;
+		int16 dx = obs.col - _projectile.x;
+		int16 dy = obs.row - _projectile.y;
+		if (dx * dx + dy * dy < 25 * 25) {
+			// Hit — deactivate both projectile and obstacle; award score.
+			_projectile.active = false;
+			int16 tierScore = 1;
+			switch (obs.scrbId) {
+			case 1000: tierScore = 1; break;
+			case 1005: tierScore = 2; break;
+			case 1016: tierScore = 3; break;
+			case 1021: tierScore = 4; break;
+			default:   tierScore = 1; break;
+			}
+			_obstacleScore += tierScore;
+			if (_obstacleScore >= _scoreThreshold) {
+				_bonusCounter++;
+				if (_bonusCounter > 9) _bonusCounter = 9;
+				_scoreThreshold += 100;
+			}
+			_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, 3001),
+				Audio::Mixer::kSFXSoundType);
+			obs.active = false;
+			_activeObstacleCount--;
+			updateScoreDigits();
+			return;
+		}
+	}
+}
+
+void ZoombiniPuzzleMaze::updateScoreDigits() {
+	// IDA maze_updateScoreDigits @ 0x42D04D: reloads SCRB 8011 on the score-
+	// display runner with the current digit frames. Each digit occupies a
+	// hotspot; the SCRB has 10 frames (0-9) per digit slot.
+	if (!_scoreDigitFeature)
+		return;
+	// The SCRB animation frame index equals the current score digit value.
+	// ScummVM handles this by reloading the SCRB which re-triggers the
+	// animation; the pre-render shape callback would pick the right digit
+	// frame per digit slot. Minimal: force reload so the display refreshes.
+	loadScrbOntoFeature(_scoreDigitFeature, 8011);
 }
 
 } // End of namespace Mohawk

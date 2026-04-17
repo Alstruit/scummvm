@@ -414,7 +414,12 @@ void ZoombiniInteractive::routeNonOccupiedToRestingPack() {
 	// In ScummVM: _levelFlagPageArr[currentPage - 7] |= (1 << routeLevel)
 	uint16 routeLevel = f._routeLevels[routeIdx - 1];
 	uint8 levelBitmask = static_cast<uint8>(1 << (routeLevel & 3));
-	f._levelFlagPageArr[currentPage - ZMB_DI_BRIDGE_07] |= levelBitmask;
+	// IDA save_updateZmbPacksOnPuzzleComplete @ 0x455660: writes at
+	// pbPuzzleLevelFlagArr[wActivePuzzleId - 7 + 3] = [DI - 4]. The leading
+	// 3 bytes of the 15-byte array hold a dummy + perfect-streak WORD flag;
+	// the puzzle slots are [3..14] for DI 7..18. We use the same layout so
+	// that ScummVM-written and IDA-written saves interchange byte-for-byte.
+	f._levelFlagPageArr[currentPage - 4] |= levelBitmask;
 
 	// Count non-occupied snoids in active pack.
 	int16 nonOccupiedCount = 0;
@@ -519,26 +524,38 @@ void ZoombiniInteractive::routeNonOccupiedToRestingPack() {
 			// Remove non-occupied entries from active pack.
 			f._zmbPackActive._wPackZmbCount -= nonOccupiedCount;
 		}
-	} else if (_vm->_state->_perfectStreakFlag && isContainer) {
+	} else if (_vm->_state->_perfectStreakFlag) {
 		// ---------------------------------------------------------------
-		// All snoids survived AND perfect streak intact AND container puzzle.
-		// IDA: 0x45591D-AEA — perfect completion path.
+		// All snoids survived AND perfect streak intact.
+		// IDA save_updateZmbPacksOnPuzzleComplete @ 0x45591D-AEA: this whole
+		// `else if` branch is gated only by perfect-streak (pbPuzzleLevelFlagArr[1])
+		// and !chColorPaletteState — NOT by container. The high-nibble flag
+		// gets set for EVERY puzzle in the route when perfect streak holds.
+		// Only memorial creation and route-level advancement (the inner
+		// `if (v37)` block) is gated by the container flag. The previous
+		// `&& isContainer` gate here suppressed Ferry/Lilly/Hotel/Smoke etc.
+		// from getting their perfect-clear high nibble, which then made xfer
+		// route-path colors disagree with IDA at higher route levels.
 		// ---------------------------------------------------------------
 
-		// IDA 0x455938-97D: Set per-puzzle level flag high nibble (perfect completion).
-		f._levelFlagPageArr[currentPage - ZMB_DI_BRIDGE_07] |= static_cast<uint8>(levelBitmask << 4);
+		// IDA 0x455938-97D: Set per-puzzle level flag high nibble (perfect
+		// completion) — applies to every non-container puzzle too. Same
+		// `[DI - 4]` layout as the low-nibble set above.
+		f._levelFlagPageArr[currentPage - 4] |= static_cast<uint8>(levelBitmask << 4);
 
-		// IDA 0x455A8D-AEA: Route level advancement.
-		// Increment per-route perfect completion counter.
-		// Three perfect completions → reset counter and advance route level.
-		if (static_cast<int16>(routeLevel) < 3) {
-			f._routePerfectCounters[routeIdx - 1]++;
-			if (f._routePerfectCounters[routeIdx - 1] >= 3) {
-				f._routePerfectCounters[routeIdx - 1] = 0;
-				f._routeLevels[routeIdx - 1]++;
-				_vm->_state->_routeLevelJustAdvanced = true;
-				debugC(1, kZmbDebugAnimation, "Route %d level advanced to %d",
-					routeIdx, f._routeLevels[routeIdx - 1]);
+		if (isContainer) {
+			// IDA 0x455A8D-AEA: Route level advancement (container puzzles only).
+			// Increment per-route perfect completion counter.
+			// Three perfect completions → reset counter and advance route level.
+			if (static_cast<int16>(routeLevel) < 3) {
+				f._routePerfectCounters[routeIdx - 1]++;
+				if (f._routePerfectCounters[routeIdx - 1] >= 3) {
+					f._routePerfectCounters[routeIdx - 1] = 0;
+					f._routeLevels[routeIdx - 1]++;
+					_vm->_state->_routeLevelJustAdvanced = true;
+					debugC(1, kZmbDebugAnimation, "Route %d level advanced to %d",
+						routeIdx, f._routeLevels[routeIdx - 1]);
+				}
 			}
 		}
 	}

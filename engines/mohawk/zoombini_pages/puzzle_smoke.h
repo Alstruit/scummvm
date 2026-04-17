@@ -121,7 +121,7 @@ private:
 	/** IDA: smoke_spawnStackRunners (0x44DC7B) */
 	void spawnStackRunners(int16 count, int16 runnerType);
 
-	/** IDA: smoke_selectQuestionZmb (0x44D372) */
+	/** IDA: smoke_selectQuestionZmb (0x44D372). Mutates _questionResult and _questionAttrs[]. */
 	void selectQuestionZmb();
 
 	/** IDA: smoke_copyPairToCompareBuffer (0x44D459) */
@@ -307,6 +307,14 @@ private:
 	int16 _smokeColumnCount = 0;
 
 	ZmbSnoid *_zmbOnCliff[20] = {};           // IDA: smoke_zmbOnCliffArr (0x4B1CB0)
+
+	/**
+	 * Compare-slot runners (IDA word_4B1CB2 / word_4B1CB4). When a pair is
+	 * under compare inspection, these hold references to the active pair.
+	 * Idle animations must exclude these so the compared snoids don't move.
+	 */
+	ZmbSnoid *_compareSlotRunnerA = nullptr;
+	ZmbSnoid *_compareSlotRunnerB = nullptr;
 
 	uint16 _zmbQueue[21] = {};                // IDA: smoke_zmbQueueArr (0x4B1CD8)
 	int16 _zmbQueueSize = 0;

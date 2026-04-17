@@ -53,6 +53,10 @@ enum ZMB_PAGE_FLAG : uint16 {
 	ZMB_PAGE_FLAG_2000 = 0x2000,
 };
 
+// SI (Sequence Index) ordering matches the IDA binary's enum so that any
+// IDA-derived index arithmetic (e.g. xfer's `pPuzzleLevelArr[v4]` slots and
+// the `kRouteViewSlotTable` constants) maps 1:1 to ScummVM SI values without
+// per-call translation tables.
 enum ZMB_SI_PAGE : int16 {
 	ZMB_SI_MINUS1 = -1,
 	ZMB_SI_TOWN_00 = 0,
@@ -61,10 +65,10 @@ enum ZMB_SI_PAGE : int16 {
 	ZMB_SI_TUNNELS_03 = 3,
 	ZMB_SI_PIZZA_04 = 4,
 	ZMB_SI_BC1_NORTH_05 = 5,
-	ZMB_SI_FERRY_06 = 6,
-	ZMB_SI_LILLY_07 = 7,
-	ZMB_SI_SLIDES_08 = 8,
-	ZMB_SI_BC1_SOUTH_09 = 9,
+	ZMB_SI_BC1_SOUTH_06 = 6,
+	ZMB_SI_FERRY_07 = 7,
+	ZMB_SI_LILLY_08 = 8,
+	ZMB_SI_SLIDES_09 = 9,
 	ZMB_SI_FLEENS_10 = 10,
 	ZMB_SI_HOTEL_11 = 11,
 	ZMB_SI_NET_12 = 12,
@@ -548,6 +552,19 @@ public:
 
 	uint16 _practiceLevel = 0;
 	byte _zoombiniNameGeneratedTable[625] = { 0,};
+
+	/**
+	 * Practice-mode state snapshot. IDA: rodmap_onLeave @ 0x42A9D6 saves the
+	 * active game state to disk as "ZBtemp" before launching a practice puzzle,
+	 * then restores it on rodmap re-entry (rodmap_exitAndRestoreScreen @ 0x42B531).
+	 * In ScummVM we keep an in-memory snapshot instead — it serves the same
+	 * purpose (the user's pack/flags are not clobbered by practice play).
+	 *
+	 * `_practiceStateBackupActive` mirrors IDA's g_bPracticeModeInited: set
+	 * when the snapshot is captured, cleared on restore.
+	 */
+	ZmbStateFile _practiceStateBackup;
+	bool _practiceStateBackupActive = false;
 
 	enum PredefinedSaveSlot {
 		kNormal = 0,

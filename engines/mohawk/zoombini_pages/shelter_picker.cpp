@@ -112,6 +112,44 @@ void ZoombiniShelterPicker::loadFeatures() {
 	// IDA: handleZoombiniAnimation_maybe_4528A6(0); (only occupied entries)
 	loadZoombinisFromPack(f._zmbPackActive);
 
+	// IDA picker_init @ 0x439963: assign each of the 16 seat positions to the
+	// nearest idle snoid runner, skipping already-assigned ones (collision-
+	// avoidance). Without this, snoids stay at their loaded positions instead
+	// of snapping to the visual seat slots in nearest-first order.
+	memset(_seatToSnoid, 0, sizeof(_seatToSnoid));
+	for (int16 i = 0; i < 16; i++) {
+		const Common::Point &seatPos = _zoombiniSeatPoints[i];
+		ZmbSnoid *bestSnoid = nullptr;
+		int32 bestDistSq = INT32_MAX;
+		// Pick nearest snoid not already assigned to a previous seat.
+		for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+			ZmbSnoid *s = *it;
+			if (!s || !s->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+				continue;
+			if (s->getAnimState() != kSnoidAnimIdle)
+				continue;
+			// Skip if already assigned to an earlier seat.
+			bool taken = false;
+			for (int16 k = 0; k < i; k++) {
+				if (_seatToSnoid[k] == s) { taken = true; break; }
+			}
+			if (taken)
+				continue;
+			Common::Point sp = s->getPointLoc();
+			int32 dx = sp.x - seatPos.x;
+			int32 dy = sp.y - seatPos.y;
+			int32 d = dx * dx + dy * dy;
+			if (d < bestDistSq) {
+				bestDistSq = d;
+				bestSnoid = s;
+			}
+		}
+		if (bestSnoid) {
+			_seatToSnoid[i] = bestSnoid;
+			bestSnoid->setPointLoc(seatPos);
+		}
+	}
+
 	if (!_vm->_state->isLessActionEnabled())
 		f._wPickerCaveBlinkState = 1;
 
@@ -142,12 +180,17 @@ void ZoombiniShelterPicker::loadFeatures() {
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4100_BackObjects), kResScrb4103_Star, 12,
 					ZmbFeature::FLAG_00008000_LOOP_ANIM);
 
-	// Background Animation: Waves and Boat (Disabled in less action mode)
+	// Cave-mark blink arrows (left = 4104, right = 4105). Disabled in less-action
+	// mode (IDA picker_init only registers these when wMoreActionFlag0020 is set).
+	// Z-order and flag set match IDA picker_registerCaveMarkScrbs @ 0x43B2EB.
 	if (!_vm->_state->isLessActionEnabled()) {
-		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4100_BackObjects), kResScrb4104_Waves, 7,
+		_caveArrowLeftFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4100_BackObjects), kResScrb4104_CaveArrowLeft, 7,
 						ZmbFeature::FLAG_08000000_REGION_TRACK | ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE);
-		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4100_BackObjects), kResScrb4105_Boat, 9,
+		_caveArrowRightFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4100_BackObjects), kResScrb4105_CaveArrowRight, 9,
 						ZmbFeature::FLAG_08000000_REGION_TRACK | ZmbFeature::FLAG_00008000_LOOP_ANIM);
+		// IDA picker_init: state was just set to 1, then toggle(1) is called to
+		// apply the initial render flags (both off) without advancing.
+		toggleCaveArrowBlink(true);
 	}
 
 	// Background Objects
@@ -675,6 +718,58 @@ ZmbEventHandleResult ZoombiniShelterPicker::onMouseMove(const Common::Point &abs
 	ZmbEventHandleResult result = ZoombiniInteractive::onMouseMove(absPos, relPos);
 	updateCaveMarkHighlight();
 	return result;
+}
+
+void ZoombiniShelterPicker::toggleCaveArrowBlink(bool keepState) {
+	if (!_caveArrowLeftFeature || !_caveArrowRightFeature)
+		return;
+
+	uint16 &state = _vm->_state->_f._wPickerCaveBlinkState;
+	if (!keepState)
+		++state;
+	if (state > 3)
+		state = 0;
+
+	bool leftOn;
+	bool rightOn;
+	switch (state) {
+	case 0:
+		leftOn = true;
+		rightOn = true;
+		break;
+	case 1:
+		leftOn = false;
+		rightOn = false;
+		break;
+	case 2:
+		leftOn = true;
+		rightOn = false;
+		break;
+	default: // 3
+		leftOn = false;
+		rightOn = true;
+		break;
+	}
+
+	if (leftOn)
+		_caveArrowLeftFeature->activateRender();
+	else
+		_caveArrowLeftFeature->deactivateRender();
+
+	if (rightOn)
+		_caveArrowRightFeature->activateRender();
+	else
+		_caveArrowRightFeature->deactivateRender();
+}
+
+void ZoombiniShelterPicker::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
+	// IDA: net_handlePickerAnimEvent_439CE0 / picker_onScrbAnimEvent.
+	// Event 23 fires at end-of-cycle on the cave-arrow SCRBs and advances
+	// the blink state. Event 114 sets dlg_wShowZoombiniUpdateMsg, which our
+	// picker doesn't currently model.
+	if (eventCode == 23 && (feature == _caveArrowLeftFeature || feature == _caveArrowRightFeature)) {
+		toggleCaveArrowBlink(false);
+	}
 }
 
 void ZoombiniShelterPicker::endDrag(const Common::Point &dropPos) {

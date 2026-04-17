@@ -742,6 +742,13 @@ private:
 	int16 _matchCount = 0;
 	/** Number of loaded Zoombinis (pool size for celebration). IDA: slides_numZoombinis (0x4B1AE8) */
 	int16 _loadedZmbCount = 0;
+
+	/**
+	 * Previous water-level tracking for `updateWaterLevelSFX` pacing — matches
+	 * IDA `_prevWaterLevel` used by slides_updateWaterLevelSFX (0x44664B).
+	 * Initialized to -1 so the first call fires the SFX regardless of level.
+	 */
+	int16 _prevWaterLevelSFX = -1;
 };
 
 } // End of namespace Mohawk

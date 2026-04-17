@@ -56,6 +56,15 @@ void ZoombiniInteractiveRodMap::setBackgroundBitmap() {
 }
 
 void ZoombiniInteractiveRodMap::loadFeatures() {
+	// IDA: rodmap_exitAndRestoreScreen @ 0x42B531 — when re-entering the map
+	// after a practice puzzle, restore the user's snapshotted state. Practice
+	// mode (_practiceLevel, kept outside _f) stays on so the user can launch
+	// another practice puzzle without re-toggling.
+	if (_vm->_state->_practiceStateBackupActive) {
+		_vm->_state->_f = _vm->_state->_practiceStateBackup;
+		_vm->_state->_practiceStateBackupActive = false;
+	}
+
 	_vm->_gfx->preloadImage(kResBitmapShape1000);
 
 	// [*] SCRB 1000: Page Icon
@@ -110,15 +119,17 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 					hooks1002);
 
 	// [*] SCRB 1003: Mode Select Combobox (red circle shape)
-	// IDA rodmap_runScrbPanels_1002_1003_1004: SCRB 1003 is registered after SCRB 1002
-	// with FLAG_00100000_PLAY_ONCE only. The OVERLAY optimisation in buildSortedRenderList
-	// preserves the registration order after the first Z-sort, so SCRB 1003 always draws
-	// on top of SCRB 1002 — matching the original engine's linked-list behaviour.
+	// IDA registers SCRB 1003 after 1002 with PLAY_ONCE only and relies on the
+	// linked-list natural order. ScummVM's buildSortedRenderList re-sorts by
+	// bottom-edge, which places 1002 (tall status panel) after 1003 (short
+	// combobox), making 1002 draw on top. Per KB
+	// AGENTS/Z1-MEMORY/InteractivePages/rodmap-navigation.md §"SCRB 1003 Z-Ordering Note",
+	// FLAG_00001000_TOPMOST forces 1003 to the tail of the sorted render list.
 	ZmbFeature::EventHooks hooks1003;
 	hooks1003.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::drawComboBox1003_preRenderShape));
 	hooks1003.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveRodMap::selectMode1003_onLButtonDown));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1000), kResScrbModeCombobox1003, 0,
-					ZmbFeature::FLAG_00100000_PLAY_ONCE,
+					ZmbFeature::FLAG_00001000_TOPMOST | ZmbFeature::FLAG_00100000_PLAY_ONCE,
 					hooks1003);
 
 	// [*] Callback-only runner: Route Names
@@ -129,6 +140,12 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 	ZmbFeature::EventHooks hooksRouteNames;
 	hooksRouteNames.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::textRouteNames_postRender));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0, ZmbFeature::FLAG_00100000_PLAY_ONCE, hooksRouteNames);
+
+	// IDA rodmap_setupScreen @ 0x42A99A/0x42A9A9: snd_playOrLoadResSND('SND', 998)
+	// + snd_playOrLoadResSND('SND', 999) — preload menu UI SFX. ScummVM's
+	// resource layer auto-caches sound resources on first access, so
+	// explicit preload is unnecessary for correctness; the first playZmbSound
+	// call (line 195/486/534) loads and plays without perceptible latency.
 }
 
 ZmbEventHandleResult ZoombiniInteractiveRodMap::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
@@ -197,6 +214,15 @@ void ZoombiniInteractiveRodMap::generatePracticePack() {
 	// IDA: puzzleRodMap_maybeOnClickPuzzleIcon_42A9D6 — practice mode Zoombini generation.
 	// Always 16 snoids: each of the 4 traits (head/eye/nose/foot) gets an independent
 	// random value 1–5 (IDA: nextRand_410705(5, 1)).
+	//
+	// Snapshot the user's active state BEFORE clobbering the pack so we can
+	// restore it on return to the rodmap (IDA: ZBtemp save+swap mechanism;
+	// equivalent in-memory snapshot here). Only snapshot once per practice
+	// session, mirroring IDA's g_bPracticeModeInited gating.
+	if (!_vm->_state->_practiceStateBackupActive) {
+		_vm->_state->_practiceStateBackup = _vm->_state->_f;
+		_vm->_state->_practiceStateBackupActive = true;
+	}
 	_vm->_state->generateRandomPack();
 }
 

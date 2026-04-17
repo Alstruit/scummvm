@@ -66,8 +66,16 @@ struct ZmbLillyRunnerState {
 	byte attrValue = 0;         // Attribute constraint value. IDA: runner+223 (per-page)
 	byte obsCombinedAttr = 0;   // Obstacle combined attr = attrValue + BFS offset. IDA: runner+224 (per-page)
 
-	// --- Path/visit grid (12x12 cost matrix) ---
-	int16 visitGrid[12][13];    // BFS cost grid. 12 rows x 13 stride (26 bytes/row). IDA: core188+0xF2 (runner+290)
+	// --- Path/visit grids ---
+	// IDA fleens_advancePathStep_425F3D writes per-direction visit counts into
+	// 4 distinct 12x13 grids at runner offsets +216 (LEFT), +240 (RIGHT),
+	// +244 (DOWN), +268 (UP). The main +242 BFS grid records overall cost.
+	// Indexed as `26 * row + 2 * col` (= [row][col] in word units).
+	int16 visitGrid[12][13];        // Main BFS cost grid. IDA: runner+242
+	int16 visitGridLeft[12][13];    // Per-direction LEFT scratch. IDA: runner+216
+	int16 visitGridRight[12][13];   // Per-direction RIGHT scratch. IDA: runner+240
+	int16 visitGridDown[12][13];    // Per-direction DOWN scratch. IDA: runner+244
+	int16 visitGridUp[12][13];      // Per-direction UP scratch. IDA: runner+268
 
 	// --- Animation/movement state ---
 	// NOTE: runner+243=row, runner+244=col. Grid indexing: gridBase[169*col + 13*row].

@@ -1057,9 +1057,100 @@ void ZoombiniPuzzleSmoke::assignAllRunnersAttrs() {
 
 void ZoombiniPuzzleSmoke::assignRunnerAttrsForLevel(int16 levelIdx, ZmbSmokeRunnerState &state) {
 	// IDA: smoke_assignRunnerAttrsForLevel (0x44D67C)
+	// Port of the original engine logic:
+	//   - Clears state.attrs[0..3].
+	//   - Resets per-call shuffle tables (slot: {0..4}, value: {1..6}) with shrinking bounds.
+	//   - levelIdx 0 clears _seenAttrA/B arrays (fresh start).
+	//   - Outer loop runs up to 4 times; Rand budget (1-2) limits successful writes.
+	//   - Level 0/1: orientation=0, pick via shuffle arrays; skip if seen already equals new.
+	//   - Level 2/3: orientation=2, ~34% chance (rand(100) > 65) to reuse _seenAttrA value;
+	//     otherwise pull from _questionAttrs (the persistent "question" set).
+	//     Last-iteration fallback (i == 3 AND no actions taken) forces reuse when seen exists.
+
+	// Zero runner attrs.
 	for (int16 j = 0; j < 4; ++j)
-		state.attrs[j] = _vm->_rnd->getRandomNumber(1, 5);
-	state.orientation = 1;
+		state.attrs[j] = 0;
+
+	// Per-call shuffle tables (local — match IDA's reset at top of function).
+	uint8 slotShuffle[5] = {0, 1, 2, 3, 4};
+	uint8 valueShuffle[6] = {1, 2, 3, 4, 5, 6};
+	int16 valueCursorBound = 4;  // IDA: word_4B1E98 (5 - 1)
+	int16 slotCursorBound = 3;   // IDA: word_4B1E9C (4 - 1)
+
+	// IDA: levelIdx==0 clears the seenAttr arrays (fresh start across the full puzzle).
+	if (levelIdx == 0) {
+		for (int16 j = 0; j < 4; ++j) {
+			_seenAttrA[j] = 0;
+			_seenAttrB[j] = 0;
+		}
+	}
+
+	// Action budget: 1 or 2 successful writes per call.
+	int16 randBudget = _vm->_rnd->getRandomNumber(1, 2);
+	const int16 initialBudget = randBudget;
+
+	for (int16 i = 0; i < 4 && randBudget > 0; ++i) {
+		// Pick random cursor within current bounds.
+		int16 valueCursor = _vm->_rnd->getRandomNumber(0, valueCursorBound);
+		int16 slotCursor = _vm->_rnd->getRandomNumber(0, slotCursorBound);
+
+		if (levelIdx < 2) {
+			// Level 0/1: fresh attrs only, orientation = 0.
+			state.orientation = 0;
+			uint8 pickedSlot = slotShuffle[slotCursor];
+			uint8 pickedValue = valueShuffle[valueCursor];
+			if (_seenAttrA[pickedSlot] != pickedValue) {
+				state.attrs[pickedSlot] = pickedValue;
+				_level1AttrHistory[4 * levelIdx + pickedSlot] = pickedValue;
+				_seenAttrA[pickedSlot] = pickedValue;
+				--randBudget;
+			}
+		} else if (levelIdx == 2 || levelIdx == 3) {
+			// Level 2/3: orientation = 2, reuse previously-seen attrs ~34% of the time.
+			state.orientation = 2;
+			int16 slotIdx = _vm->_rnd->getRandomNumber(0, 3);
+			// IDA: if rand(100,0) > 65 (i.e. rand in [66..99], ~34%) OR last-iter fallback.
+			bool reuseRoll = (_vm->_rnd->getRandomNumber(0, 99) > 65);
+			bool lastIterFallback = (randBudget == initialBudget && i == 3);
+
+			if (_seenAttrA[slotIdx]) {
+				if (reuseRoll || lastIterFallback) {
+					// REUSE path.
+					state.attrs[slotIdx] = _seenAttrA[slotIdx];
+					_level2AttrHistory[4 * levelIdx + slotIdx] = _seenAttrA[slotIdx];
+					_seenAttrB[slotIdx] = _seenAttrA[slotIdx];
+					--randBudget;
+				}
+				// Else: no action — outer loop continues without consuming budget.
+			} else {
+				// FRESH: draw from _questionAttrs (persistent starter set).
+				uint8 starterAttr = _questionAttrs[slotIdx];
+				state.attrs[slotIdx] = starterAttr;
+				_level2AttrHistory[4 * levelIdx + slotIdx] = starterAttr;
+				_seenAttrB[slotIdx] = starterAttr;
+				--randBudget;
+			}
+		}
+
+		// Shrink shuffle arrays (IDA: shift down then decrement bound).
+		for (int16 j = slotCursor; j < slotCursorBound; ++j)
+			slotShuffle[j] = slotShuffle[j + 1];
+		--slotCursorBound;
+
+		for (int16 k = valueCursor; k < valueCursorBound; ++k)
+			valueShuffle[k] = valueShuffle[k + 1];
+		--valueCursorBound;
+
+		if (slotCursorBound < 0 || valueCursorBound < 0)
+			break;
+	}
+
+	// Persist newly-seen attrs back into _questionAttrs for the next call (IDA end-of-function).
+	for (int16 j = 0; j < 4; ++j) {
+		if (_seenAttrA[j])
+			_questionAttrs[j] = _seenAttrA[j];
+	}
+
 	state.attrCyclePos = 4;
 }
 
@@ -1896,8 +1987,17 @@ void ZoombiniPuzzleSmoke::onEveryFrame() {
 			_currentDragZmb->addFlag(
 			static_cast<ZmbFeature::Flag>(ZmbFeature::FLAG_00000001_TYPE_SNOID | ZmbFeature::FLAG_04000000_OVERLAY));
 
-			if (_loadedOnCliffCount > 2)
-				playZmbScript(false, nullptr, 12044 + _currentDragZmb->_trait._foot, _currentDragZmb);
+			if (_loadedOnCliffCount > 2) {
+				// IDA smoke_onHover @ 0x44a92e:
+				//   snoidScript_initAndPlay(0, 0, p_core188[1].u.s.pcStr1[3] + 12044, ...)
+				// pcStr1[3] is byte +191 of the snoid runner = cFoot (0-indexed 0-4).
+				// ScummVM stores _trait._foot 1-indexed (1-5), so subtract 1 to match
+				// IDA's SCRS range 12044..12048 (was off-by-one as 12045..12049).
+				int16 footIdx = (int16)_currentDragZmb->_trait._foot - 1;
+				if (footIdx < 0) footIdx = 0;
+				if (footIdx > 4) footIdx = 4;
+				playZmbScript(false, nullptr, (uint16)(12044 + footIdx), _currentDragZmb);
+			}
 
 			if (++_loadedOnCliffCount == 1) {
 				_bExitGateEnabled = true;
@@ -1993,8 +2093,25 @@ void ZoombiniPuzzleSmoke::onEveryFrame() {
 
 				if (_zmbQueue[randIdx] && getSnoid(_zmbQueue[randIdx])) {
 					ZmbSnoid *idleZmb = getSnoid(_zmbQueue[randIdx]);
-					if (idleZmb && idleZmb->isRenderActivated()) {
-						playZmbScript(false, nullptr, 12044 + idleZmb->_trait._foot, idleZmb);
+					// IDA smoke_onHover @ 0x44AD61 idle-pool exclusion:
+					//   if (runner == zmbOnCliff[0] || runner == word_4B1CB2
+					//       || runner == word_4B1CB4) skip;
+					// word_4B1CB2/B4 are the active compare-slot runners. An
+					// idle animation fired on a snoid currently being compared
+					// would break the compare visual.
+					bool excluded = false;
+					if (_zmbOnCliff[0] == idleZmb) excluded = true;
+					if (_compareSlotRunnerA == idleZmb) excluded = true;
+					if (_compareSlotRunnerB == idleZmb) excluded = true;
+					if (idleZmb && idleZmb->isRenderActivated() && !excluded) {
+						// IDA: snoidScript_initAndPlay(0, 0, byte+239 + 12044, ...)
+						// byte+239 is 0-based foot trait (0..4). ScummVM stores
+						// _trait._foot 1-based — subtract 1 to match SCRS range
+						// 12044..12048 (was off-by-one as 12045..12049).
+						int16 footIdx = (int16)idleZmb->_trait._foot - 1;
+						if (footIdx < 0) footIdx = 0;
+						if (footIdx > 4) footIdx = 4;
+						playZmbScript(false, nullptr, (uint16)(12044 + footIdx), idleZmb);
 						_idleAnimCount = (_idleAnimCount > 0) ? _idleAnimCount + 1 : 4;
 						break;
 					}

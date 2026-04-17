@@ -119,6 +119,14 @@ private:
 	/** Adjacency matrix: 20 seats × 8 neighbors (1-based IDs). IDA: dword_4AB180 */
 	byte _adjacencyMatrix[20][8] = {};
 
+	/**
+	 * Lazy-build flag for `_adjacencyMatrix`. IDA calls `gfx_renderFrame`
+	 * before `ferry_drawAdjacencyLines` so seat click rects are populated by
+	 * runner_preRenderStandard. In ScummVM seat rects are only set after the
+	 * first render pass, so we defer the build to the first drop test.
+	 */
+	bool _adjacencyBuilt = false;
+
 	/** Visit counter. IDA: word_4AB184 */
 	int16 _visitCounter = 0;
 

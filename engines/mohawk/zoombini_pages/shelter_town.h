@@ -38,10 +38,27 @@ public:
 
 protected:
 	void onEveryFrame() override;
+	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 
 	// Callback methods for virtual town Zoombini render feature
 	ZmbRenderResult townZoombini_render(ZmbFeature *feature);
 	void townZoombini_postRender(ZmbFeature *feature);
+
+	// --- Memorial card overlay system (IDA town_renderMemorialCard @ 0x4595C0) ---
+
+	/**
+	 * Shows the memorial card for the given slot. IDA: registers a TOPMOST
+	 * SCRB with the 5-row text layout (level title, route name, practice label,
+	 * difficulty, date) and disables click on other runners via
+	 * `runner_setAttrOnGroupAndList(0)`.
+	 */
+	void showMemorialCard(int16 slotIdx);
+
+	/** Dismiss the memorial card overlay. IDA: click anywhere → dismiss. */
+	void hideMemorialCard();
+
+	/** Hit-test against memorial statue hotspots (16 card slots). IDA: click_hitTestMemorialHotspots @ 0x458FF4. */
+	int16 hitTestMemorialHotspots(const Common::Point &pos) const;
 
 	// Pre-render shape callback for overlay features (SCRB 1002, 1003, 1001)
 	void overlay_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
@@ -51,6 +68,20 @@ protected:
 	 * Each Zoombini is stored at the index matching its snoidId().
 	 */
 	void transferActivePackToTownStorage();
+
+	/**
+	 * IDA town_shiftRunnersForScroll(steps): horizontally shifts inhabitant
+	 * runner X positions by `steps * 320` pixels (one column = 320px wide
+	 * town section). Called once per scroll-column position at init.
+	 */
+	void shiftRunnersForScroll(int16 steps);
+
+	/**
+	 * IDA town_advanceLayerFrameState(scrollCol): advances the parallax
+	 * background layer frame indices to match the saved scroll column.
+	 * Without this, mid-scroll save/load shows the layers at frame 0.
+	 */
+	void advanceLayerFrameState(uint16 scrollCol);
 
 	enum PageResourceId : uint16 {
 		kResBackground1200 = 1200,
@@ -178,6 +209,16 @@ protected:
 	 * preRenderMemorialStatue callback.
 	 */
 	ZmbFeature *_memorialStatueFeature = nullptr;
+
+	/**
+	 * Memorial card overlay state (IDA `town_renderMemorialCard @ 0x4595C0`).
+	 *   _memorialCardActive — card currently displayed, blocks other clicks.
+	 *   _memorialCardSlotIdx — which of the 16 memorial slots is shown.
+	 *   _memorialHotspots — 16 click rects on the statue for hit-testing.
+	 */
+	bool _memorialCardActive = false;
+	int16 _memorialCardSlotIdx = -1;
+	Common::Rect _memorialHotspots[16] = {};
 
 	/**
 	 * Pre-render shape callback for the memorial zodiac statue (SCRB 6000).

@@ -138,6 +138,16 @@ public:
 	ZMB_SI_PAGE _xferSrcPage = ZMB_SI_MINUS1;
 
 	/**
+	 * Bridge → Tunnels pattern-exclusion globals (IDA bridge_prevExcludePattern
+	 * @ 0x416668 and bridge_prevExcludeCount @ 0x41665D). Bridge writes its
+	 * selected sorting-pattern here after rule generation; Tunnels level 0
+	 * reads these to avoid picking a split with the same count as the
+	 * previous bridge puzzle. Cleared in practice mode and on new-game reset.
+	 */
+	uint32 _prevBridgeExcludePattern = 0;
+	int16 _prevBridgeExcludeCount = 0;
+
+	/**
 	 * IDA: word_4A4764. Global fidget interval threshold.
 	 * Snoids trigger fidget only when their per-snoid idle counter exceeds
 	 * this value. Default 64. Set to 0 to disable fidgets (e.g. during drag

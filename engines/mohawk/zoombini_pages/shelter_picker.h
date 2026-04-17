@@ -70,8 +70,23 @@ protected:
 	ZmbEventHandleResult onMouseMove(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;
+	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
 	void endDrag(const Common::Point &dropPos);
 	void updateCaveMarkHighlight();
+
+	/**
+	 * Advance the 4-state cave-arrow blink cycle and apply render flags.
+	 * IDA: picker_toggleCaveMarkBlink @ 0x43AFF0.
+	 *
+	 * State map (from IDA decompile):
+	 *   0 → both arrows visible
+	 *   1 → both arrows hidden
+	 *   2 → left visible, right hidden
+	 *   3 → left hidden, right visible
+	 *
+	 * @param keepState  If true, do NOT increment the state (initial-render call).
+	 */
+	void toggleCaveArrowBlink(bool keepState);
 
 	void randomizeTraitSelection();
 	bool isZoombiniTraitGeneratable(ZmbTrait trait) const;
@@ -107,8 +122,13 @@ protected:
 		kResScrb4101_Star = 4101,
 		kResScrb4102_Star = 4102,
 		kResScrb4103_Star = 4103,
-		kResScrb4104_Waves = 4104,
-		kResScrb4105_Boat = 4105,
+		/**
+		 * Cave-mark arrow SCRBs (left/right). IDA: picker_registerCaveMarkScrbs @ 0x43B2EB
+		 * registers these as wFeatureRunnerIdx24 (4104, z=7) and wFeatureRunnerIdx26
+		 * (4105, z=9). They blink in a 4-state cycle driven by SCRB anim event 23.
+		 */
+		kResScrb4104_CaveArrowLeft = 4104,
+		kResScrb4105_CaveArrowRight = 4105,
 		kResScrb4106_RockShape = 4106,
 		kResScrb4107_RockShape = 4107,
 		kResScrb4108_RockShape = 4108,
@@ -316,6 +336,16 @@ protected:
 
 	ZmbFeature *_caveMarkFeature = nullptr;
 	bool _caveMarkHighlighted = false;
+
+	/**
+	 * Cave-mark arrow blinking animation runners. IDA `picker_toggleCaveMarkBlink @ 0x43AFF0`.
+	 * Advanced by SCRB anim event 23 (fired by these features themselves at
+	 * end-of-cycle), so no frame timer is needed — the SCRB animation length
+	 * sets the blink period. `_caveArrowBlinkState` is held in
+	 * `_state->_f._wPickerCaveBlinkState` so it survives suspend/restore.
+	 */
+	ZmbFeature *_caveArrowLeftFeature = nullptr;
+	ZmbFeature *_caveArrowRightFeature = nullptr;
 
 	ZmbSnoid _previewSnoid;
 	bool _randomizeAll = false;

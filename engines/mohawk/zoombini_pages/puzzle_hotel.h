@@ -260,6 +260,14 @@ private:
 	/** Number of board resets (drives guide escalation). IDA: word_4AB76E */
 	int16 _overflowCounter = 0;
 
+	/**
+	 * Frame deadline for render-freeze on overflow. IDA invokes
+	 * setNextRenderFrameWithDebug_46EB56(1, 0, 60, 0) which pauses interactive
+	 * dispatch for 60 frames, holding the overflow animation visible. We mirror
+	 * this by gating onEveryFrame's interactive logic until _freezeUntilFrame.
+	 */
+	uint32 _freezeUntilFrame = 0;
+
 	// -----------------------------------------------------------------------
 	// Guide animation state
 	// -----------------------------------------------------------------------

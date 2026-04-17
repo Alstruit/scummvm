@@ -43,6 +43,7 @@ public:
 	void onEveryFrame() override;
 	void close() override;
 	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
+	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 
 protected:
 	// Constants

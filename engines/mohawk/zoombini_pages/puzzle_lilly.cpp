@@ -292,7 +292,7 @@ void ZoombiniPuzzleLilly::loadFeatures() {
 
 void ZoombiniPuzzleLilly::onGoButtonActivated() {
 	// IDA: lilly_onClickHandler case 2
-	_departXferSrcSiPage = ZMB_SI_LILLY_07;
+	_departXferSrcSiPage = ZMB_SI_LILLY_08;
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
@@ -1017,7 +1017,9 @@ void ZoombiniPuzzleLilly::processDepartQueue() {
 			ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
 			rs.callbackMode = kCBLillyDepart;
 			loadScrbOntoFeature(_zmbRunners[runnerIdx], 10141 + rs.dirByte);
-			// IDA: runner[8] |= 0x04000000 (flag)
+			// IDA 0x423D91: v14[8] |= 0x04000000 (FLAG_04000000_OVERLAY) — places
+			// departing runners in the OVERLAY z-layer for proper compositing.
+			_zmbRunners[runnerIdx]->addFlag(ZmbFeature::FLAG_04000000_OVERLAY);
 		}
 	}
 }
@@ -1334,6 +1336,11 @@ ZmbRenderResult ZoombiniPuzzleLilly::renderCursorIndicator(ZmbFeature *feature) 
 // Pathfinding
 // =================================================================
 
+// IDA fleens_advancePathStep_425F3D writes the new visit-count to four per-direction
+// scratch grids at offsets +216 (LEFT), +240 (RIGHT), +244 (DOWN), +268 (UP) on the
+// SOURCE cell, plus the main BFS grid at +242 on the TARGET cell. The 4 scratch
+// grids are now mirrored as visitGridLeft/Right/Down/Up in ZmbLillyRunnerState so
+// later readers (collision/anti-loop checks) have per-direction history.
 uint16 ZoombiniPuzzleLilly::advancePathOnGrid(int16 runnerIdx) {
 	// IDA: fleens_advancePathStep (0x425F3D) — 1168 bytes.
 	// Extends active path by one step. Checks 4 adjacent cells starting from
@@ -1451,36 +1458,44 @@ uint16 ZoombiniPuzzleLilly::advancePathOnGrid(int16 runnerIdx) {
 		}
 	}
 
-	// Direction result switch
+	// IDA fleens_advancePathStep_425F3D writes to per-direction scratch grids
+	// at the SOURCE cell (not target). Each direction has a distinct grid:
+	//   case 0 (LEFT-ish in IDA, here UP): visitGridLeft  at SOURCE [row][col]
+	//   case 1 (DOWN-ish here RIGHT):      visitGridDown  at SOURCE [row][col]
+	//   case 2 (UP-ish here DOWN):         visitGridUp    at SOURCE [row][col]
+	//   case 3 (RIGHT-ish here LEFT):      visitGridRight at SOURCE [row][col]
+	// Plus the main `visitGrid` at TARGET cell — kept for legacy BFS readers.
+	const int16 srcRow = rs.row;
+	const int16 srcCol = rs.col;
 	switch (bestDir) {
-	case 0: // UP
+	case 0: // UP — IDA case 0 writes to runner+216 (LEFT scratch)
 		rs.direction = 0;
 		rs.scrbOrDirKey = kDirScrbUp[rs.direction];
-		// IDA: visitGrid[row-1][col] = v10+1 (update TARGET cell, not current)
+		rs.visitGridLeft[srcRow][srcCol] = originalVisit + 1;
 		rs.visitGrid[bestRow][bestCol] = originalVisit + 1;
 		_gridOccupancy[bestRow][bestCol] = 1;
 		return static_cast<uint16>(rs.scrbOrDirKey);
 
-	case 1: // RIGHT
+	case 1: // RIGHT — IDA case 1 writes to runner+244 (DOWN scratch)
 		rs.direction = 1;
 		rs.scrbOrDirKey = kDirScrbRight[rs.direction];
-		// IDA: visitGrid[row][col+1] = v10+1 (update TARGET cell)
+		rs.visitGridDown[srcRow][srcCol] = originalVisit + 1;
 		rs.visitGrid[bestRow][bestCol] = originalVisit + 1;
 		_gridOccupancy[bestRow][bestCol] = 1;
 		return static_cast<uint16>(rs.scrbOrDirKey);
 
-	case 2: // DOWN
+	case 2: // DOWN — IDA case 2 writes to runner+268 (UP scratch)
 		rs.direction = 2;
 		rs.scrbOrDirKey = kDirScrbDown[rs.direction];
-		// IDA: visitGrid[row+1][col] = v10+1 (update TARGET cell)
+		rs.visitGridUp[srcRow][srcCol] = originalVisit + 1;
 		rs.visitGrid[bestRow][bestCol] = originalVisit + 1;
 		_gridOccupancy[bestRow][bestCol] = 1;
 		return static_cast<uint16>(rs.scrbOrDirKey);
 
-	case 3: // LEFT
+	case 3: // LEFT — IDA case 3 writes to runner+240 (RIGHT scratch)
 		rs.direction = 3;
 		rs.scrbOrDirKey = kDirScrbLeft[rs.direction];
-		// IDA: visitGrid[row][col-1] = v10+1 (update TARGET cell)
+		rs.visitGridRight[srcRow][srcCol] = originalVisit + 1;
 		rs.visitGrid[bestRow][bestCol] = originalVisit + 1;
 		_gridOccupancy[bestRow][bestCol] = 1;
 		return static_cast<uint16>(rs.scrbOrDirKey);
@@ -1797,6 +1812,18 @@ ZmbEventHandleResult ZoombiniPuzzleLilly::onLButtonDown(const Common::Point &abs
 		// Hit test against runner feature
 		if (_zmbRunners[i]->hasClickRect() &&
 		    _zmbRunners[i]->getClickRect().contains(absPos)) {
+			// IDA fleens_interactiveCellSelectLoop (mouse mode): the player's
+			// click position selects which entry lane the snoid takes, not
+			// runnerIdx % 12 auto-assignment. Pick the nearest entry-point
+			// row based on the click's Y coordinate.
+			int16 nearestEntry = 0;
+			int32 bestDist = INT32_MAX;
+			for (int16 e = 0; e < 12; e++) {
+				int32 dy = (int32)absPos.y - kEntryPositions[e].y;
+				int32 d = dy * dy;
+				if (d < bestDist) { bestDist = d; nearestEntry = e; }
+			}
+			_runnerStates[i].entryPointIdx = nearestEntry;
 			handleZoombiniClick(_zmbRunners[i]);
 			return ZmbEventHandleResult::kConsumed;
 		}
@@ -1963,19 +1990,41 @@ void ZoombiniPuzzleLilly::handleZoombiniClick(ZmbFeature *clickedRunner) {
 	if (rs.placed)
 		return;
 
-	// IDA: attrType/attrValue REMAIN 0 for zoombini runners.
-	// This means no attribute constraint — all cells are valid for pathfinding.
-	// Only obstacle runners get non-zero attrType (set in processMovePhase).
-
-	// IDA: Place at entry position. The entry point index comes from
-	// hsArr[6].pos.y on the runner (set during init). In ScummVM, we use
-	// the entryPointIdx from runner state.
-	rs.entryPointIdx = runnerIdx % 12;
+	// IDA handleZoombiniClick (lilly interactive cell-select result):
+	// Sets per-runner attrType + attrValue + combinedAttr based on the
+	// selected entry cell's grid attributes. Without these, advancePathOnGrid
+	// treats every cell as valid, which defeats the attribute-matching
+	// puzzle. The entry-point index picks which lily-pad column the snoid
+	// enters from, and the grid cell at that column determines the attribute
+	// constraint path it must follow.
+	//
+	// If onLButtonDown pre-populated `entryPointIdx` based on click position,
+	// honor it. Otherwise fall back to runnerIdx modulo 12 (auto-assign).
+	if (rs.entryPointIdx < 0 || rs.entryPointIdx >= 12)
+		rs.entryPointIdx = runnerIdx % 12;
 
 	// Set position from entry point table
 	if (rs.entryPointIdx >= 0 && rs.entryPointIdx < 12) {
 		Common::Point entryPos = kEntryPositions[rs.entryPointIdx];
 		clickedRunner->setPointLoc(entryPos);
+	}
+
+	// Pull attribute constraint from the entry cell. IDA reads the grid
+	// attribute type from `grid_attrLayer{1,2,3}[169*col + 13*row]` for the
+	// runner's entry cell. We use row 0 (top of lily pad) and the entry
+	// column.
+	int16 entryCol = rs.entryPointIdx;
+	if (entryCol >= 0 && entryCol < 12) {
+		// Use grid attribute layer based on current puzzle attribute type.
+		// _obstacleAttrType encodes which layer this difficulty uses (1-3).
+		rs.attrType = _obstacleAttrType != 0 ? _obstacleAttrType : 1;
+		switch (rs.attrType) {
+		case 1: rs.attrValue = _gridAttr1[entryCol][0]; break;
+		case 2: rs.attrValue = _gridAttr2[entryCol][0]; break;
+		case 3: rs.attrValue = _gridAttr3[entryCol][0]; break;
+		default: rs.attrValue = 0; break;
+		}
+		rs.obsCombinedAttr = rs.attrValue;
 	}
 
 	// IDA: Load entry SCRB (10109 + runnerIdx) on the child runner.

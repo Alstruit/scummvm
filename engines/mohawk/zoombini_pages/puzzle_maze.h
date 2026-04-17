@@ -48,9 +48,12 @@ struct ZmbMazeRunnerState {
 	byte footTrait = 0;         // Foot attribute value. IDA: *(runner+239) / runner+191
 	int16 cellTypeAtPos = 0;    // Cell type at current position. IDA: runner[100]
 	int16 traversalData = 0;    // Traversal parameter. IDA: runner[111]
+	int16 waveGroup = 0;        // Wave group (1-8) for this grid node. IDA: runner->hsArr[11].shapeid
+	int16 linkedZmbRunnerIdx = -1; // For hitchhiker cells (type 5): waiting zmb's runner idx. IDA: hikerRunner->hsArr[14].pos.x
 	bool placed = false;        // Has been placed on grid
 	bool moving = false;        // Currently moving through grid
 	bool arrived = false;       // Reached exit
+	bool exiting = false;       // Playing exit SCRS (14006/14007), waiting for kZmbAnimEventM1_End
 
 	// SCRS animation table (per-direction and special). IDA: runner core188+40..+90
 	int16 scrsTable[12];        // [0-3]=dir walk, [4-7]=dir alt, [8]=idle, [9]=special1, [10]=special2, [11]=footIdx
@@ -66,7 +69,9 @@ struct ZmbMazeRunnerState {
 		footTrait = 0;
 		cellTypeAtPos = 0;
 		traversalData = 0;
-		placed = moving = arrived = false;
+		waveGroup = 0;
+		linkedZmbRunnerIdx = -1;
+		placed = moving = arrived = exiting = false;
 		memset(scrsTable, 0, sizeof(scrsTable));
 	}
 };
@@ -263,6 +268,21 @@ private:
 	/** Move all active obstacles one step. IDA: maze_updateObstaclePosition (0x42DC56) */
 	void moveObstacles();
 
+	/**
+	 * Spawn a player-fired projectile in the current launcher direction.
+	 * IDA `maze_spawnProjectile @ 0x42D8E9`. 14 u/tick, 8-directional.
+	 */
+	void spawnProjectile();
+
+	/**
+	 * Advance the active projectile one tick. IDA `maze_tickProjectilePosition @ 0x42E2F2`.
+	 * Deactivates at frame>15 or on-hit via checkObstacleCollisions.
+	 */
+	void tickProjectile();
+
+	/** Update score display via SCRB 8011. IDA `maze_updateScoreDigits @ 0x42D04D`. */
+	void updateScoreDigits();
+
 	/** Check obstacle collision with runners. IDA: maze_projectileTickAndCollide (0x42DE69) */
 	void checkObstacleCollisions();
 
@@ -293,6 +313,9 @@ private:
 
 	/** Find runner index by feature ID. */
 	int16 findRunnerByFeatureId(uint16 featureId) const;
+
+	/** Find seat index by creature obstacle/shadow feature ID. */
+	int16 findSeatByFeatureId(uint16 featureId) const;
 
 	// =================================================================
 	// Static data tables
@@ -418,6 +441,13 @@ private:
 	uint16 _zmbRunnerSnoidIds[kMaxRunners];
 	int16 _runnerCount = 0;
 
+	// --- Wave group runner arrays (8 activation waves). IDA: word_4B00E0..word_4B036A ---
+	// Each grid runner belongs to one of 8 wave groups. When an exit runner finalizes,
+	// all runners in its wave group are processed (intersections advance, hitchhikers eject).
+	static const int kMaxWaveGroups = 8;
+	int16 _waveGroupRunners[kMaxWaveGroups][kMaxRunners]; // IDA: word_4B00E0[0], word_4B023E[2], ...
+	int16 _waveGroupCount[kMaxWaveGroups];                // IDA: word_4B03CE, word_4B03D0, ...
+
 	// --- SCRS animation table (foot-trait indexed). IDA: net_scrsAnimTable */
 	int16 _scrsAnimTable[96];
 
@@ -496,6 +526,8 @@ private:
 		int16 timer = 0;
 		int16 creatureSlotIdx = -1;
 		ZmbFeature *feature = nullptr;
+		/** SCRB resource ID — drives tier scoring on hit (1000=1pt, 1005=2, 1016=3, 1021=4). */
+		int16 scrbId = 0;
 	};
 	ObstacleSlot _obstacles[kMaxObstacles];
 	int16 _activeObstacleCount = 0;
@@ -506,6 +538,26 @@ private:
 	int16 _lives = 0;
 	int16 _scoreCounter = 0;
 
+	/**
+	 * IDA maze_obstacleScore (cumulative obstacle-hit score) and
+	 * maze_bonusCounter (combo/bonus tracking). Each obstacle SCRB tier scores:
+	 *   SCRB 1000 = 1 point   (basic obstacle)
+	 *   SCRB 1005 = 2 points  (medium)
+	 *   SCRB 1016 = 3 points  (hard)
+	 *   SCRB 1021 = 4 points  (boss)
+	 * `_bonusCounter` increments on consecutive hits, resets on miss.
+	 */
+	int16 _obstacleScore = 0;
+	int16 _bonusCounter = 0;
+
+	/**
+	 * IDA dword_4AF264[6]: per-runner sized rect pool used for collision
+	 * testing. Each entry is an active runner's bounding rect; the obstacle
+	 * collision check intersects against the union of these rects.
+	 */
+	Common::Rect _activeRunnerRects[6] = {};
+	int16 _activeRunnerRectCount = 0;
+
 	// --- Drag state ---
 	bool _isDragging = false;
 	ZmbSnoid *_dragSnoid = nullptr;
@@ -515,6 +567,30 @@ private:
 	// --- Feature runners ---
 	ZmbFeature *_overlayAnimFeature = nullptr;
 	ZmbFeature *_creatureBaseFeature = nullptr;
+
+	/**
+	 * Player-controlled launcher at screen center (320, 240).
+	 * IDA `maze_initObstacleRunner @ 0x42D86F` registers SCRB 1010 here.
+	 * Points in one of 8 directions; fires a projectile at `projectileSpeed`.
+	 */
+	ZmbFeature *_launcherFeature = nullptr;
+	int16 _launcherDirection = 0; // 0-7 (N, NE, E, SE, S, SW, W, NW)
+
+	/**
+	 * Active projectile state. IDA `maze_spawnProjectile @ 0x42D8E9` +
+	 * `maze_tickProjectilePosition @ 0x42E2F2`. Projectile moves at 14 u/tick
+	 * in the launcher's 8-direction; deactivates at frame>15 or on collision.
+	 */
+	struct ProjectileState {
+		bool active = false;
+		int16 x = 0, y = 0;
+		int16 dx = 0, dy = 0;
+		int16 lifeFrames = 0; // auto-deactivate at >15
+	};
+	ProjectileState _projectile;
+
+	/** IDA `maze_updateScoreDigits @ 0x42D04D`: score display runner (SCRB 8011). */
+	ZmbFeature *_scoreDigitFeature = nullptr;
 	ZmbFeature *_creatureSlotFeatures[3] = {};
 	ZmbFeature *_gridCreatureFeatures[14] = {};
 	ZmbFeature *_creatureObstacleFeatures[14] = {};

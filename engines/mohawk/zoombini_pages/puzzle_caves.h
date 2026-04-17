@@ -99,10 +99,18 @@ private:
 	 * IDA: caves_findMatchingGlyphSlot (approx 0x418x)
 	 * @return entrance slot (0-based), or -1 if none match
 	 */
-	int16 findMatchingGlyphSlot(const ZmbTrait &traits) const;
+	int16 findMatchingGlyphSlot(const ZmbTrait &traits, int16 droppedSlot);
 
 	/** Process a correct cave entrance placement. */
 	void handleCorrectPlacement(ZmbSnoid *snoid, int16 entranceSlot);
+
+	/**
+	 * IDA caves_triggerSuccessAnim_41814F(staggerFrames, x, y).
+	 * Picks up to 3 placed snoids (highest entrance slot first) and animates
+	 * them walking toward (x, y) staggered by `staggerFrames` ticks each.
+	 * Locks UI drag during the celebration sequence.
+	 */
+	void triggerSuccessAnim(int16 staggerFrames, int16 x, int16 y);
 
 	/** Process a wrong cave entrance placement with redirect. */
 	void handleWrongPlacement(ZmbSnoid *snoid, int16 droppedSlot, int16 correctSlot);
@@ -239,7 +247,17 @@ private:
 	
 	/** Cross-product timing table. IDA: word_4AAFC8[] */
 	int16 _crossProductTable[21] = {};
-	
+
+	/**
+	 * Per-slot occupancy. IDA stores the runner index (word_4AAF74[]); we store
+	 * the ZmbSnoid* (nullptr = empty). Used by findMatchingGlyphSlot to skip
+	 * occupied slots and by triggerSuccessAnim to walk placed snoids out.
+	 */
+	ZmbSnoid *_slotOccupied[21] = {};
+
+	/** Total slots filled so far (matches advancing the search base). IDA: HIWORD(caves_nTotalSlotCount_4A08FC) */
+	int16 _totalSlotCount = 0;
+
 	/** Loaded Zoombini trait count. IDA: unk_4A0904 */
 	int16 _loadedZmbCount = 0;
 
@@ -330,10 +348,28 @@ private:
 	/** Number of Zoombinis placed (correct or redirected). IDA: HIWORD(caves_nTotalSlotCount_4A08FC) */
 	int16 _placedZmbCount = 0;
 
-	/** Snoid pending walk-in from correct match. Processed in onEveryFrame. IDA: caves_entranceAnimStates_4AB01E */
-	ZmbSnoid *_pendingWalkInSnoid = nullptr;
-	/** SCRS resource ID for the pending walk-in. IDA: byte_4A0AC8[idx] + 12999 */
-	int16 _pendingWalkInScrsId = 0;
+	/**
+	 * LIFO stack of snoids queued for walk-in animation after correct
+	 * placement. IDA processes the entire stack each tick (not one-per-tick),
+	 * so multiple snoids can start their walk-in on the same frame after a
+	 * cluster of correct placements. IDA: caves_entranceAnimStates_4AB01E[]
+	 * + caves_bHoverEnabled_4AB046 (stack pointer / count).
+	 */
+	struct WalkInEntry {
+		ZmbSnoid *snoid;
+		int16 scrsId;
+	};
+	WalkInEntry _walkInStack[20] = {};
+	int16 _walkInStackIdx = 0;
+
+	/** Active mass walk-in animations in progress. IDA: caves_bAnimInProgress_4AB08E */
+	int16 _massWalkInProgress = 0;
+	/** Total snoids needed for mass walk-in. IDA: caves_nRemainingZmbCount_4AB08C */
+	int16 _massWalkRemaining = 0;
+	/** Frame counter for 30-tick mass walk-in pacing. IDA: caves_pendingAnimFrameTime_4AB084 */
+	uint32 _massWalkLastFrame = 0;
+	/** Non-repeat random pool state for mass walk-in snoid picker. IDA: caves_lastAnimFrameTime_4AB088 */
+	uint32 _massWalkPoolState = 0;
 
 	/** True when snoid was dropped outside all zones, setupDoorAnimation(2) is active. */
 	bool _outOfZoneDrop = false;

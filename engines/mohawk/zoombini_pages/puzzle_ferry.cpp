@@ -249,9 +249,13 @@ void ZoombiniPuzzleFerry::loadFeatures() {
 	loadGoMapButtonsFeature(1400);
 	loadHelpButtonFeature();
 
-	// Compute adjacency matrix from seat bounding boxes
-	// IDA: ferry_drawAdjacencyLines(0) — called after ferry_selectSCRB + layout
-	buildAdjacencyMatrix();
+	// Compute adjacency matrix from seat bounding boxes.
+	// IDA: ferry_drawAdjacencyLines(0) — called after ferry_selectSCRB + layout,
+	// AND after gfx_renderFrame (0x41a724). The render populates each seat's
+	// clickRect via runner_preRenderStandard; only then is the bounding box
+	// available. In ScummVM we haven't rendered yet, so defer the build to the
+	// first drop test (see testAdjacentMatch).
+	_adjacencyBuilt = false;
 
 	// IDA: v2 = getDifficultyIdFromPuzzleFlag(FERRY_FLAG) - 2
 	//   v2 == 0 (diff == LEVEL2) → 20074 (hard voice)
@@ -302,7 +306,7 @@ void ZoombiniPuzzleFerry::loadFeatures() {
 void ZoombiniPuzzleFerry::onGoButtonActivated() {
 	// IDA: ferry_onClickHandler case 2 -> word_4AB17C=1 -> puzzle_pendingTransitionTarget = 11
 	// Route 2: Ferry -> Lilly (via Xfer)
-	_departXferSrcSiPage = ZMB_SI_FERRY_06;
+	_departXferSrcSiPage = ZMB_SI_FERRY_07;
 	if (_rejectWalkPending)
 		_interactionLocked = true;
 	_goButtonPressed = true;
@@ -482,14 +486,32 @@ void ZoombiniPuzzleFerry::loadSeatLayout() {
 void ZoombiniPuzzleFerry::buildAdjacencyMatrix() {
 	memset(_adjacencyMatrix, 0, sizeof(_adjacencyMatrix));
 
-	// Gather seat bounding rects from seat runners
-	// IDA: each runner's core188 at offset +206/+210 stores clickRect leftTop/rightBottom
+	// Gather seat bounding rects from seat runners.
+	// IDA reads each runner's clickRect (core188 +206/+210), populated by
+	// runner_preRenderStandard during the gfx_renderFrame() call right before
+	// ferry_drawAdjacencyLines. ScummVM's lazy-build path runs after many
+	// natural frames, but DRAW_ON_REG features only set their clickRect when
+	// they actually draw something — and several seat sub-shape SCRBs may not
+	// produce a sortRect on frame 0 (e.g. shapeIdx=ZmbHotspot::kShapeNone or
+	// no hotspot at frame 0). Fall back to a snap-position-centered box when
+	// the click rect is empty so adjacency still classifies sensibly.
+	//
+	// Fallback box: 40x32 centered on the seat's snap position (which is
+	// entry.pos + (22,-7), see loadSeatLayout). This roughly matches the IDA
+	// seat shape footprint observed across the 5 difficulty seat tBMPs and
+	// makes the IDA `halfHeight = (h/2)-2` formula yield ~14, comparable to
+	// what a rendered seat shape produces.
 	Common::Rect seatRects[20];
 	for (int16 i = 0; i < _drawOnRegCount; i++) {
 		ZmbFeature *seatRunner = _scrbFeatures.find(_drawOnRegRunnerIds[i]);
-		if (seatRunner) {
-			seatRects[i] = seatRunner->getClickRect();
+		Common::Rect rect;
+		if (seatRunner)
+			rect = seatRunner->getClickRect();
+		if (rect.isEmpty() || rect.width() <= 0 || rect.height() <= 0) {
+			const Common::Point &snap = _drawOnRegSnapPositions[i];
+			rect = Common::Rect(snap.x - 20, snap.y - 16, snap.x + 20, snap.y + 16);
 		}
+		seatRects[i] = rect;
 	}
 
 	for (int16 k = 0; k < _drawOnRegCount; k++) {
@@ -518,9 +540,15 @@ void ZoombiniPuzzleFerry::buildAdjacencyMatrix() {
 				adjacent = expandedK.intersects(rectM);
 			}
 
-			// Test 3: Raw overlap (difficulty >= 3 only)
-			if (!adjacent && _difficultyLevel == kPuzzleDiffLevel4) {
-				adjacent = rectK.intersects(rectM);
+			// Test 3: Vertical-only expansion (difficulty >= LEVEL3).
+			// IDA 0x41BE25-0x41BE49: v25=top-halfH, v27=bottom+halfH, v26=right,
+			// v24=left — left/right unchanged, only vertical grown. Previous
+			// port used `rectK.intersects(rectM)` which is the raw rect test,
+			// and gated on == LEVEL4, both incorrect.
+			if (!adjacent && _difficultyLevel >= kPuzzleDiffLevel3) {
+				Common::Rect expandedK(rectK.left, rectK.top - halfHeight,
+				                       rectK.right, rectK.bottom + halfHeight);
+				adjacent = expandedK.intersects(rectM);
 			}
 
 			if (adjacent && slotCount < 8) {
@@ -549,43 +577,61 @@ int16 ZoombiniPuzzleFerry::getDropTargetSeat(const Common::Point &pos) const {
 // seatIdx is 0-based. Returns true if valid placement; also sets _matchBitmask.
 // ---------------------------------------------------------------------------
 bool ZoombiniPuzzleFerry::testAdjacentMatch(int16 seatIdx, ZmbSnoid *droppedSnoid) {
-	_matchBitmask = 0;
-	bool anyNeighborFound = false;
+	// Lazy-build adjacency on first use (see loadFeatures for the rationale).
+	if (!_adjacencyBuilt) {
+		buildAdjacencyMatrix();
+		_adjacencyBuilt = true;
+	}
 
-	for (int16 slot = 0; slot < 8; slot++) {
+	// IDA ferry_funcOnClick @ 0x41B041:
+	//   v4 = 1;  // optimistic: valid until proven otherwise
+	//   for (i = 0; v4 && i < 8; ++i) {
+	//     if (adjacency[i] && (runner = findByIndex(adj[i]))) {
+	//       v4 = 0;  // reset: this neighbor must contribute a match
+	//       for (j = 0; j < 4; ++j)
+	//         if (droppedTrait[j] == neighborTrait[j]) {
+	//           word_4AB18C |= 1<<j;
+	//           v4 = 1;  // any match for THIS neighbor → keep going
+	//         }
+	//     }
+	//   }
+	//   if (v4) accept; else reject;
+	//
+	// Net rule: placement is valid iff EVERY occupied neighbor shares at least
+	// one trait with the dropped snoid. Previously the C++ port returned `true`
+	// on the first matching neighbor, which under-restricted the puzzle.
+	_matchBitmask = 0;
+	bool valid = true;
+
+	for (int16 slot = 0; slot < 8 && valid; slot++) {
 		byte neighborIdx = _adjacencyMatrix[seatIdx][slot];
 		if (neighborIdx == 0)
 			continue;
 
-		// IDA: runner_findByIndex(word_4B7E36[adjacency_entry])
-		// neighborIdx is 1-based → use neighborIdx-1 as 0-based draw-on-reg slot.
 		uint16 occupantId = getDrawOnRegOccupant(neighborIdx - 1);
 		if (occupantId == 0)
 			continue;
-
 		ZmbSnoid *neighborSnoid = getSnoid(occupantId);
 		if (!neighborSnoid)
 			continue;
 
-		anyNeighborFound = true;
+		// IDA: v4 = 0 reset before inner trait scan — this occupied neighbor
+		// must contribute at least one trait match or the placement fails.
+		valid = false;
 
-		// IDA: Compare 4 trait bytes (foot, nose, eye, head — indices 0-3)
-		// The trait struct layout is: _head(0), _eye(1), _nose(2), _foot(3)
 		const byte *droppedTraits = reinterpret_cast<const byte *>(&droppedSnoid->_trait);
 		const byte *neighborTraits = reinterpret_cast<const byte *>(&neighborSnoid->_trait);
-		bool matchFound = false;
 		for (int16 j = 0; j < 4; j++) {
 			if (droppedTraits[j] == neighborTraits[j]) {
-				// Original: j=0 → |=1, j=1 → |=2, j=2 → |=4, j=3 → |=8
 				_matchBitmask |= (1u << j);
-				matchFound = true;
+				valid = true;
 			}
 		}
-		if (matchFound)
-			return true;
 	}
 
-	return !anyNeighborFound; // If no neighbors exist (first seat), always valid
+	// Implicit: when no occupied neighbors exist, `valid` stays `true` from
+	// the initial assignment — matches IDA `v4 = 1` initialization.
+	return valid;
 }
 
 // ---------------------------------------------------------------------------

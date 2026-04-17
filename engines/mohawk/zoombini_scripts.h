@@ -1233,6 +1233,19 @@ public:
 	 */
 	bool _packIsOccupied = false;
 
+	/**
+	 * IDA snoid runner status byte at offset +295 (`*((BYTE*)snoid+295)`):
+	 *   0 = idle / draggable
+	 *   1 = reject-walk (snoid is animating a reject return; cannot be re-grabbed)
+	 *   2 = arrived (snoid finished crossing; cannot be re-dragged on Bridge)
+	 *   3-4 = puzzle-specific transient states
+	 *   8 = reserved (Bridge `pcStr1[8] != 8` guard — used as "not yet engaged")
+	 *
+	 * The byte gates drag operations: onLButtonDown checks this to refuse
+	 * drag attempts on snoids in transient/non-idle states.
+	 */
+	uint8 _runnerStatus = 0;
+
 private:
 	MohawkEngine_Zoombini *_vm;
 	int16 _id = 0;

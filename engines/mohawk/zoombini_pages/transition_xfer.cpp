@@ -92,21 +92,21 @@ void ZoombiniTransitionXfer::computeXferRoute() {
 		_xferShapesId = kResShapes2100_WhosBayou;
 		_xferScrbCount = 3;
 		break;
-	case ZMB_SI_FERRY_06: // Ferry -> Lilly (Route 2 Path 2)
+	case ZMB_SI_FERRY_07: // Ferry -> Lilly (Route 2 Path 2)
 		_xferView = XFER_ROUTE2_WHOS_BAYOU;
 		_nextPageType = ZoombiniPageType::kLilly;
 		_xferBackgroundResId = kResBackground2000_WhosBayou;
 		_xferShapesId = kResShapes2100_WhosBayou;
 		_xferScrbCount = 3;
 		break;
-	case ZMB_SI_LILLY_07: // Lilly -> Slides (Route 2 Path 3)
+	case ZMB_SI_LILLY_08: // Lilly -> Slides (Route 2 Path 3)
 		_xferView = XFER_ROUTE2_WHOS_BAYOU;
 		_nextPageType = ZoombiniPageType::kSlides;
 		_xferBackgroundResId = kResBackground2000_WhosBayou;
 		_xferShapesId = kResShapes2100_WhosBayou;
 		_xferScrbCount = 3;
 		break;
-	case ZMB_SI_SLIDES_08: // Slides -> Basecamp 2 (Route 2 Path 4)
+	case ZMB_SI_SLIDES_09: // Slides -> Basecamp 2 (Route 2 Path 4)
 		_xferView = XFER_ROUTE2_WHOS_BAYOU;
 		_nextPageType = ZoombiniPageType::kBasecamp2;
 		_xferBackgroundResId = kResBackground2000_WhosBayou;
@@ -114,7 +114,7 @@ void ZoombiniTransitionXfer::computeXferRoute() {
 		_xferScrbCount = 3;
 		_vm->_state->_lastPageBeforeContainer = static_cast<uint16>(src);
 		break;
-	case ZMB_SI_BC1_SOUTH_09: // Basecamp 1 south exit -> Fleens (Route 3 Path 1)
+	case ZMB_SI_BC1_SOUTH_06: // Basecamp 1 south exit -> Fleens (Route 3 Path 1)
 		_xferView = XFER_ROUTE3_DEEP_DARK_FOREST;
 		_nextPageType = ZoombiniPageType::kFleens;
 		_xferBackgroundResId = kResBackground3000_DeepDarkForest;
@@ -547,20 +547,14 @@ uint16 ZoombiniTransitionXfer::selectXferSound() const {
 		default:
 			break;
 		}
-	} else if (_xferView == XFER_ROUTE5_TO_TOWN) { // XFER_5 — TO TOWN: SND 20100-20103
-		if (difficulty == ZMB_DIFFICULTY_LEVEL1_01 || difficulty == ZMB_DIFFICULTY_LEVEL3_05) {
-			return 20100;
-		}
-		switch (_vm->_rnd->getRandomNumber(1, 4)) {
-		case 1:
-			return 20100;
-		case 2:
-			return 20101;
-		case 3:
-			return 20102;
-		default:
-			return 20103; // no-voice
-		}
+	} else if (_xferView == XFER_ROUTE5_TO_TOWN) { // XFER_5 — TO TOWN
+		// IDA xfer_initAndRunTransition @ 0x466E80-0x466EAA: each random branch
+		// stores a candidate (20100/20101/20102/20103) but immediately falls
+		// through to 0x466EAA which unconditionally rewrites the slot to 20100
+		// (likely a missing-break in the original C). The result is XFER_5
+		// always plays SND 20100 regardless of difficulty/RNG. We mirror that
+		// faithfully — verified via disasm.
+		return 20100;
 	}
 
 	return 0;
@@ -783,8 +777,23 @@ void ZoombiniTransitionXfer::loadFeatures() {
 		const uint32 kEnvScrbFlagsNoLoop = ZmbFeature::FLAG_00080000_DEFER_ANIM |
 										   ZmbFeature::FLAG_00100000_PLAY_ONCE |
 										   ZmbFeature::FLAG_01000000_DEFER_RENDER;
-		loadScrbFeature(xferShapes, _xferShapesId + 6, 6, kEnvScrbFlagsNoLoop); // 6106
-		loadScrbFeature(xferShapes, _xferShapesId + 7, 6, kEnvScrbFlagsNoLoop); // 6107
+		ZmbFeature *fg6106 = loadScrbFeature(xferShapes, _xferShapesId + 6, 6, kEnvScrbFlagsNoLoop);
+		ZmbFeature *fg6107 = loadScrbFeature(xferShapes, _xferShapesId + 7, 6, kEnvScrbFlagsNoLoop);
+
+		// IDA xfer_initAndRunTransition @ 0x46741B-0x46743A: 6106/6107 are
+		// activated via scrb_initRunnerWithScript right after init, before the
+		// hover loop starts. Without this they sit inert (DEFER_ANIM) and the
+		// XFER_5 foreground animation never plays.
+		if (fg6106) {
+			fg6106->initValues();
+			fg6106->activateAnimate();
+			fg6106->activateRender();
+		}
+		if (fg6107) {
+			fg6107->initValues();
+			fg6107->activateAnimate();
+			fg6107->activateRender();
+		}
 	} else if (isMidRoute) {
 		// shapes[1] and shapes[2] are static overlapping edges above the walker overlay.
 		loadScrbFeature(xferShapes, _xferShapesId + 1, 0, ZmbFeature::FLAG_00000000_TYPE_SHAPES);
@@ -801,11 +810,14 @@ void ZoombiniTransitionXfer::loadFeatures() {
 	if (isFromIsle) {
 		// IDA: dword_4B97BC = currentFrame + 30 * rand(3,6) — delay first trigger.
 		_scrsNextTriggerFrame = getCurrentFrameCounter() + 30 * _vm->_rnd->getRandomNumber(3, 6);
-		_scrsResIdBase = 5200;
+		// IDA 0x4676C3: scrsResId = traits.cFoot + 5199 (foot 1-5 -> SCRS 5200-5204).
+		// Store the base so runtime can add cFoot.
+		_scrsResIdBase = 5199;
 	} else if (isToTown) {
 		// IDA: dword_4B97BC starts at 0 → first trigger fires immediately.
 		_scrsNextTriggerFrame = 0;
-		_scrsResIdBase = 6200;
+		// IDA 0x4677F2: scrsResId = traits.cFoot + 6199 (foot 1-5 -> SCRS 6200-6204).
+		_scrsResIdBase = 6199;
 	}
 
 	// Play voice sound for this xfer route.
@@ -909,8 +921,16 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 					uint16 snoidId = static_cast<uint16>(kSnoidPackBase) + _scrsTriggerIdx;
 					ZmbSnoid *snoid = getSnoid(snoidId);
 					if (snoid && snoid->getAnimState() == kSnoidAnimIdle) {
+						// IDA 0x4676A2-0x4676AB: chIsFacingLeft is cleared
+						// before SCRS playback so the snoid faces right (the
+						// walk-off direction). Without this, leftover facing
+						// from a prior cycle can flip the sprite mid-transition.
+						snoid->setFacingLeft(false);
+						// IDA 0x4676C3: scrsResId = _scrsResIdBase (5199) + traits.cFoot.
+						// Foot 1-5 -> SCRS 5200-5204 (different walk anim per foot type).
+						uint16 scrsResId = _scrsResIdBase + snoid->_trait._foot;
 						Common::SeekableReadStream *scrsStream =
-							_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, _scrsResIdBase));
+							_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsResId));
 						if (scrsStream) {
 							snoid->startScrsPlayback(scrsStream, true /* hideOnComplete */, true /* rejectState */);
 						}
@@ -933,8 +953,13 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 				uint16 snoidId = static_cast<uint16>(kSnoidPackBase) + _scrsTriggerIdx;
 				ZmbSnoid *snoid = getSnoid(snoidId);
 				if (snoid && snoid->getAnimState() == kSnoidAnimIdle) {
+					// IDA 0x4677D8: chIsFacingLeft cleared before SCRS playback.
+					snoid->setFacingLeft(false);
+					// IDA 0x4677F2: scrsResId = _scrsResIdBase (6199) + traits.cFoot.
+					// Foot 1-5 -> SCRS 6200-6204 (different walk anim per foot type).
+					uint16 scrsResId = _scrsResIdBase + snoid->_trait._foot;
 					Common::SeekableReadStream *scrsStream =
-						_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, _scrsResIdBase));
+						_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsResId));
 					if (scrsStream) {
 						snoid->startScrsPlayback(scrsStream, true /* hideOnComplete */, true /* rejectState */);
 					}
@@ -943,6 +968,25 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 			}
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// IDA: xfer_handleDestinationClick @ 0x467814 — click during the transition
+// commits the pending destination and exits immediately. The original uses a
+// two-stage handshake (first click sets puzzle_pendingTransitionTarget, second
+// click commits) to coordinate with the SCRB completion path; we collapse it
+// to a single skip because ScummVM's auto-close timer is the only race.
+// ---------------------------------------------------------------------------
+ZmbEventHandleResult ZoombiniTransitionXfer::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
+	if (!isClosed()) {
+		// IDA xfer_handleDestinationClick: a second click after the pending
+		// target is set commits transition immediately, bypassing the sound
+		// wait. Collapse to one click here.
+		_closureFrame = 1;
+		_xferSoundId = 0;
+		return ZmbEventHandleResult::kConsumed;
+	}
+	return ZmbEventHandleResult::kPassthrough;
 }
 
 // ---------------------------------------------------------------------------
@@ -969,6 +1013,18 @@ void ZoombiniTransitionXfer::onFeatureAnimEvent(ZmbFeature *feature, int16 event
 	// Only XFER_0 and XFER_5 use SCRS-driven animation with callbacks.
 	if (_xferView != XFER_ROUTE0_FROM_ISLE && _xferView != XFER_ROUTE5_TO_TOWN)
 		return;
+
+	// IDA xfer_initAndRunTransition @ 0x46761E: when the completion counter
+	// activates the final env SCRB (XFER_5: 6108 arrival animation), it also
+	// installs xfer_commitDestAndTriggerTransition as the runner's frame-event
+	// callback. Frame event 30 of 6108 then triggers the page transition. We
+	// model that here so the to-town animation finishes before close fires,
+	// rather than racing the 300-frame auto-close.
+	if (eventCode == 30 && _finalEnvScrbId != 0 && feature == _scrbFeatures.find(_finalEnvScrbId)) {
+		_closureFrame = 1;
+		_xferSoundId = 0;
+		return;
+	}
 
 	// The feature must be a snoid for body arrangement and visibility operations.
 	ZmbSnoid *snoid = dynamic_cast<ZmbSnoid *>(feature);
@@ -1135,6 +1191,9 @@ void ZoombiniTransitionXfer::buildPuzzleCompletionArray() {
 	const ZmbStateFile &state = _vm->_state->_f;
 
 	// First loop (IDA: 0x467894-0x4679A8): read per-SI-page completion level.
+	// SI numbering matches IDA, so `_puzzleCompletionArr[siPage]` lines up with
+	// the IDA `pPuzzleLevelArr` slots consumed by `_routeSlotIndex` lookups,
+	// `kRouteViewSlotTable`, and `routeView_updateSlots`.
 	for (int i = 0; i <= 16; i++) {
 		if (_vm->_state->inPracticeMode()) {
 			_puzzleCompletionArr[i] = static_cast<int8>(CLIP<uint16>(_vm->_state->_practiceLevel, 0, 4));
@@ -1167,7 +1226,7 @@ void ZoombiniTransitionXfer::buildPuzzleCompletionArray() {
 		_routeSlotIndex = 7;
 		break;
 	case ZoombiniPageType::kBasecamp2:
-		_routeSlotIndex = (_vm->_xferSrcPage == ZMB_SI_SLIDES_08) ? 11 : 16;
+		_routeSlotIndex = (_vm->_xferSrcPage == ZMB_SI_SLIDES_09) ? 11 : 16;
 		break;
 	case ZoombiniPageType::kFleens:
 		_routeSlotIndex = 8;
@@ -1230,16 +1289,16 @@ void ZoombiniTransitionXfer::buildPuzzleCompletionArray() {
 	case ZMB_SI_BC1_NORTH_05:
 		shuffledId = 4;
 		break;
-	case ZMB_SI_FERRY_06:
+	case ZMB_SI_FERRY_07:
 		shuffledId = 5;
 		break;
-	case ZMB_SI_LILLY_07:
+	case ZMB_SI_LILLY_08:
 		shuffledId = 6;
 		break;
-	case ZMB_SI_SLIDES_08:
+	case ZMB_SI_SLIDES_09:
 		shuffledId = 7;
 		break;
-	case ZMB_SI_BC1_SOUTH_09:
+	case ZMB_SI_BC1_SOUTH_06:
 		shuffledId = 4;
 		break;
 	case ZMB_SI_FLEENS_10:
@@ -1296,17 +1355,17 @@ void ZoombiniTransitionXfer::computeRoutePathBand() {
 	case ZMB_SI_BC1_NORTH_05:
 		_routePathBand = 1;
 		break; // dest Ferry
-	case ZMB_SI_FERRY_06:
+	case ZMB_SI_FERRY_07:
 		_routePathBand = 2;
 		break; // dest Lilly
-	case ZMB_SI_LILLY_07:
+	case ZMB_SI_LILLY_08:
 		_routePathBand = 3;
 		break; // dest Slides
-	case ZMB_SI_SLIDES_08:
+	case ZMB_SI_SLIDES_09:
 		_routePathBand = 4;
 		break; // dest BC2
 	// Route 3 — Deep Dark Forest
-	case ZMB_SI_BC1_SOUTH_09:
+	case ZMB_SI_BC1_SOUTH_06:
 		_routePathBand = 1;
 		break; // dest Fleens
 	case ZMB_SI_FLEENS_10:
@@ -1339,18 +1398,19 @@ void ZoombiniTransitionXfer::computeRoutePathBand() {
 // Returns the highest completed difficulty level (0-4) encoded as bit flags
 // in the state: bit 0 → level 1, bit 1 → level 2, bit 2 → level 3, bit 3 → level 4.
 //
-// Flag sources (IDA address offsets into CGameState, 0x50-based array):
-//   SI 1-3 (Picker/Bridge/Tunnels): _levelFlagPageArr[siPage - 1]
-//   SI 4 (Pizza): _levelFlagRouteBigBadHungry
-//   SI 5-10 (BC1N/BC1S/Ferry/Lilly/Slides/Fleens): _levelFlagPageArr[siPage - 2]
-//   SI 11 (Hotel): _levelFlagLoWhosBayouHiDeepDarkForest low nibble
-//   SI 12-14 (Net/BC2/Caves): _levelFlagPageArr[siPage - 3]
-//   SI 15 (Smoke): _levelFlagRouteMontDespair
-//   SI 16 (Maze): _levelFlagLoWhosBayouHiDeepDarkForest high nibble
+// IDA `pbPuzzleLevelFlagArr` is a 15-byte array where the leading 3 bytes
+// are reserved (dummy + perfect-streak WORD flag), and puzzle slots live at
+// indices [3..14] for DI pages [7..18]. ScummVM's `_levelFlagPageArr` now
+// shares the same layout byte-for-byte so that saves interchange with IDA.
 //
-// NOTE: The IDA binary's ZMB_SI_PAGE enum has Caves(3) and Tunnels(14)
-// SWAPPED compared to ScummVM's ordering. The index arithmetic above is
-// adjusted for ScummVM's correct SI numbering.
+// IDA index formulas (siPage + N):
+//   SI 1-3 (Picker/Bridge/Tunnels): pbPuzzleLevelFlagArr[siPage + 2]
+//   SI 4 (Pizza): route flag bBigBadHungry
+//   SI 5-10 (BC1N/BC1S/Ferry/Lilly/Slides/Fleens): pbPuzzleLevelFlagArr[siPage + 1]
+//   SI 11 (Hotel): route flag bLoWhosBayouHiDeepDark low nibble
+//   SI 12-14 (Net/BC2/Caves): pbPuzzleLevelFlagArr[siPage]
+//   SI 15 (Smoke): route flag bMontDespair
+//   SI 16 (Maze): route flag bLoWhosBayouHiDeepDark high nibble
 uint16 ZoombiniTransitionXfer::readPuzzleLevelFlag(
 	const ZmbStateFile &state, ZMB_SI_PAGE siPage) {
 	uint8 flag = 0;
@@ -1358,11 +1418,11 @@ uint16 ZoombiniTransitionXfer::readPuzzleLevelFlag(
 	case ZMB_SI_TOWN_00:
 		return 1; // Always level 1
 
-	// BBH puzzle pages: pbPuzzleLevelFlagArr[puzzleId + 2]
+	// BBH puzzle pages: pbPuzzleLevelFlagArr[siPage + 2]
 	case ZMB_SI_PICKER_01:
 	case ZMB_SI_BRIDGE_02:
 	case ZMB_SI_TUNNELS_03:
-		flag = state._levelFlagPageArr[siPage - 1];
+		flag = state._levelFlagPageArr[siPage + 2];
 		break;
 
 	// BBH route completion flag
@@ -1370,14 +1430,14 @@ uint16 ZoombiniTransitionXfer::readPuzzleLevelFlag(
 		flag = state._levelFlagRouteBigBadHungry;
 		break;
 
-	// WB/DDF puzzle pages: pbPuzzleLevelFlagArr[puzzleId + 1]
+	// WB/DDF puzzle pages: pbPuzzleLevelFlagArr[siPage + 1]
 	case ZMB_SI_BC1_NORTH_05:
-	case ZMB_SI_FERRY_06:
-	case ZMB_SI_LILLY_07:
-	case ZMB_SI_SLIDES_08:
-	case ZMB_SI_BC1_SOUTH_09:
+	case ZMB_SI_BC1_SOUTH_06:
+	case ZMB_SI_FERRY_07:
+	case ZMB_SI_LILLY_08:
+	case ZMB_SI_SLIDES_09:
 	case ZMB_SI_FLEENS_10:
-		flag = state._levelFlagPageArr[siPage - 2];
+		flag = state._levelFlagPageArr[siPage + 1];
 		break;
 
 	// WB route completion flag (low nibble)
@@ -1385,11 +1445,11 @@ uint16 ZoombiniTransitionXfer::readPuzzleLevelFlag(
 		flag = state._levelFlagLoWhosBayouHiDeepDarkForest & 0x0F;
 		break;
 
-	// DDF/MD puzzle pages: pbPuzzleLevelFlagArr[puzzleId]
+	// DDF/MD puzzle pages: pbPuzzleLevelFlagArr[siPage]
 	case ZMB_SI_NET_12:
 	case ZMB_SI_BASECAMP2_13:
 	case ZMB_SI_CAVES_14:
-		flag = state._levelFlagPageArr[siPage - 3];
+		flag = state._levelFlagPageArr[siPage];
 		break;
 
 	// MD route completion flag
@@ -1482,7 +1542,7 @@ void ZoombiniTransitionXfer::computeRoutePathColorLevel() {
 		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_BC1_NORTH_05);
 		break;
 	case ZoombiniPageType::kSlides:
-		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_BC1_SOUTH_09);
+		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_BC1_SOUTH_06);
 		break;
 
 	// ---------------------------------------------------------------
@@ -1490,10 +1550,10 @@ void ZoombiniTransitionXfer::computeRoutePathColorLevel() {
 	// Hotel ← Lilly, Net ← Slides
 	// ---------------------------------------------------------------
 	case ZoombiniPageType::kHotel:
-		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_LILLY_07);
+		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_LILLY_08);
 		break;
 	case ZoombiniPageType::kNet:
-		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_SLIDES_08);
+		colorLevel = readPuzzleLevelFlag(state, ZMB_SI_SLIDES_09);
 		break;
 
 	// ---------------------------------------------------------------
@@ -1502,8 +1562,8 @@ void ZoombiniTransitionXfer::computeRoutePathColorLevel() {
 	// In xfer, v3=12 only for source=Slides(SI 8).
 	// ---------------------------------------------------------------
 	case ZoombiniPageType::kBasecamp2:
-		if (_vm->_xferSrcPage == ZMB_SI_SLIDES_08)
-			colorLevel = readPuzzleLevelFlag(state, ZMB_SI_FERRY_06);
+		if (_vm->_xferSrcPage == ZMB_SI_SLIDES_09)
+			colorLevel = readPuzzleLevelFlag(state, ZMB_SI_FERRY_07);
 		else
 			colorLevel = readPuzzleLevelFlag(state, ZMB_SI_FLEENS_10);
 		break;

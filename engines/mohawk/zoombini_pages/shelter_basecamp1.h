@@ -383,15 +383,27 @@ protected:
 	/**
 	 * Snap radius (squared) for pedestal drop target detection.
 	 * IDA: wClickZoneRadius_4B6D3E is 15 for BC1 (default from puzzleDispatch_sharedCleanup).
-	 * We use squared distance for efficiency: 20^2 = 400.
+	 * Use 15^2 = 225 to match the hover radius below — these must agree so snoids
+	 * snap to the same pedestal that highlighted on hover.
 	 */
-	static const int32 kPedestalSnapRadiusSq = 400;
+	static const int32 kPedestalSnapRadiusSq = 225;
 
 	/**
 	 * Hover radius for pedestal highlight during drag (same as zmb_clickZoneRadius = 15).
 	 * IDA: beginDragFeatureRunner_45360F uses zmb_clickZoneRadius for drop zone detection.
 	 */
 	static const int16 kPedestalHoverRadius = 15;
+
+	/**
+	 * Per-pedestal snoid pointer. nullptr = empty. Updated whenever a snoid is
+	 * placed on or removed from a pedestal. Replaces the previous spatial
+	 * "other within 10px" occupancy heuristic, which produced false positives
+	 * when snoids clustered near (but not on) a pedestal.
+	 *
+	 * IDA equivalent: scrb_drawOnRegFlagArr[] indexed by pedestal slot, holding
+	 * the runner index of the seated snoid (0 = empty).
+	 */
+	ZmbSnoid *_pedestalSnoids[16] = {};
 };
 
 } // End of namespace Mohawk

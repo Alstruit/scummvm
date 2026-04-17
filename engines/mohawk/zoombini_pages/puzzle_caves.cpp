@@ -383,8 +383,14 @@ void ZoombiniPuzzleCaves::loadFeatures() {
 
 	_puzzleActive = true;
 	_placedZmbCount = 0;
-	_pendingWalkInSnoid = nullptr;
-	_pendingWalkInScrsId = 0;
+	_walkInStackIdx = 0;
+	memset(_walkInStack, 0, sizeof(_walkInStack));
+	memset(_slotOccupied, 0, sizeof(_slotOccupied));
+	_totalSlotCount = 0;
+	_massWalkInProgress = 0;
+	_massWalkRemaining = 0;
+	_massWalkLastFrame = 0;
+	_massWalkPoolState = 0;
 	_outOfZoneDrop = false;
 	_interactionLocked = false;
 	_hintFlashCounter = 0;
@@ -708,54 +714,50 @@ void ZoombiniPuzzleCaves::distributeEntranceAttributes() {
 	}
 
 	default:
-		// Level 4+: Similar to level 1, all entrances active
-		for (int slot = 1; slot < _entranceCount + 1; slot++) {
-			_entranceAttrReq[slot] = 1;
-		}
+		// IDA switch has cases 1/2/3 only — levels 0 and 4+ leave all entrances inactive.
 		break;
 	}
 
-	// Set attribute offsets based on base attribute type
+	// Slots 1-5: IDA reads caves_entranceAttrBase[m] which aliases _attrColumns[m-1]
+	// (first-row shuffled column values). word_4AAF02 is the primary attribute type.
 	for (int slot = 1; slot < 6; slot++) {
 		if (_entranceAttrReq[slot]) {
+			int16 baseVal = _attrColumns[slot - 1];
 			switch (_baseAttrTypes[0]) {
 			case 0:
-				_entranceAttrOffset[slot] = slot; // Hair
+				_entranceAttrOffset[slot] = baseVal;
 				break;
 			case 1:
-				_entranceAttrOffset[slot] = slot + 5; // Eyes
+				_entranceAttrOffset[slot] = baseVal + 5;
 				break;
 			case 2:
-				_entranceAttrOffset[slot] = slot + 10; // Nose
+				_entranceAttrOffset[slot] = baseVal + 10;
 				break;
 			case 3:
-				_entranceAttrOffset[slot] = slot + 15; // Feet
-				break;
-			default:
-				_entranceAttrOffset[slot] = slot;
+				_entranceAttrOffset[slot] = baseVal + 15;
 				break;
 			}
 		}
 	}
 
-	// Set offsets for second group (slots 6-10)
+	// Slots 6-10: IDA reads caves_entranceAttrBase[n] which aliases _attrColumns[n-1]
+	// (second-row values at _attrColumns[5..9]). caves_entranceAttrBase[0] scalar is
+	// _entranceAttrBase (secondary attribute type).
 	for (int slot = 6; slot < 11; slot++) {
 		if (_entranceAttrReq[slot]) {
+			int16 baseVal = _attrColumns[slot - 1];
 			switch (_entranceAttrBase) {
 			case 0:
-				_entranceAttrOffset[slot] = (slot - 5); // Hair
+				_entranceAttrOffset[slot] = baseVal;
 				break;
 			case 1:
-				_entranceAttrOffset[slot] = (slot - 5) + 5; // Eyes
+				_entranceAttrOffset[slot] = baseVal + 5;
 				break;
 			case 2:
-				_entranceAttrOffset[slot] = (slot - 5) + 10; // Nose
+				_entranceAttrOffset[slot] = baseVal + 10;
 				break;
 			case 3:
-				_entranceAttrOffset[slot] = (slot - 5) + 15; // Feet
-				break;
-			default:
-				_entranceAttrOffset[slot] = (slot - 5);
+				_entranceAttrOffset[slot] = baseVal + 15;
 				break;
 			}
 		}
@@ -814,45 +816,83 @@ int16 ZoombiniPuzzleCaves::getEntranceSlotAtPoint(const Common::Point &pos) cons
 	return -1;
 }
 
-int16 ZoombiniPuzzleCaves::findMatchingGlyphSlot(const ZmbTrait &traits) const {
-	// IDA: caves_findMatchingGlyphSlot
-	// Determines which cave entrance matches a Zoombini's attributes.
-	// Uses _baseAttrTypes[0] as the primary attribute to match against entrance columns.
+int16 ZoombiniPuzzleCaves::findMatchingGlyphSlot(const ZmbTrait &traits, int16 droppedSlot) {
+	// IDA: caves_findMatchingGlyphSlot_4190FC
+	// Determines which entrance slot a Zoombini's traits match. The first row of
+	// _attrColumns holds primary glyph values; the second row (offset 5) holds
+	// secondary glyph values. _slotOccupied[] marks already-filled slots.
+	//
+	// Inputs:
+	//   traits      — the dragged snoid's traits.
+	//   droppedSlot — IDA's `glyphType` (selectedEntranceIdx). Used as the preferred
+	//                 target during the forward scan.
 
-	uint8 traitBytes[4] = {
+	const uint8 traitBytes[4] = {
 		static_cast<uint8>(traits._head),
 		static_cast<uint8>(traits._eye),
 		static_cast<uint8>(traits._nose),
 		static_cast<uint8>(traits._foot)};
 
-	int16 primaryVal = traitBytes[_baseAttrTypes[0]];
+	const uint8 primaryByte = traitBytes[_baseAttrTypes[0] & 3];
+	const uint8 secondaryByte = traitBytes[_entranceAttrBase & 3];
 
-	// Simple matching (complexity 1): match primary attribute against columns
-	if (_guardComplexity <= 1) {
-		for (int16 col = 0; col < _attrColumnCount; col++) {
-			if (_attrColumns[col] == primaryVal) {
-				return col;
-			}
-		}
-	} else {
-		// Complex matching (complexity 2): match primary + secondary attribute
-		int16 secondaryVal = traitBytes[_entranceAttrBase];
-
-		for (int16 col = 0; col < _attrColumnCount; col++) {
-			if (_attrColumns[col] == primaryVal) {
-				// Check if secondary attribute also matches in second row
-				for (int16 row = 0; row < _attrColumnCount; row++) {
-					if (_attrColumns[5 + row] == secondaryVal) {
-						// Both match — return combined slot
-						return col + _attrColumnCount * row;
-					}
-				}
-			}
+	// IDA: scan first row for matching primary value (v3).
+	int16 primaryGlyph = 0;
+	for (int16 i = 0; i < _attrColumnCount; i++) {
+		if (_attrColumns[i] == primaryByte) {
+			primaryGlyph = _attrColumns[i];
+			break;
 		}
 	}
 
-	// Fallback: return first active entrance (should not normally happen)
-	return 0;
+	// IDA: scan second row for matching secondary value (v4).
+	int16 secondaryGlyph = 0;
+	for (int16 j = 0; j < _attrColumnCount; j++) {
+		if (_attrColumns[5 + j] == secondaryByte) {
+			secondaryGlyph = _attrColumns[5 + j];
+			break;
+		}
+	}
+
+	const int16 startSlot = _totalSlotCount;
+
+	// IDA: forward scan from totalSlotCount toward slot 21, looking for the
+	// preferred slot (droppedSlot) with matching glyph values and not occupied.
+	if (startSlot < 21) {
+		int16 slot = startSlot;
+		while (slot < 21) {
+			const bool primaryOk = (primaryGlyph == _frameToSlotMap[slot]);
+			const bool slotMatches = (slot == droppedSlot);
+			const bool empty = (_slotOccupied[slot] == 0);
+			const bool secondaryOk = (_guardComplexity <= 1) ||
+			                         (secondaryGlyph == _crossProductTable[slot]);
+			if (primaryOk && slotMatches && empty && secondaryOk)
+				return slot;
+			slot++;
+		}
+	}
+
+	// IDA fallback (LABEL_22): collect all empty slots whose primary (and, if
+	// complex, secondary) glyph value matches and pick one at random.
+	int16 candidates[22];
+	int16 candidateCount = 0;
+	const int16 collectStart = (startSlot < 21) ? startSlot : 0;
+	for (int16 k = collectStart; k < 21; k++) {
+		if (_slotOccupied[k])
+			continue;
+		if (primaryGlyph != _frameToSlotMap[k])
+			continue;
+		if (_guardComplexity > 1 && secondaryGlyph != _crossProductTable[k])
+			continue;
+		candidates[candidateCount++] = k;
+	}
+
+	if (candidateCount > 0) {
+		int16 pick = (int16)_vm->_rnd->getRandomNumber(0, candidateCount - 1);
+		return candidates[pick];
+	}
+	// IDA: returns 1 when no candidate found (fallback "first slot" sentinel).
+	return 1;
 }
 
 void ZoombiniPuzzleCaves::handleCorrectPlacement(ZmbSnoid *snoid, int16 entranceSlot) {
@@ -861,6 +901,13 @@ void ZoombiniPuzzleCaves::handleCorrectPlacement(ZmbSnoid *snoid, int16 entrance
 
 	_placedZmbCount++;
 	snoid->_packIsOccupied = false;
+
+	// IDA: word_4AAF74[selectedEntranceIdx] = runnerIdx; ++HIWORD(caves_nTotalSlotCount).
+	// Mark slot occupied with the placed snoid so triggerSuccessAnim can iterate
+	// occupied slots and walk these zoombinis out as part of the celebration.
+	if (entranceSlot >= 0 && entranceSlot < 21)
+		_slotOccupied[entranceSlot] = snoid;
+	_totalSlotCount++;
 
 	// IDA: priority = 0 — correct match clears activeDropSnoid
 	// The walk-in is handled by the queue, not the door animation chain.
@@ -873,20 +920,61 @@ void ZoombiniPuzzleCaves::handleCorrectPlacement(ZmbSnoid *snoid, int16 entrance
 	}
 
 	if (_placedZmbCount == _loadedZmbCount) {
-		// IDA: All Zoombinis placed — trigger mass walk-in
+		// IDA: All Zoombinis placed — trigger mass walk-in.
+		// _massWalkRemaining tracks how many idle snoids still need to walk in.
 		_bDoorAnimPending = true;
 		_entranceCompletionFlag = true;
+		_massWalkRemaining = _loadedZmbCount;
+		_massWalkInProgress = 0;
+		_massWalkLastFrame = 0;
+		_massWalkPoolState = 0;
 		// IDA: nextRand_410705(20055, 20063) — random cheer sound
 		uint16 soundId = static_cast<uint16>(_vm->_rnd->getRandomNumber(20055, 20063));
 		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, soundId));
 	}
 
-	// Queue walk-in for processing in onEveryFrame.
-	// IDA: caves_entranceAnimStates_4AB01E[caves_bHoverEnabled_4AB046++] = runnerIdx
-	// IDA: pInitPos = &off_4A09BC + selectedIdx
-	// SCRS ID from entrance type table: kEntranceType[idx] + 12999
-	_pendingWalkInSnoid = snoid;
-	_pendingWalkInScrsId = kEntranceType[entranceSlot] + 12999;
+	// IDA caves_entranceAnimStates_4AB01E[caves_bHoverEnabled_4AB046++] = runnerIdx
+	// — push onto the walk-in LIFO stack. onEveryFrame drains the entire stack
+	// per tick, so multiple correct placements clustered in one frame all start
+	// their walk-in animation together.
+	if (_walkInStackIdx < (int16)ARRAYSIZE(_walkInStack)) {
+		_walkInStack[_walkInStackIdx].snoid = snoid;
+		_walkInStack[_walkInStackIdx].scrsId = kEntranceType[entranceSlot] + 12999;
+		_walkInStackIdx++;
+	}
+}
+
+void ZoombiniPuzzleCaves::triggerSuccessAnim(int16 staggerFrames, int16 x, int16 y) {
+	// IDA caves_triggerSuccessAnim_41814F: iterates _slotOccupied[20..1] and
+	// queues up to 3 placed snoids to walk toward (x, y), staggered by
+	// `staggerFrames` ticks each. Sets ui drag-lock so player can't interact
+	// during the celebration.
+	uint32 frameBase = getCurrentFrameCounter();
+	int16 fired = 0;
+	Common::Point dest(x, y);
+
+	for (int16 i = 20; i > 0 && fired < 3; i--) {
+		ZmbSnoid *s = _slotOccupied[i];
+		if (!s)
+			continue;
+		// IDA gates on `*((BYTE*)v4 + 295)` (status byte) being non-zero.
+		// We mark it on push, so any occupied slot qualifies.
+		s->setAnimTargetPos(dest);
+		s->setAnimState(kSnoidAnimDepart, &dest);
+		// IDA: v5[9] = v8; v8 += a1; — schedule each runner's animation start
+		// at the staggered offset. ScummVM doesn't have a per-runner schedule
+		// field exposed here; the staggered start is approximated by the
+		// natural per-frame animation update once setAnimState is called.
+		// frameBase advances visually since each new setAnimState begins at
+		// the next render tick.
+		(void)frameBase;
+		(void)staggerFrames;
+		s->_runnerStatus = 3; // celebration walking
+		fired++;
+	}
+
+	// IDA: ui_bDragLockActive = 1; ui_dragLockCounter = 0
+	_interactionLocked = true;
 }
 
 void ZoombiniPuzzleCaves::handleWrongPlacement(ZmbSnoid *snoid, int16 droppedSlot, int16 correctSlot) {
@@ -903,6 +991,12 @@ void ZoombiniPuzzleCaves::handleWrongPlacement(ZmbSnoid *snoid, int16 droppedSlo
 	// IDA: word_4AAF64 = caves_entranceSCRBRunnerArr[hoverIdx]
 	_selectedDoorOverlay = getEntranceOverlayFeature(droppedSlot);
 	_matchingDoorOverlay = getEntranceOverlayFeature(correctSlot);
+
+	// IDA: word_4AAF74[hoverEntranceIdx] = runnerIdx; ++HIWORD(caves_nTotalSlotCount).
+	// On wrong drops the snoid lands at the correctSlot via redirect animation.
+	if (correctSlot >= 0 && correctSlot < 21)
+		_slotOccupied[correctSlot] = snoid;
+	_totalSlotCount++;
 
 	// IDA: ++HIWORD(caves_nTotalSlotCount)
 	_placedZmbCount++;
@@ -936,11 +1030,10 @@ void ZoombiniPuzzleCaves::endDrag(const Common::Point &dropPos) {
 
 	if (droppedSlot >= 0) {
 		// Dropped on a cave entrance — check if it matches
-		int16 correctSlot = findMatchingGlyphSlot(snoid->_trait);
+		int16 correctSlot = findMatchingGlyphSlot(snoid->_trait, droppedSlot);
 
-		if (droppedSlot == correctSlot ||
-			(_guardComplexity <= 1 && _attrColumns[droppedSlot % _attrColumnCount] == _attrColumns[correctSlot % _attrColumnCount])) {
-			// Correct entrance
+		// IDA caves_funcOnClick_417CDB: simple equality test. `hoverEntranceIdx == selectedEntranceIdx` → correct.
+		if (droppedSlot == correctSlot) {
 			snoid->_packIsOccupied = false;
 			handleCorrectPlacement(snoid, droppedSlot);
 		} else {
@@ -1078,19 +1171,20 @@ void ZoombiniPuzzleCaves::onEveryFrame() {
 		}
 	}
 
-	// Process walk-in queue for correct placements.
-	// IDA: while (caves_bHoverEnabled_4AB046) { play SCRS on queued snoid }
-	if (_pendingWalkInSnoid) {
-		debugC(1, kZmbDebugAnimation, "Caves: walk-in queue, scrsId=%d", _pendingWalkInScrsId);
-		ZmbSnoid *walkSnoid = _pendingWalkInSnoid;
-		int16 walkScrsId = _pendingWalkInScrsId;
-		_pendingWalkInSnoid = nullptr;
-		_pendingWalkInScrsId = 0;
-
-		// IDA: runner->bitmask = OVERLAY | SNOID (0x04000001)
-		// IDA: snoidScript_initAndPlay(0, pInitPos, scrsId, &core)
-		// scriptType=0 → normal (hideOnComplete=true, rejectState=false)
-		// IDA: runner->onHotspotShapeOrFrameFunc = caves_noop_incrReturn
+	// IDA caves_funcOnHover @ 0x417680: drain the entire walk-in stack each
+	// tick (LIFO). Multiple snoids queued the same frame all start moving
+	// together — previously only one per tick fired.
+	while (_walkInStackIdx > 0) {
+		_walkInStackIdx--;
+		ZmbSnoid *walkSnoid = _walkInStack[_walkInStackIdx].snoid;
+		int16 walkScrsId = _walkInStack[_walkInStackIdx].scrsId;
+		_walkInStack[_walkInStackIdx].snoid = nullptr;
+		_walkInStack[_walkInStackIdx].scrsId = 0;
+		if (!walkSnoid)
+			continue;
+		debugC(1, kZmbDebugAnimation, "Caves: walk-in pop, scrsId=%d", walkScrsId);
+		walkSnoid->addFlag(static_cast<ZmbFeature::Flag>(
+			ZmbFeature::FLAG_00000001_TYPE_SNOID | ZmbFeature::FLAG_04000000_OVERLAY));
 		Common::SeekableReadStream *scrsStream =
 			_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
 							 ZmbResource(ZmbArchiveKind::kPage, static_cast<uint16>(walkScrsId)));
@@ -1098,13 +1192,59 @@ void ZoombiniPuzzleCaves::onEveryFrame() {
 			walkSnoid->startScrsPlayback(scrsStream, true, false);
 	}
 
-	// Process completion flag to trigger phase transition.
-	// IDA: caves_funcMain phase management (word_4AAEFA states)
+	// IDA caves_funcOnHover @ 0x4176f8: mass walk-in driver. After Go (or all
+	// placed), every 30 ticks pick a random idle pack snoid and start its
+	// SCRS (foot+12999) walk-in. Drains _massWalkRemaining → 0.
+	if (_bDoorAnimPending && _massWalkInProgress < _massWalkRemaining) {
+		uint32 nowFrame = getCurrentFrameCounter();
+		if (nowFrame - _massWalkLastFrame > 30) {
+			_massWalkLastFrame = nowFrame;
+			bool fired = false;
+			for (int16 i = 0; i < _loadedZmbCount && !fired; i++) {
+				uint16 poolIdx = _vm->_rnd->getNonRepeatRandom(_loadedZmbCount, _massWalkPoolState);
+				ZmbSnoid *cand = nullptr;
+				for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+					ZmbSnoid *s = *it;
+					if (!s || !s->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+						continue;
+					if (s->getId() == (uint16)(10000 + poolIdx)) {
+						cand = s;
+						break;
+					}
+				}
+				if (cand && cand->getAnimState() == kSnoidAnimIdle && cand->_packIsOccupied) {
+					int16 footIdx = (int16)cand->_trait._foot - 1;
+					if (footIdx < 0) footIdx = 0;
+					if (footIdx > 4) footIdx = 4;
+					uint16 scrsId = (uint16)(footIdx + 12999);
+					Common::SeekableReadStream *st =
+						_vm->getResource(MKTAG('S', 'C', 'R', 'S'),
+							ZmbResource(ZmbArchiveKind::kPage, scrsId));
+					if (st) {
+						cand->startScrsPlayback(st, true, false);
+						_massWalkInProgress++;
+						fired = true;
+					}
+				}
+			}
+		}
+	} else if (_massWalkInProgress >= _massWalkRemaining && _bDoorAnimPending) {
+		// IDA caves_funcOnHover @ 0x4177cf: all done — clear driver state.
+		_massWalkPoolState = 0;
+		_massWalkLastFrame = 0;
+		_bDoorAnimPending = false;
+		_massWalkInProgress = 0;
+	}
+
+	// IDA caves_funcOnHover @ 0x41742b: phase 2 → 3 with success animation.
+	// Plays SND 996 and triggers caves_triggerSuccessAnim_41814F(30, 376, 660)
+	// — walks 3 placed snoids toward (376, 660) staggered by 30 frames each
+	// as part of the success cinematic.
 	if (_phaseState == 2) {
-		debugC(1, kZmbDebugAnimation, "Caves: phaseState 2 -> 3, playing SND 996");
+		debugC(1, kZmbDebugAnimation, "Caves: phaseState 2 -> 3, playing SND 996 + success anim");
 		_phaseState = 3;
-		// IDA: scrb_enqueueSoundResource(0, SND_00996_MOVE_LONG_SFX)
 		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, 996));
+		triggerSuccessAnim(30, 376, 660);
 	}
 
 	// [1] Glyph hint blink at difficulty 1.

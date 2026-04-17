@@ -653,13 +653,18 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 		}
 	}
 
-	// IDA: bridge_prevExcludeCount/bridge_prevExcludePattern at 0x41665D
+	// IDA bridge_prevExcludeCount/bridge_prevExcludePattern @ 0x41665D:
+	// globals (NOT per-bridge-instance) used by Tunnels level 0 setup to avoid
+	// the same split pattern running back-to-back. Mirror to the engine so
+	// the Tunnels puzzle (next in the route) can read them.
 	_prevExcludeCount = 0;
 	_prevExcludePattern = 0;
 	if (_difficultyLevel == kPuzzleDiffLevel1 && found == 1) {
 		_prevExcludeCount = chosenCount;
 		_prevExcludePattern = targetCombo;
 	}
+	_vm->_prevBridgeExcludePattern = _prevExcludePattern;
+	_vm->_prevBridgeExcludeCount = _prevExcludeCount;
 
 	// Decode the selected combo into reqAttrTypes/reqAttrValues
 	_puzzleReady = true;
@@ -683,28 +688,31 @@ void ZoombiniPuzzleBridge::buildAttrTollTable() {
 			_reqAttrValues[0] = (targetCombo >> 24) & 0xF;
 		}
 	} else if (_difficultyLevel == kPuzzleDiffLevel2) {
-		// Level 2: two attributes
+		// Level 2: two attribute values from the same category.
+		// IDA bridge_reqAttrTypes[1]/reqAttrValues[1] must receive the second nibble so
+		// bridge_testAttrMatchRule iterates both. (Do NOT store in separate
+		// _reqSecondAttr* fields — testAttrMatch never reads them.)
 		_reqAttrCount = 2;
 		if (targetCombo & 0xFF) {
 			_reqAttrTypes[0] = 4;
 			_reqAttrValues[0] = targetCombo & 0xF;
-			_reqSecondAttrType = 4;
-			_reqSecondAttrValue = (targetCombo & 0xF0) >> 4;
+			_reqAttrTypes[1] = 4;
+			_reqAttrValues[1] = (targetCombo & 0xF0) >> 4;
 		} else if ((targetCombo >> 8) & 0xFF) {
 			_reqAttrTypes[0] = 3;
 			_reqAttrValues[0] = (targetCombo >> 8) & 0xF;
-			_reqSecondAttrType = 3;
-			_reqSecondAttrValue = (targetCombo >> 12) & 0xF;
+			_reqAttrTypes[1] = 3;
+			_reqAttrValues[1] = (targetCombo >> 12) & 0xF;
 		} else if ((targetCombo >> 16) & 0xFF) {
 			_reqAttrTypes[0] = 2;
 			_reqAttrValues[0] = (targetCombo >> 16) & 0xF;
-			_reqSecondAttrType = 2;
-			_reqSecondAttrValue = (targetCombo >> 20) & 0xF;
+			_reqAttrTypes[1] = 2;
+			_reqAttrValues[1] = (targetCombo >> 20) & 0xF;
 		} else if ((targetCombo >> 24) & 0xFF) {
 			_reqAttrTypes[0] = 1;
 			_reqAttrValues[0] = (targetCombo >> 24) & 0xF;
-			_reqSecondAttrType = 1;
-			_reqSecondAttrValue = (targetCombo >> 28) & 0xF;
+			_reqAttrTypes[1] = 1;
+			_reqAttrValues[1] = (targetCombo >> 28) & 0xF;
 		}
 	} else {
 		// Levels 3 and 4: extract all non-zero nibbles
@@ -825,19 +833,26 @@ void ZoombiniPuzzleBridge::reloadScrbAnimation(uint16 featureId, uint16 newScrbI
 // IDA: findIdleFeatureRunner_456A95
 // ---------------------------------------------------------------------------
 ZmbSnoid *ZoombiniPuzzleBridge::findIdlePackSnoid(uint16 preferredId) {
-	// If a specific snoid is requested, try it first
-	if (preferredId > 0) {
-		ZmbSnoid *snoid = getSnoid(preferredId);
-		if (snoid && snoid->getAnimState() == kSnoidAnimIdle)
-			return snoid;
-	}
-	// Search all snoids for an idle pack snoid
+	// IDA zmb_findIdleFeatureRunner @ 0x4569B0: when called with preferredId==0,
+	// returns 0 immediately (no fallback scan). The trail-pop logic in
+	// onEveryFrame relies on this — skip-mode passes preferredId=0 to mean
+	// "no candidate, stay idle", and must NOT auto-pick the first idle snoid
+	// (which would corrupt the trail and send an arbitrary snoid across).
+	if (preferredId == 0)
+		return nullptr;
+
+	// Specific snoid requested: try it first
+	ZmbSnoid *snoid = getSnoid(preferredId);
+	if (snoid && snoid->getAnimState() == kSnoidAnimIdle)
+		return snoid;
+
+	// Fallback only used when an explicit (non-zero) preferred ID misses.
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
 		if ((*it)->getId() < 10000)
 			continue; // Skip template snoids
-		ZmbSnoid *snoid = *it;
-		if (snoid->getAnimState() == kSnoidAnimIdle)
-			return snoid;
+		ZmbSnoid *s = *it;
+		if (s->getAnimState() == kSnoidAnimIdle)
+			return s;
 	}
 	return nullptr;
 }
@@ -960,6 +975,10 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 
 			_bridgeTransitCount++;
 			_isRejectPlaying = _currentMatchResult;
+			// IDA bridge_funcOnHover @ 0x41555a: *((BYTE*)runner+295) = 1 — mark
+			// snoid as reject-walking so onLButtonDown ignores subsequent drag
+			// attempts until the SCRS finishes.
+			snoid->_runnerStatus = 1;
 			if (!_currentMatchResult) {
 				// Set random speed for reject path
 				snoid->setAnimSpeed(_vm->_rnd->getRandomNumber(4, 5), 0);
@@ -1127,7 +1146,10 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 		Common::Point bridgePos = snoid->getPointLoc();
 		snoid->finishScrsPlayback();
 		snoid->setPointLoc(bridgePos);  // Stay at the SCRS position, not the origPointLoc
-		snoid->addFlag(static_cast<ZmbFeature::Flag>(ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE));
+		// IDA bridge_laneWalkStepCallback @ 0x415EC1: bitmask |= 0x04008000
+		// (LOOP_ANIM | OVERLAY) on arrival — the overlay flag drives the correct
+		// z-sort/compositing for zoombinis that have crossed.
+		snoid->addFlag(static_cast<ZmbFeature::Flag>(ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY));
 
 		// IDA: set walk target (pos2) at offset 278, then animateZoombini(0, 7, ...).
 		// The original sets the TARGET first and then starts kSnoidAnimDepart which
@@ -1153,21 +1175,39 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 		snoid->setAnimTargetPos(destPos);
 		snoid->setAnimState(kSnoidAnimDepart);
 
-		// Track crossed count for Go button and celebration scheduling
-		int16 totalCrossed = _lane1Count + _lane2Count;
+		// IDA bridge_laneWalkStepCallback @ 0x41604c: *(byte+295) = 2 — mark
+		// snoid as arrived. Drag attempts are refused on arrived snoids.
+		snoid->_runnerStatus = 2;
+
+		// IDA @ 0x415FEA: runner_linkRelativeToParent(prevArrival, sideFlag, runner)
+		// is the linked-list reorder for proper z-stacking of arrivals. ScummVM's
+		// per-frame Z-sort with the OVERLAY flag (added above) achieves the same
+		// visual result without needing explicit list reordering.
+
+		// IDA: bridge_bLaneArrivalPending = 1 (a flag, not a count).
 		if (!_anyZmbCrossed)
-			_anyZmbCrossed = totalCrossed;
+			_anyZmbCrossed = 1;
 
-		// Celebration schedule thresholds: 10, 12, 14, all
-		if (totalCrossed == 10)
+		// Celebration schedule thresholds: 10, 12, 14, all.
+		// IDA bridge_laneWalkStepCallback @ 0x415fef uses
+		// getLoadedZmbRunnerCount_452402() — currently-registered snoid runners.
+		// Per-lane arrived counts under-trigger because rejected/walking snoids
+		// don't count as crossed. Use snoidMap size filtered by SNOID flag.
+		int16 loadedRunners = 0;
+		for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+			if ((*it) && (*it)->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+				loadedRunners++;
+		}
+		if (loadedRunners == 10)
 			_celebrationTarget++;
-		else if (totalCrossed == 12)
+		else if (loadedRunners == 12)
 			_celebrationTarget++;
-		else if (totalCrossed == 14)
+		else if (loadedRunners == 14)
 			_celebrationTarget += 2;
-		if (totalCrossed == _totalZmbCount)
+		if (loadedRunners == _totalZmbCount)
 			_celebrationTarget += 2;
 
+		int16 totalCrossed = _lane1Count + _lane2Count;
 		// Play voice-over when all are crossed
 		if (totalCrossed == _totalZmbCount && _bridgeTransitCount == 0) {
 			uint16 sndId = _vm->_rnd->getRandomNumber(20055, 20063);
@@ -1250,6 +1290,10 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 		snoid->finishScrsPlayback();
 		snoid->setAnimState(kSnoidAnimIdle, &targetPos);
 		snoid->setupIdleHotspots();
+		// IDA bridge_laneWalkStepCallback case -1 @ 0x4160a6: *(byte+47) = 0
+		// is the related field reset; status (+295) clears too as the snoid
+		// returns to the idle pool and is draggable again.
+		snoid->_runnerStatus = 0;
 		break;
 	}
 
@@ -1321,6 +1365,12 @@ ZmbEventHandleResult ZoombiniPuzzleBridge::onLButtonDown(const Common::Point &ab
 
 	ZmbSnoid *snoid = findSnoidAtPoint(absPos);
 	if (!snoid)
+		return ZmbEventHandleResult::kPassthrough;
+
+	// IDA bridge_funcOnClick @ 0x415974: refuse drag if snoid runner status
+	// (byte+295) indicates "in transit" (1 = reject-walking, 2 = arrived).
+	// This guard prevents the player from grabbing a snoid mid-animation.
+	if (snoid->_runnerStatus == 1 || snoid->_runnerStatus == 2)
 		return ZmbEventHandleResult::kPassthrough;
 
 	// Don't drag snoids that are playing scripts

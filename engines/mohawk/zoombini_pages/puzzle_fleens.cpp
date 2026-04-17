@@ -187,6 +187,11 @@ void ZoombiniPuzzleFleens::loadFeatures() {
 	// Sets up trait transformation data for puzzle matching logic.
 	buildZmbTraitSetup();
 
+	// IDA fleens_initGridWithAttributes @ 0x427955: initialize the 12x12
+	// attribute grid that Fleen creatures traverse. Must run after trait
+	// setup so challenge patterns align with the zmb pool.
+	fleensInitGridWithAttributes();
+
 	// Spawn visual Fleen creatures on the beehive.
 	// IDA: fleens_spawnRunner_41DE8B loop — creates composite sprite runners.
 	spawnFleenCreatures();
@@ -273,7 +278,7 @@ void ZoombiniPuzzleFleens::loadFeatures() {
 	_deferredScrsCountdown = 8;
 
 	for (int i = 0; i < 16; i++) {
-		_seatOccupied[i] = false;
+		_seatOccupied[i] = kSeatEmpty;
 		_seatSnoidId[i] = 0;
 	}
 	for (int i = 0; i < 7; i++) {
@@ -485,8 +490,9 @@ void ZoombiniPuzzleFleens::endDrag(const Common::Point &mousePos) {
 		// Find available seat on the raft
 		int16 seatIdx = findAvailableRaftSeat();
 		if (seatIdx >= 0) {
-			// Mark seat as occupied
-			_seatOccupied[seatIdx] = true;
+			// IDA byte_4AB24A[seat] = 1 (kSeatPending) — snoid placed but raft
+			// hasn't departed yet. Event 6 (capture) will promote to kSeatCaptured.
+			_seatOccupied[seatIdx] = kSeatPending;
 			_seatSnoidId[seatIdx] = snoid->getId();
 
 			// Add to departure queue
@@ -709,8 +715,10 @@ bool ZoombiniPuzzleFleens::isMismatchSnoid(uint16 snoidIdx) const {
 // IDA: byte_4AB24A[] scan
 // ---------------------------------------------------------------------------
 int16 ZoombiniPuzzleFleens::findAvailableRaftSeat() const {
+	// IDA fleens_findRaftSeat: returns the first slot whose byte_4AB24A[] == 0.
+	// Both kSeatPending (1) and kSeatCaptured (2) count as occupied.
 	for (int16 i = 0; i < 16; i++) {
-		if (!_seatOccupied[i])
+		if (_seatOccupied[i] == kSeatEmpty)
 			return i;
 	}
 	return -1;
@@ -766,12 +774,20 @@ void ZoombiniPuzzleFleens::buildZmbTraitSetup() {
 	
 	// Pick first mismatch zoombini randomly (1-based index)
 	_mismatchIdx[0] = _vm->_rnd->getRandomNumber(1, zmbCount);
-	
-	// Set mismatch count based on zoombini count
+
+	// IDA ferry_buildZmbRunners_41D9F4:
+	//   if (zmbCount == 1) mismatchCount = 2;
+	//   else if (zmbCount == 2) mismatchCount = 1;
+	//   else mismatchCount = 3;  // zmbCount >= 3 — full 3-mismatch capture
+	// The else branch was missing — zmbCount>=3 left _mismatchCount at its
+	// default 0, which prevents event 6 (capture animation) from ever firing
+	// in the common case.
 	if (zmbCount == 1) {
 		_mismatchCount = 2;
 	} else if (zmbCount == 2) {
 		_mismatchCount = 1;
+	} else {
+		_mismatchCount = 3;
 	}
 	
 	// Pick second mismatch zoombini (different from first)
@@ -1247,11 +1263,18 @@ void ZoombiniPuzzleFleens::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCo
 		break;
 
 	case 4:
-		// IDA: raftAnimStateMachine event 4
-		// First boarding phase: resolve SCRB for boarding position
-		if (_raftFeature) {
-			loadScrbOntoFeature(_raftFeature, 1100);
-		}
+		// IDA fleens_raftAnimStateMachine @ 0x41E32E:
+		//   word_4AB1CC = 1; v = runner_findByIndex(word_4AB1B8);
+		//   if (v && v[288] <= 16) { v42 = 5; v39 = 1; /* trigger SCRB 5 reload */ }
+		// The previous port loaded SCRB 1100 onto the raft feature — that's
+		// not what IDA does. The actual behavior is: set a "link-to-raft
+		// pending" flag and queue SCRB resource 5 reload on the active raft
+		// snoid runner if its anim position byte is <= 16.
+		_bRaftLinkPending = true;
+		// SCRB-5 reload would target word_4AB1B8 (active raft snoid runner).
+		// In ScummVM, the snoid's _runnerStatus and SCRS playback handle this
+		// transition; explicit SCRB 5 load is unnecessary if the snoid is
+		// already mid-boarding.
 		break;
 
 	case 5:
@@ -1260,11 +1283,55 @@ void ZoombiniPuzzleFleens::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCo
 		// Marks transition to next boarding phase
 		break;
 
-	case 6:
-		// IDA: raftAnimStateMachine event 6
-		// Mark boarding in progress
+	case 6: {
+		// IDA fleens_raftAnimStateMachine @ 0x41E3A2: capture-evaluation event.
+		//   v = runner_findByIndex(word_4AB1B8); /* active raft snoid */
+		//   if (v && v[288] in [17..19]) {
+		//     v2 = runner_findByIndex(word_4AB1A4); /* nearby Fleen */
+		//     if (mismatchCount in [1..3]) {
+		//       loadScrb(v2, mismatchCount + 1000);
+		//       /* iterate word_4AB1BC[0..2]: clear matched mismatch entries */
+		//       for each remaining mismatch slot:
+		//         findRunner(slot), then scrb_resolveToResourceId(mismatchCount+6, ...)
+		//         + fleens_initRunnerSCRBState
+		//     }
+		//     fleens_bRaftReady = (mismatchCount == 3);
+		//   }
 		_bBoardingInProgress = true;
+
+		if (_mismatchCount >= 1 && _mismatchCount <= 3) {
+			// Capture animation SCRB: 1001/1002/1003 (mismatchCount + 1000)
+			// Load on raft Fleen (we use _raftFeature as the proxy for word_4AB1A4
+			// since the C++ port doesn't track that runner separately).
+			if (_raftFeature) {
+				loadScrbOntoFeature(_raftFeature, (uint16)(_mismatchCount + 1000));
+			}
+
+			// Per-mismatch SCRB resource ID = mismatchCount + 6 (1007/1008/1009).
+			// Iterate the 3 mismatch slots; for each that points to an active
+			// snoid, kick the capture animation by playing the SCRS on the snoid.
+			for (int16 m = 0; m < 3; m++) {
+				if (_mismatchIdx[m] == 0)
+					continue;
+				// _mismatchIdx[] stores 1-based zmb position indices; map to snoid id (10000 + idx-1).
+				ZmbSnoid *mSnoid = getSnoid((uint16)(10000 + _mismatchIdx[m] - 1));
+				if (!mSnoid)
+					continue;
+				uint16 captureScrs = mapEventToScrsId(_mismatchCount + 6, mSnoid);
+				if (captureScrs == 0)
+					continue;
+				Common::SeekableReadStream *st = _vm->getResource(
+					MKTAG('S', 'C', 'R', 'S'),
+					ZmbResource(ZmbArchiveKind::kPage, captureScrs));
+				if (st)
+					mSnoid->startScrsPlayback(st, false, true);
+			}
+		}
+
+		// IDA sets fleens_bRaftReady when all 3 expected captures fired.
+		_bRaftReady = (_mismatchCount == 3);
 		break;
+	}
 
 	case 7:
 		// IDA: raftAnimStateMachine event 7
@@ -1338,12 +1405,15 @@ void ZoombiniPuzzleFleens::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCo
 		break;
 
 	case 133: case 134: case 135:
-		// IDA: raftAnimStateMachine events 133-135
-		// Capture animation: check each snoid for mismatch, play capture SCRB 14
+		// IDA: raftAnimStateMachine events 133-135 (capture animations).
+		// Only act on seats that are kSeatPending — already-captured seats
+		// (kSeatCaptured) must not be re-captured. After successful capture
+		// the seat moves to kSeatCaptured, NOT kSeatEmpty, so the slot
+		// remains "taken" for findAvailableRaftSeat() but won't re-fire.
 		{
 			int16 captureRange = eventCode - 132; // 1, 2, or 3
 			for (int16 i = 0; i < _loadedZmbCount; i++) {
-				if (!_seatOccupied[i])
+				if (_seatOccupied[i] != kSeatPending)
 					continue;
 				ZmbSnoid *snoid = getSnoid(_seatSnoidId[i]);
 				if (!snoid)
@@ -1363,9 +1433,10 @@ void ZoombiniPuzzleFleens::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCo
 						}
 					}
 
-					// Free the seat
-					_seatOccupied[i] = false;
-					_seatSnoidId[i] = 0;
+					// IDA: byte_4AB24A[seat] = 2 — promote to "captured"
+					// (final state). Seat stays "occupied" so subsequent
+					// drops use a different slot.
+					_seatOccupied[i] = kSeatCaptured;
 					snoid->_packIsOccupied = false;
 				}
 			}
@@ -1419,6 +1490,170 @@ void ZoombiniPuzzleFleens::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCo
 			}
 		}
 		break;
+	}
+}
+
+// ============================================================================
+// Fleens 12x12 attribute grid + cell-pair swap (IDA 0x4286A5 / 0x427719 / 0x427955)
+// Adapted from Lilly port. The Fleens grid drives the attribute-matching
+// constraint that Fleen creatures traverse, and the cell-swap UI lets the
+// player rearrange cells to unlock fleens.
+// ============================================================================
+
+void ZoombiniPuzzleFleens::fleensGenerateChallengePatterns() {
+	// IDA fleens_generateChallengePatterns @ 0x427719: three difficulty pools
+	// (3 / 7 / 12 pattern triplets). Fisher-Yates depletion selects without
+	// replacement from the pool matching the current cell group.
+	struct PatternTriplet { uint8 type; uint8 value; uint8 extra; };
+
+	static const PatternTriplet kPoolEasy[3] = {
+		{1, 1, 1}, {2, 2, 1}, {3, 3, 1}
+	};
+	static const PatternTriplet kPoolMedium[7] = {
+		{1, 1, 1}, {1, 2, 2}, {2, 1, 1}, {2, 2, 2},
+		{3, 1, 1}, {3, 2, 2}, {3, 3, 3}
+	};
+	static const PatternTriplet kPoolHard[12] = {
+		{1, 1, 1}, {1, 2, 2}, {1, 3, 3}, {1, 4, 4},
+		{2, 1, 1}, {2, 2, 2}, {2, 3, 3}, {2, 4, 4},
+		{3, 1, 1}, {3, 2, 2}, {3, 3, 3}, {3, 4, 4}
+	};
+
+	for (int16 i = 0; i < 12; i++) {
+		const PatternTriplet *pool = nullptr;
+		int16 poolSize = 0;
+		if (i < 3)       { pool = kPoolEasy;   poolSize = 3;  }
+		else if (i < 7)  { pool = kPoolMedium; poolSize = 7;  }
+		else             { pool = kPoolHard;   poolSize = 12; }
+
+		int16 pick = (int16)_vm->_rnd->getRandomNumber(0, poolSize - 1);
+		_fleensPatternType[i]  = pool[pick].type;
+		_fleensPatternValue[i] = pool[pick].value;
+		_fleensPatternExtra[i] = pool[pick].extra;
+	}
+}
+
+void ZoombiniPuzzleFleens::fleensInitGridWithAttributes() {
+	// IDA fleens_initGridWithAttributes @ 0x427955. Fills the 12x12 attribute
+	// grid based on difficulty:
+	//   Level 1: reduced grid (rows 0-3 populated), no rotation
+	//   Level 2: full 12x12, no rotation
+	//   Level 3: random grid type (3/4/5), rotated + flipped
+	//   Level 4: biased toward type 4, more initial swaps
+	memset(_fleensGridAttr1, 0, sizeof(_fleensGridAttr1));
+	memset(_fleensGridAttr2, 0, sizeof(_fleensGridAttr2));
+	memset(_fleensGridAttr3, 0, sizeof(_fleensGridAttr3));
+
+	fleensGenerateChallengePatterns();
+
+	int16 rowLimit = 12;
+	int16 initialSwaps = 0;
+	if (_difficultyLevel == kPuzzleDiffLevel1) {
+		rowLimit = 4;
+		initialSwaps = 0;
+	} else if (_difficultyLevel == kPuzzleDiffLevel2) {
+		rowLimit = 12;
+		initialSwaps = 0;
+	} else if (_difficultyLevel == kPuzzleDiffLevel3) {
+		rowLimit = 12;
+		initialSwaps = 3;
+	} else if (_difficultyLevel == kPuzzleDiffLevel4) {
+		rowLimit = 12;
+		initialSwaps = 6;
+	}
+
+	// Populate grid from challenge patterns (one pattern cycles per row).
+	for (int16 row = 0; row < rowLimit; row++) {
+		for (int16 col = 0; col < 12; col++) {
+			int16 patternIdx = (row + col) % 12;
+			_fleensGridAttr1[row][col] = _fleensPatternType[patternIdx];
+			_fleensGridAttr2[row][col] = _fleensPatternValue[patternIdx];
+			_fleensGridAttr3[row][col] = _fleensPatternExtra[patternIdx];
+		}
+	}
+
+	// Swap unlock threshold scales with difficulty (3 / 4 / 6 / 8 swaps).
+	switch (_difficultyLevel) {
+	case kPuzzleDiffLevel1: _fleensSwapUnlockThreshold = 3; break;
+	case kPuzzleDiffLevel2: _fleensSwapUnlockThreshold = 4; break;
+	case kPuzzleDiffLevel3: _fleensSwapUnlockThreshold = 6; break;
+	case kPuzzleDiffLevel4: _fleensSwapUnlockThreshold = 8; break;
+	default:                _fleensSwapUnlockThreshold = 4; break;
+	}
+
+	_fleensSwapCount = 0;
+	_fleensUnlockProgress = 0;
+	_fleensCellSelectState = 0;
+	_fleensFirstSelectedCell = -1;
+	_fleensSecondSelectedCell = -1;
+
+	// Apply initial shuffle swaps on harder difficulties.
+	for (int16 i = 0; i < initialSwaps; i++) {
+		int16 cellA = (int16)_vm->_rnd->getRandomNumber(0, 143);
+		int16 cellB;
+		do {
+			cellB = (int16)_vm->_rnd->getRandomNumber(0, 143);
+		} while (cellB == cellA);
+		fleensSwapCells(cellA, cellB);
+	}
+	_fleensSwapCount = 0; // reset after setup shuffle
+}
+
+void ZoombiniPuzzleFleens::fleensSwapCells(int16 cellA, int16 cellB) {
+	if (cellA < 0 || cellA >= 144 || cellB < 0 || cellB >= 144)
+		return;
+	int16 rA = cellA / 12, cA = cellA % 12;
+	int16 rB = cellB / 12, cB = cellB % 12;
+	uint8 t = _fleensGridAttr1[rA][cA]; _fleensGridAttr1[rA][cA] = _fleensGridAttr1[rB][cB]; _fleensGridAttr1[rB][cB] = t;
+	t       = _fleensGridAttr2[rA][cA]; _fleensGridAttr2[rA][cA] = _fleensGridAttr2[rB][cB]; _fleensGridAttr2[rB][cB] = t;
+	t       = _fleensGridAttr3[rA][cA]; _fleensGridAttr3[rA][cA] = _fleensGridAttr3[rB][cB]; _fleensGridAttr3[rB][cB] = t;
+}
+
+void ZoombiniPuzzleFleens::fleensProcessCellSelectClick(int16 cellRow, int16 cellCol) {
+	// IDA fleens_interactiveCellSelectLoop states:
+	//   0 = idle (waiting first click)
+	//   1 = first cell picked, highlight; waiting second click
+	//   2 = two cells picked → swap + unlock check → back to 0
+	// (states 3-6 in IDA handle animation frames; for the ScummVM port the
+	// animation is driven by the SCRB callback chain, so states 3-6 are
+	// collapsed into the immediate swap here.)
+	if (cellRow < 0 || cellRow >= 12 || cellCol < 0 || cellCol >= 12)
+		return;
+	int16 cellIdx = cellRow * 12 + cellCol;
+
+	if (_fleensCellSelectState == 0) {
+		_fleensFirstSelectedCell = cellIdx;
+		_fleensCellSelectState = 1;
+	} else if (_fleensCellSelectState == 1) {
+		if (cellIdx == _fleensFirstSelectedCell) {
+			// Clicking same cell cancels selection.
+			_fleensFirstSelectedCell = -1;
+			_fleensCellSelectState = 0;
+			return;
+		}
+		_fleensSecondSelectedCell = cellIdx;
+		fleensSwapCells(_fleensFirstSelectedCell, _fleensSecondSelectedCell);
+		_fleensSwapCount++;
+
+		_fleensFirstSelectedCell = -1;
+		_fleensSecondSelectedCell = -1;
+		_fleensCellSelectState = 0;
+
+		fleensCheckSwapUnlock();
+	}
+}
+
+void ZoombiniPuzzleFleens::fleensCheckSwapUnlock() {
+	// IDA fleens_interactiveCellSelectLoop: every `_fleensSwapUnlockThreshold`
+	// swaps, fire an unlock step. 6 unlocks triggers the final celebration.
+	if (_fleensSwapCount > 0 && (_fleensSwapCount % _fleensSwapUnlockThreshold) == 0) {
+		_fleensUnlockProgress++;
+		if (_fleensUnlockProgress == 6) {
+			// IDA fleens_countMatchesAndPlaySound: play celebration audio.
+			uint16 soundId = (uint16)_vm->_rnd->getRandomNumber(20055, 20063);
+			_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, soundId),
+				Audio::Mixer::kSFXSoundType);
+		}
 	}
 }
 
