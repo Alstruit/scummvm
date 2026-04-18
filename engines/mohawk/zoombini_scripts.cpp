@@ -319,6 +319,14 @@ void ZmbFeature::parseFrames(Common::SeekableReadStream *stream, uint16 frameCou
 	for (int32 frameIdx = 0; frameIdx < static_cast<int32>(frameCount); frameIdx++) {
 		ZmbHotspotGroup *hsGroup = new ZmbHotspotGroup(_id, frameIdx);
 		_hsFrameMap[frameIdx] = hsGroup;
+		// Every declared frame counts toward `_frameIdxMax` - matches IDA's
+		// `wScriptFrameCount = pScrsData->wGroupCount` semantics. Trailing
+		// terminator-only frames (e.g. Ferry SCRS 1900 frames 11-24 where
+		// frame 24's `ff03` carries the case-2 chain event) MUST be reached
+		// by the animation cycle; without this, `isEndOfAnimationCycle` and
+		// the snoid SCRS state machine would stop early at the last frame
+		// with shape data and the chain event would never dispatch.
+		_frameIdxMax = MAX(_frameIdxMax, frameIdx);
 
 		for (uint16 idx = 0; !stream->eos(); idx++) {
 			int16 shapeid = stream->readSint16BE();
@@ -339,7 +347,15 @@ void ZmbFeature::parseFrames(Common::SeekableReadStream *stream, uint16 frameCou
 			int16 y = stream->readSint16BE();
 			ZmbHotspot hs = ZmbHotspot(idx, shapeid, frameIdx, x, y);
 			hsGroup->appendHotspot(hs);
-			_frameIdxMax = MAX(_frameIdxMax, frameIdx);
+			// `_lastShapeFrameIdx` tracks the highest frame that contains a
+			// positive-shape hotspot. PLAY_ONCE freezes here so the captain /
+			// boat / etc. settles on a frame that actually has visible shapes
+			// rather than a trailing terminator-only frame (which would render
+			// either the previous-frame fallback at a stale anchor or nothing
+			// at all, producing the "captain stretched/distorted" freeze the
+			// reject-flight controller SCRBs leave behind).
+			if (shapeid > 0)
+				_lastShapeFrameIdx = MAX(_lastShapeFrameIdx, frameIdx);
 			totalCount += 1;
 		}
 	}
@@ -351,6 +367,7 @@ void ZmbFeature::setVirtualHotspots(const Common::Array<ZmbHotspot> &hotspots) {
 	ZmbHotspotGroup *hsGroup = new ZmbHotspotGroup(_id, 0);
 	_hsFrameMap[0] = hsGroup;
 	_frameIdxMax = 0;
+	_lastShapeFrameIdx = 0;
 	_lastFrameIdx = 0;
 	_isAnimateActivated = false;
 
@@ -379,6 +396,7 @@ void ZmbFeature::loadScrbData(Common::SeekableReadStream *stream, bool scheduleR
 	// Reset animation state (IDA: wGroupFrameIdx=0, dwHotspotIdx=1, dNextRenderFrame=0)
 	_lastFrameIdx = 0;
 	_frameIdxMax = 0;
+	_lastShapeFrameIdx = 0;
 	_lastSoundedFrameIdx = -1;
 	_nextRenderFrame = 0;
 	_frameTimingReady = true;
@@ -729,7 +747,8 @@ void ZmbSnoid::parseScrsStream(Common::SeekableReadStream *stream) {
 	delete stream;
 }
 
-void ZmbSnoid::startScrsPlayback(Common::SeekableReadStream *scrsStream, bool hideOnComplete, bool rejectState) {
+void ZmbSnoid::startScrsPlayback(Common::SeekableReadStream *scrsStream, bool hideOnComplete,
+                                  bool rejectState, const Common::Point *initPos) {
 	// Save original position for restoration when SCRS finishes
 	_scrsOrigPointLoc = getPointLoc();
 
@@ -739,18 +758,42 @@ void ZmbSnoid::startScrsPlayback(Common::SeekableReadStream *scrsStream, bool hi
 	// After parsing, shape indices are raw SCRS values; getBodyLayerBaseOffset is needed
 	_usesVirtualHotspots = false;
 
-	// IDA snoidScript_initAndPlay_455C0D: pos2 = (firstSCRS_xy - posLoc).
+	// IDA snoidScript_initAndPlay_455C0D anchor selection:
+	//   pInitPos == NULL:  anchor = first frame's first positive-shape hotspot.
+	//                      pos2 = (firstAnchor - posLoc), so frame 0 renders AT posLoc.
+	//   pInitPos != NULL:  scan groups from END (iFrameScanIdx = -1, -2, ...) for the
+	//                      LAST group with a positive-shape hotspot. Use that anchor and
+	//                      *pInitPos as the reference. pos2 = (lastAnchor - *pInitPos),
+	//                      so the SCRS animation ENDS at *pInitPos (used by Ferry reject-
+	//                      flight landing SCRS at IDA 0x41B6F9 with &dword_4AB124).
 	// During SCRS rendering, position = SCRS_xy + (-pos2) - REGS.
-	// We set _pointLoc = -pos2 = (posLoc - firstSCRS_xy), typically (0,0) for XFER_0.
-	ZmbHotspotGroup *firstFrame = getHotspotGroup(0);
-	if (firstFrame && firstFrame->getHotspotCount() > 0) {
-		Common::Array<ZmbHotspot> hotspots = firstFrame->copyHotspots();
-		// Find first hotspot with a positive shape (the anchor layer)
+	ZmbHotspotGroup *anchorFrame = nullptr;
+	Common::Point anchorRefPoint = _scrsOrigPointLoc;
+	if (initPos) {
+		anchorRefPoint = *initPos;
+		// Scan from the highest frame index downward for a frame whose first hotspot has
+		// a positive shape (matches IDA's negative-index walk via scrb_seekToFrameGroup).
+		for (int32 frameId = static_cast<int32>(getFrameCount()) - 1; 0 <= frameId; frameId--) {
+			ZmbHotspotGroup *cand = getHotspotGroupExact(frameId);
+			if (!cand || cand->getHotspotCount() == 0)
+				continue;
+			if (cand->getHotspot(0)._shapeIdx > 0) {
+				anchorFrame = cand;
+				break;
+			}
+		}
+	}
+	if (!anchorFrame) {
+		// Fallback / pInitPos==NULL path: use frame 0 first-positive-shape anchor.
+		anchorFrame = getHotspotGroup(0);
+	}
+	if (anchorFrame && anchorFrame->getHotspotCount() > 0) {
+		Common::Array<ZmbHotspot> hotspots = anchorFrame->copyHotspots();
 		for (uint32 i = 0; i < hotspots.size(); i++) {
 			if (hotspots[i]._shapeIdx > 0) {
 				setPointLoc(Common::Point(
-					_scrsOrigPointLoc.x - hotspots[i]._x,
-					_scrsOrigPointLoc.y - hotspots[i]._y));
+					anchorRefPoint.x - hotspots[i]._x,
+					anchorRefPoint.y - hotspots[i]._y));
 				break;
 			}
 		}
@@ -1434,17 +1477,28 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 	}
 
 	case kSnoidAnimScriptReject:
-	case kSnoidAnimScriptNormal:
+	case kSnoidAnimScriptNormal: {
 		// IDA: onRender_ZoombiniAnimation_452B9C advances one SCRS frame per render-timer
 		// fire (dFrameInterval=6).  When wGroupFrameIdx0098 >= wScriptFrameCount, the
 		// snoid either hides (chRand_64_0==1) or reverts to idle.
-		if (getLastFrameIdx() < getMaxFrameIdx()) {
+		//
+		// Use the SCRS-declared frame count (`getFrameCount() - 1`) as the
+		// terminal index - NOT `getMaxFrameIdx()`. After the parseFrames fix
+		// these are equal for all features, but keep the explicit cast here
+		// to express intent: IDA `wScriptFrameCount` (= pScrsData->wGroupCount)
+		// is the header count, and the snoid must traverse every declared frame
+		// so terminator-only trailing frames (Ferry SCRS 1900/1904/1906 frame
+		// 24's `ff03` carrying case 2 of `ferry_rejectFlightSCRBCallback`) get
+		// reached. preRenderFeature handles the actual event dispatch as each
+		// frame is rendered.
+		const int32 lastFrame = static_cast<int32>(getFrameCount()) - 1;
+		if (getLastFrameIdx() < lastFrame) {
 			setLastFrameIdx(getLastFrameIdx() + 1);
 			needsRedraw = true;
 		} else {
 			// SCRS animation finished.
 			// IDA: if chRand_64_0==1, hide the snoid (wBoolDoRender=0) without
-			// restoring position. Otherwise animateZoombini(0,0,...) → idle.
+			// restoring position. Otherwise animateZoombini(0,0,...) -> idle.
 			if (_scrsHideOnComplete) {
 				deactivateRender();
 				setSelectRenderFrameFunc(nullptr);
@@ -1461,6 +1515,7 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 			needsRedraw = true;
 		}
 		break;
+	}
 
 	case kSnoidAnimArrivalMotion:
 		// IDA case 10 (0x453255): calls animateZoombini_455E76(0, 7, ...) → kSnoidAnimDepart,

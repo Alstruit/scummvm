@@ -107,6 +107,7 @@ MohawkEngine_Zoombini::~MohawkEngine_Zoombini() {
 	delete _sysMhk;
 	delete _snoidShapeRegs;
 	delete _smallSnoidShapeRegs;
+	delete _snoidScriptShapeRegs;
 
 	delete _midi;
 	delete _sound;
@@ -152,6 +153,14 @@ Common::Error MohawkEngine_Zoombini::run() {
 	// IDA: sub_4572C5(0) loads these after swapping body-part tables.
 	_smallSnoidShapeRegs = new ZmbRegs();
 	_smallSnoidShapeRegs->parseStreams(this, ZmbArchiveKind::kSystem, 3200, 3201);
+
+	// Load REGS offsets for SCRS-script-rendered snoids (resource 102/103 paired
+	// with shape archive tBMP 3100). IDA `midiMpcLoad_452237` @ 0x4522BA-0x4522CB
+	// loads dword_4B7324 (= REGS 0x66 = 102) and dword_4B7328 (= REGS 0x67 = 103).
+	// Selected by `snoidScript_renderFrame_4562B2` for state 9 NORMAL playback,
+	// which is what Ferry's reject-flight (case 1's SCRS 1900-1906) needs.
+	_snoidScriptShapeRegs = new ZmbRegs();
+	_snoidScriptShapeRegs->parseStreams(this, ZmbArchiveKind::kSystem, 102, 103);
 
 	// Load a roster of game saves
 	_state->loadRoster();
@@ -599,10 +608,28 @@ Common::SeekableReadStream *MohawkEngine_Zoombini::getResource(uint32 tag, uint1
 }
 
 Common::SeekableReadStream *MohawkEngine_Zoombini::getResource(uint32 tag, ZmbResource res) {
+	// Pre-check existence so the failure message can tell the user WHICH
+	// archive was searched (kPage = current .mhk page archive, kSystem =
+	// ZOOMBINI.MHK). The Mohawk base class `error` on miss only says
+	// "Archive does not contain 'XXXX' NNNN!" without naming the archive,
+	// which makes it impossible to tell whether the caller targeted the
+	// wrong archive or the resource is genuinely missing.
+	char tagBuf[5];
+	tagBuf[0] = static_cast<char>((tag >> 24) & 0xFF);
+	tagBuf[1] = static_cast<char>((tag >> 16) & 0xFF);
+	tagBuf[2] = static_cast<char>((tag >> 8) & 0xFF);
+	tagBuf[3] = static_cast<char>(tag & 0xFF);
+	tagBuf[4] = 0;
 	switch (res._archiveKind) {
 	case ZmbArchiveKind::kSystem:
+		if (!_sysMhk->hasResource(tag, res._id))
+			error("Zoombini: resource '%s' id %u (0x%04x) not found in kSystem (ZOOMBINI.MHK)",
+			      tagBuf, res._id, res._id);
 		return _sysMhk->getResource(tag, res._id);
 	case ZmbArchiveKind::kPage:
+		if (!MohawkEngine::hasResource(tag, res._id))
+			error("Zoombini: resource '%s' id %u (0x%04x) not found in kPage (current page archive)",
+			      tagBuf, res._id, res._id);
 		return MohawkEngine::getResource(tag, res._id);
 	default:
 		error("Invalid ZmbArchiveKind: %u", static_cast<uint32>(res._archiveKind));

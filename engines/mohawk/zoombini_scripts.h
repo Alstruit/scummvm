@@ -672,6 +672,12 @@ public:
 
 	uint32 getFrameCount() { return _hsFrameMap.size(); }
 	int32 getMaxFrameIdx() { return _frameIdxMax; }
+	/** Highest frame index that contains a positive-shape hotspot.
+	 *  Used by `PLAY_ONCE` end-of-cycle to settle on a visible frame instead of
+	 *  a trailing terminator-only frame. May differ from `getMaxFrameIdx()`
+	 *  when SCRS/SCRB resources pad with empty terminator frames (e.g. Ferry
+	 *  SCRS 1900 declares 25 frames but only frames 0-10 carry shapes). */
+	int32 getLastShapeFrameIdx() const { return _lastShapeFrameIdx; }
 	int32 getLastFrameIdx() const { return _lastFrameIdx; }
 	void setLastFrameIdx(int32 idx) { _lastFrameIdx = idx; }
 	int32 defaultSelectRenderFrame(uint32 currentFrameCounter);
@@ -913,6 +919,8 @@ private:
 	// [*] Frame controls for animation
 	int32 _lastFrameIdx = 0;
 	int32 _frameIdxMax = 0;
+	/** Highest frame containing a positive-shape hotspot - see `getLastShapeFrameIdx`. */
+	int32 _lastShapeFrameIdx = 0;
 	int32 _lastSoundedFrameIdx = -1;
 	/**
 	 * IDA: dNextRenderFrame — absolute frame counter at which the next
@@ -1111,8 +1119,17 @@ public:
 	 * @param hideOnComplete  IDA chRand_64_0: when true, the snoid is hidden (render deactivated)
 	 *                        after the SCRS finishes instead of reverting to idle.
 	 * @param rejectState     True for REJECT script (state 8), false for NORMAL (state 9).
+	 * @param initPos         Optional anchor override (IDA pInitPos). When non-null, scans
+	 *                        SCRS frame groups from the end for the last group with a
+	 *                        positive-shape anchor and aligns that frame to *initPos.
+	 *                        Used by Ferry's reject-flight landing SCRS so the animation
+	 *                        ENDS at the landing target (rather than starting there).
+	 *                        IDA: snoidScript_initAndPlay_455C0D pInitPos parameter,
+	 *                        scan loop at 0x455D44-0x455DA1.
 	 */
-	void startScrsPlayback(Common::SeekableReadStream *scrsStream, bool hideOnComplete, bool rejectState = true);
+	void startScrsPlayback(Common::SeekableReadStream *scrsStream, bool hideOnComplete,
+	                       bool rejectState = true,
+	                       const Common::Point *initPos = nullptr);
 
 	/**
 	 * Clean up after SCRS playback finishes: restore pointLoc and clear the

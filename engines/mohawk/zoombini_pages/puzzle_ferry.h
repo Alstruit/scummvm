@@ -65,6 +65,17 @@ private:
 	void startRejectWalk(int16 destination);
 	void handleRejectWalkSetup();
 
+	/**
+	 * SCRB->SCRS hand-off dispatcher fired by `_boatAnimFeature`'s SCRB frame events
+	 * while the reject-flight controller SCRB (1604/1605/1606/1607) is loaded.
+	 * Mirrors the IDA `tunnels_zmbApproachGateCallback_41B50B` switch: case 4 starts
+	 * the takeoff SCRS on the rejected snoid, case 5 starts the landing SCRS aligned
+	 * to the destination, case 6 queues the next captain fidget if idle. Cases 1/2/3
+	 * (caves runner SCRB swap + zmb script play) are not yet ported because they only
+	 * affect the alternate caves entrance flow that Ferry does not invoke.
+	 */
+	void processBoatFlightEvent(int16 callbackCode);
+
 	static const Common::Point kSnoidPositions[20];
 	static const Common::Rect kDockRect;
 
@@ -112,6 +123,36 @@ private:
 
 	/** Runner ID of rejected snoid. IDA: word_4AB178 */
 	uint16 _rejectSnoidId = 0;
+
+	/**
+	 * Pointer to the snoid currently being thrown by the captain. IDA reuses
+	 * `word_4AB17A` (boat runner idx) for this purpose: `puzzleFerry_1705_1706_41BA30`
+	 * overwrites it with `word_4AB178` (the rejected snoid runner) just before loading
+	 * the reject-flight controller SCRB onto the boat. We keep the boat runner
+	 * pointer pristine in `_boatAnimFeature` and store the snoid here separately.
+	 */
+	ZmbSnoid *_rejectingSnoid = nullptr;
+
+	/**
+	 * True while a reject-flight controller SCRB (1604/1605/1606/1607) is loaded on
+	 * the boat runner. Gates the SCRB->SCRS hand-off dispatch in `onFeatureAnimEvent`
+	 * so cases 4/5/6 only fire while the flight is in progress and not for ordinary
+	 * captain reaction/fidget SCRBs (which use the same boat runner). Cleared by
+	 * `processBoatFlightEvent` case 5 (matching IDA `word_4AB17A = 0; word_4AB118 = 0`
+	 * at 0x41B716/0x41B71F) or by the boat -1 end-of-animation event.
+	 */
+	bool _rejectFlightActive = false;
+
+	/**
+	 * True after the flight controller fires case 2 (else-branch) or case 3,
+	 * meaning the snoid is now playing the secondary "land at destination"
+	 * SCRS (1901-1905, indexed by destination through `kRejectFlightSnoidScrsB`)
+	 * with `pInitPos=&_rejectWalkDest`. When the snoid's -1 fires we re-show
+	 * the snoid at the landing point and re-mark its pack slot. Without this
+	 * flag the rowboat/raft paths (case 1 only, hide-on-complete) would also
+	 * be re-shown and the rejected snoid would never sail away as IDA intends.
+	 */
+	bool _rejectFlightLandingScrsActive = false;
 
 	/** Go departure triggered. IDA: word_4AB17C */
 	bool _goButtonPressed = false;

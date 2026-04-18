@@ -58,6 +58,35 @@ const uint16 ZoombiniPuzzleFerry::kBadReactionPool[11] = {
 // IDA: word_4A0D4C — moved-from-dock reaction SCRB pool (3 entries)
 const uint16 ZoombiniPuzzleFerry::kMoveReactionPool[3] = { 1820, 1821, 1822 };
 
+// Reject-flight lookup tables, keyed by destination (0..9):
+//   0       = dock exit
+//   1..6    = rowboat seats
+//   7..9    = raft seats
+//
+// (IDA `word_4A0D58` (10 int16) lists boat SCRBs 1700-1703 for case 1's
+//  `caves_swapRunnerScrb` (0x41B463). That swap is a no-op for Ferry because
+//  the global it indexes by holds a seat number rather than a runner-table
+//  index; the boat keeps playing the controller SCRB throughout the flight.
+//  Table omitted from the port.)
+
+// IDA: word_4A0D6C (10 int16) — primary snoid SCRS loaded by case 1's
+// `tunnels_playZmbScript(1, callback, ...)` (0x41B566). Pool 0 (NORMAL state 9)
+// + chRand_64_0=1 (hide-on-complete). This is the actual flight visual: the
+// snoid plays this SCRS (with embedded position deltas) and then disappears.
+static const uint16 kRejectFlightSnoidScrsA[10] = {
+	1902, 1900, 1900, 1904, 1904, 1906, 1906, 1900, 1904, 1906
+};
+
+// IDA: word_4A0D80 (10 int16) — secondary snoid SCRS loaded by case 2's
+// `tunnels_playZmbScript(0, 0, ...)` (0x41B5CF) at SCRB 1605's later frame.
+// Pool 0 + chRand_64_0=0 (return-to-idle on complete) + pInitPos=&dword_4AB11A
+// so the SCRS lands the snoid at the destination point. Value 1907 in the
+// dest 7-9 entries triggers the raft branch instead (runner linking +
+// _departAnimPending) per IDA 0x41B581.
+static const uint16 kRejectFlightSnoidScrsB[10] = {
+	1903, 1901, 1905, 1901, 1905, 1901, 1905, 1907, 1907, 1907
+};
+
 ZoombiniPuzzleFerry::ZoombiniPuzzleFerry(MohawkEngine_Zoombini *vm) : ZoombiniPuzzle(vm, ZoombiniPageType::kFerry) {
 }
 
@@ -301,6 +330,9 @@ void ZoombiniPuzzleFerry::loadFeatures() {
 	_matchBitmask = 0;
 	_attrDisplaySnoid = 0;
 	_rejectSnoidId = 0;
+	_rejectingSnoid = nullptr;
+	_rejectFlightActive = false;
+	_rejectFlightLandingScrsActive = false;
 }
 
 void ZoombiniPuzzleFerry::onGoButtonActivated() {
@@ -664,6 +696,14 @@ void ZoombiniPuzzleFerry::startRejectWalk(int16 destination) {
 	if (_rejectSnoidId == 0)
 		return;
 
+	// IDA leaves `dword_4AB124` (= `_rejectWalkPos2`) carrying its previous
+	// value across reject branches and only reassigns it in the raft case at
+	// 0x41BB49 (`*(_DWORD *)&dword_4AB124 = dword_4AB114`). For every Ferry
+	// reject the desired SCRS-end-anchor is the snoid's saved origin (its
+	// pedestal or rowboat pickup tile), so default to that here and let the
+	// raft branch keep its identical explicit assignment for clarity.
+	_rejectWalkPos2 = _savedDragOrigin;
+
 	// IDA: Select reject walk SCRB based on destination
 	if (destination >= 10 || destination == 0) {
 		// Dock exit
@@ -707,11 +747,55 @@ void ZoombiniPuzzleFerry::startRejectWalk(int16 destination) {
 		_rejectWalkPos2 = _savedDragOrigin;
 	}
 
-	// Load reject walk SCRB onto boat runner and set approach callback
-	// IDA: scrb_loadOnRunner(1, word_4AB19E, v2)
-	if (_boatAnimFeature) {
-		loadScrbOntoFeature(_boatAnimFeature, _rejectWalkScrb);
+	// IDA `puzzleFerry_1705_1706_41BA30` @ 0x41BBB4-0x41BC2C (re-read after
+	// confirming `dwSomeFrameVal` = boat runner idx via `ferry_funcInit`
+	// 0x41A5CE-0x41A5DA where `word_4AB17A = dwSomeFrameVal`):
+	//   v2 = runner_findByIndex(dwSomeFrameVal);     // the BOAT runner (captain)
+	//   scrb_loadOnRunner(1, word_4AB19E, v2);       // load SCRB 1604/1605/1606/1607
+	//   scrb_playFrameSounds(1, dwSomeFrameVal);     // flush SND queue on boat
+	//   dword_4AB120 = 0;                            // clear path-target ptr
+	//   v2->onHotspotShapeOrFrameFunc = tunnels_zmbApproachGateCallback;
+	//   scrb_registerHotspotGroup(0, 0, 0, word_4AB17A, word_4AB148, v2->wFeatureRunnerIdx);
+	// Note `word_4AB17A` was overwritten at 0x41BA54 from `word_4AB178` to
+	// hold the SNOID runner idx for the duration of the flight; that lookup
+	// is what `tunnels_zmbApproachGateCallback` cases 4/5 use to find the
+	// snoid to load SCRS 998-1007 onto.
+	ZmbSnoid *rejectedSnoid = nullptr;
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		ZmbSnoid *s = *it;
+		if (s && s->getId() == _rejectSnoidId) {
+			rejectedSnoid = s;
+			break;
+		}
 	}
+	if (rejectedSnoid) {
+		// Reset transient flight state from any prior reject before re-arming.
+		_rejectFlightLandingScrsActive = false;
+		// IDA `ferry_startRejectFlight_41BA30` @ 0x41BB9D loads the controller
+		// SCRB (1604/1605/1606/1607) onto the boat runner and at 0x41BBB7
+		// installs `ferry_rejectFlightSCRBCallback_41B50B` on it. Per the SCRB
+		// binary dumps:
+		//   - 1604, 1606, 1607 emit only event 2 -> case 1 (snoid SCRS load,
+		//     hide-on-complete). Snoid sails away invisible.
+		//   - 1605 emits events 2 and 3 -> case 1 then case 2 (loads landing
+		//     SCRS with pInitPos for the dock-exit slide-in).
+		// ScummVM dispatches boat events through the page-level
+		// `onFeatureAnimEvent`, gated by `_rejectFlightActive`, into
+		// `processBoatFlightEvent`. The rejected snoid is tracked separately
+		// in `_rejectingSnoid` because IDA reuses `word_4AB17A` for both the
+		// boat runner idx (init time) and the snoid runner idx (here).
+		_rejectingSnoid = rejectedSnoid;
+		_rejectFlightActive = true;
+	}
+
+	// IDA loads the flight-controller SCRB (1604/1605/1606/1607) onto the
+	// boat runner AFTER the reject-reaction SCRB (1815 / 1804-1814) has
+	// finished animating. Queue it here so the next `_pendingFrogmanScrb`
+	// tick picks it up — this re-uses the existing SCRB-load pipeline and
+	// keeps the captain's animation tied to the flight-controller SCRB as
+	// the original does, which is also what drives the SCRB's SND frame
+	// events for any embedded flight-specific voice.
+	_pendingFrogmanScrb = _rejectWalkScrb;
 
 	_departAnimPending = true;
 }
@@ -756,6 +840,18 @@ void ZoombiniPuzzleFerry::handleRejectWalkSetup() {
 
 	_savedDragOrigin = kSnoidPositions[MIN<int16>(dest, 19)];
 	startRejectWalk(dest);
+
+	// IDA `puzzleFerry_1705_1706_41BA30` tail @ 0x41BC43: once the reject walk
+	// is set up on the snoid runner, `setInteractionLock_460C54(0)` fires —
+	// the interaction lock is released immediately so the player can drop
+	// another zoombini while the rejected one is still flying home. The lock
+	// only needs to hold from the drop decision until the rejection reaction
+	// SCRB has queued and the reject-walk runner is configured. Without this
+	// the lock stays true forever (there is no other path that clears it on
+	// the reject branch — the `_interactionLocked = false` at onFeatureAnim
+	// Event only fires for departure overlays, not rejection flights), so the
+	// first mis-drop permanently freezes all further zoombini interaction.
+	_interactionLocked = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -807,15 +903,51 @@ void ZoombiniPuzzleFerry::onEveryFrame() {
 
 	// -----------------------------------------------------------------------
 	// [1] Pending frogman SCRB animation
-	// IDA: word_4AB128 branch
+	// IDA: word_4AB128 branch.
+	//
+	// IDA dispatches the queued SCRB unconditionally each frame, but in the
+	// original engine voice SFX from a previous SCRB are flushed in lock-step
+	// with frame advancement - the audio mixer there had implicit "one voice
+	// channel per runner" exclusivity. ScummVM's mixer treats every voice as
+	// an independent SFX, so loading three captain SCRBs across three ticks
+	// (move pickup -> reaction -> next pickup) stacks three overlapping
+	// voices and visually snaps the captain mid-pose.
+	//
+	// Gate the dispatch on `_frogmanHotspotGroup == 0` (= captain idle, same
+	// flag IDA's reject-walk and fidget branches already poll). The queued
+	// SCRB sits in `_pendingFrogmanScrb` until the current animation ends
+	// and `onFeatureAnimEvent` clears the busy flag. New user actions just
+	// overwrite the queue slot - matching the IDA single-slot behavior - so
+	// the most recent reaction wins, but every reaction plays through its
+	// full SCRB cycle without overlap.
 	// -----------------------------------------------------------------------
-	if (_pendingFrogmanScrb != 0) {
-		debugC(2, kZmbDebugAnimation, "Ferry: loading frogman SCRB %d", _pendingFrogmanScrb);
+	if (_pendingFrogmanScrb != 0 && _frogmanHotspotGroup == 0) {
+		debug("[FERRY] load frogman SCRB %u (prev hsGrp=%u flight=%d)",
+		      _pendingFrogmanScrb, _frogmanHotspotGroup,
+		      static_cast<int>(_rejectFlightActive));
 		uint16 scrb = _pendingFrogmanScrb;
 		_pendingFrogmanScrb = 0;
 
 		if (_boatAnimFeature) {
+			// IDA `ferry_funcOnHover` @ 0x41ABC0:
+			//   scrb_initRunnerWithScript(0, 0, v1, dwSomeFrameVal);  // load SCRB onto boat runner
+			//   scrb_playFrameSounds(1, dwSomeFrameVal);              // force-flush embedded SND events
+			//   word_4AB19A = scrb_registerHotspotGroup(...);         // mark "frogman busy"
+			// The SCRB's voice SFX is a frame-event SND reference; IDA enqueues
+			// it immediately on load. The boat runner was registered with
+			// FLAG_00080000_DEFER_ANIM so that it stays silent until a reaction
+			// is requested; `loadScrbOntoFeature` alone replaces the data but
+			// leaves the DEFER_ANIM / idle-animate state, so the first frame's
+			// sound queue never fires. Activate animate + render explicitly so
+			// the natural frame tick drains the SCRB's sound queue.
 			loadScrbOntoFeature(_boatAnimFeature, scrb);
+			_boatAnimFeature->activateAnimate();
+			_boatAnimFeature->activateRender();
+			// Mark frogman as mid-reaction — cleared on anim-end in
+			// onFeatureAnimEvent. Reject-walk setup and fidget gating both
+			// poll this flag so they can wait for the voice/animation to
+			// finish before proceeding.
+			_frogmanHotspotGroup = scrb;
 		}
 	}
 	// -----------------------------------------------------------------------
@@ -842,18 +974,30 @@ void ZoombiniPuzzleFerry::onEveryFrame() {
 	// IDA: word_4AB12A branch — waits for frogman animation to complete
 	// -----------------------------------------------------------------------
 	else if (_rejectWalkPending) {
-		debugC(2, kZmbDebugAnimation, "Ferry: reject walk pending, waiting for frogman anim");
-		// IDA: Wait for frogman hotspot group to clear before starting reject walk
-		// Check if frogman animation is no longer playing
-		if (_boatAnimFeature && !_boatAnimFeature->isAnimateActivated()) {
+		// IDA `ferry_funcOnHover` @ 0x41AD2F: `if (!hotspot_ownerRunnerArr
+		// [word_4AB19A])` — wait until the frogman's hotspot group has
+		// cleared (= reaction animation finished). The end-of-cycle fires
+		// `kZmbAnimEventM1_End` on `_boatAnimFeature` which zeroes
+		// `_frogmanHotspotGroup` in `onFeatureAnimEvent`. Polling
+		// `isAnimateActivated()` here was the wrong gate: after the Voice
+		// SFX fix activates animate unconditionally on SCRB load, that flag
+		// stayed true forever and `handleRejectWalkSetup` was never called
+		// — which in turn never cleared `_interactionLocked`.
+		if (_frogmanHotspotGroup == 0) {
 			handleRejectWalkSetup();
 		}
 	}
 	// -----------------------------------------------------------------------
 	// [4] Idle fidget timer
 	// IDA: getElapsedFrameTime > dword_4AB10C branch
+	// IDA `ferry_funcOnHover` gates every reaction/fidget branch on
+	// `!hotspot_ownerRunnerArr[word_4AB19A]` — i.e. the frogman is idle.
+	// `_frogmanHotspotGroup` mirrors that flag (set on SCRB load, cleared on
+	// kZmbAnimEventM1_End). Without this gate the fidget timer kept
+	// scheduling new SCRBs over an already-playing captain reaction, which
+	// is what produced the overlapping voice SFX.
 	// -----------------------------------------------------------------------
-	else if (_currentFrameTime > _nextFidgetTime) {
+	else if (_frogmanHotspotGroup == 0 && _currentFrameTime > _nextFidgetTime) {
 		// Select random fidget SCRB
 		// IDA: word_4A0D08[e2GetPoolValue_nonRepeatRandom(0, 5, &dword_4A0D14)]
 		uint16 idx = _vm->_rnd->getNonRepeatRandom(5, _fidgetRandomState);
@@ -910,15 +1054,26 @@ ZmbEventHandleResult ZoombiniPuzzleFerry::onLButtonDown(const Common::Point &abs
 		return result;
 
 	// Guard: don't allow dragging during interaction lock or departure
-	if (_interactionLocked || _goButtonPressed)
+	if (_interactionLocked || _goButtonPressed) {
+		debug("[FERRY] click blocked: interactionLocked=%d goButtonPressed=%d "
+		      "rejectWalkPending=%d rejectingSnoid=%p flightActive=%d landingActive=%d",
+		      static_cast<int>(_interactionLocked),
+		      static_cast<int>(_goButtonPressed),
+		      static_cast<int>(_rejectWalkPending),
+		      static_cast<void *>(_rejectingSnoid),
+		      static_cast<int>(_rejectFlightActive),
+		      static_cast<int>(_rejectFlightLandingScrsActive));
 		return ZmbEventHandleResult::kPassthrough;
+	}
 	if (isDragging())
 		return ZmbEventHandleResult::kPassthrough;
 
 	// Find snoid at click position
 	ZmbSnoid *snoid = findSnoidAtPoint(absPos);
-	if (!snoid)
+	if (!snoid) {
+		debug("[FERRY] click at (%d,%d): no snoid found", absPos.x, absPos.y);
 		return ZmbEventHandleResult::kPassthrough;
+	}
 
 	// Guard: can't drag during reject walk or departure
 	if (_departAnimDone || _goButtonPressed)
@@ -931,12 +1086,15 @@ ZmbEventHandleResult ZoombiniPuzzleFerry::onLButtonDown(const Common::Point &abs
 	// Begin drag
 	startSnoidDrag(snoid, absPos);
 
-	// Play move SFX: pick from kMoveReactionPool if in dock area
-	// IDA: click_testZoneRadius(posLoc) check
-	if (!_pendingFrogmanScrb && kDockRect.contains(_savedDragOrigin.x, _savedDragOrigin.y)) {
-		uint16 idx = _vm->_rnd->getNonRepeatRandom(3, _moveReactionRandomState);
-		_pendingFrogmanScrb = kMoveReactionPool[idx];
-	}
+	// IDA `ferry_funcOnClick_41AE20` (0x41AE20) does NOT queue a captain
+	// reaction on pickup. The move-reaction pool (`ferry_moveReactionScrbTable`
+	// = SCRB 1820/1821/1822) only fires from the non-seat-drop branch at
+	// 0x41B300-0x41B323 (`if (!word_4AB128 && click_testZoneRadius(posLoc))`).
+	// Earlier ScummVM revisions queued it on every dock pickup, which produced
+	// an extra captain voice before legitimate reactions (welcome, good, bad)
+	// and made the first-snoid welcome (SCRB 1816) sound like the wrong voice
+	// because a pickup grunt always preceded it. The non-seat drop path in
+	// `endDrag` already queues the move SCRB for IDA-equivalent terrain drops.
 
 	return ZmbEventHandleResult::kConsumed;
 }
@@ -1018,6 +1176,15 @@ void ZoombiniPuzzleFerry::endDrag(const Common::Point &mousePos) {
 			_successThreshold = 1;
 			_interactionLocked = true;
 
+			// IDA ferry_funcOnClick @ 0x41B1E9 calls `clearPendingRunnerSlot_
+			// 45354C` which zeroes `scrb_drawOnRegFlagArr[word_4B7318]` —
+			// i.e. undoes the optimistic seat occupancy written by
+			// `beginDragFeatureRunner` when the cursor was released over a
+			// seat. Without this the rejected snoid's target seat is marked
+			// occupied by that snoid even though it flies back to its
+			// pedestal, permanently blocking that seat.
+			clearDrawOnRegOccupant(_dropTargetSeat);
+
 			// Mark snoid for rejection
 			snoid->_packIsOccupied = false;
 			_rejectSnoidId = snoid->getId();
@@ -1049,8 +1216,11 @@ void ZoombiniPuzzleFerry::endDrag(const Common::Point &mousePos) {
 			snoid->setupIdleHotspots();
 		}
 
-		// IDA: if !word_4AB128 && click_testZoneRadius(posLoc)
-		if (!_pendingFrogmanScrb && kDockRect.contains(snoidPos.x, snoidPos.y)) {
+		// IDA: if !word_4AB128 && click_testZoneRadius(posLoc), additionally
+		// gated on frogman-idle (`!hotspot_ownerRunnerArr[word_4AB19A]`) so
+		// the dock-drop voice does not overlap a still-playing reaction.
+		if (!_pendingFrogmanScrb && _frogmanHotspotGroup == 0 &&
+		    kDockRect.contains(snoidPos.x, snoidPos.y)) {
 			uint16 idx = _vm->_rnd->getNonRepeatRandom(3, _moveReactionRandomState);
 			_pendingFrogmanScrb = kMoveReactionPool[idx];
 		}
@@ -1066,14 +1236,40 @@ void ZoombiniPuzzleFerry::endDrag(const Common::Point &mousePos) {
 
 // ---------------------------------------------------------------------------
 // onFeatureAnimEvent: Animation event callback.
-// IDA: dispatched via hotspot group callbacks
+// IDA: dispatched via per-runner hotspot/frame callbacks. Ferry installs
+// `tunnels_zmbApproachGateCallback` on the boat runner during reject flight
+// (see `puzzleFerry_1705_1706_41BA30` 0x41BBB7); ScummVM's page-level
+// dispatcher routes those events into `processBoatFlightEvent`.
 // ---------------------------------------------------------------------------
 void ZoombiniPuzzleFerry::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
 	if (feature == _boatAnimFeature) {
+		debug("[FERRY] boat event=%d hsGrp=%u flight=%d",
+		      eventCode, _frogmanHotspotGroup, static_cast<int>(_rejectFlightActive));
+		if (_rejectFlightActive && eventCode != kZmbAnimEventM1_End) {
+			// Boat is currently running the reject-flight controller SCRB
+			// (1604/1605/1606/1607). Route mid-frame event codes 1..6 into
+			// the SCRB->SCRS hand-off (IDA tunnels_zmbApproachGateCallback).
+			processBoatFlightEvent(eventCode);
+			return;
+		}
 		// Frogman/boat animation completed
 		if (eventCode == kZmbAnimEventM1_End) {
 			// IDA: End of SCRB chain — frogman returns to idle
 			_frogmanHotspotGroup = 0;
+			// Reject-flight controller SCRB ran to completion. If a snoid is
+			// still flagged as in-flight at this point and no landing SCRS is
+			// playing, this is the rowboat/raft "true sail-away" case (case 2
+			// never fired or the raft branch hid the snoid permanently). Clear
+			// the in-flight pointer and release locks - otherwise the puzzle
+			// stays frozen because no later event will fire to clean up.
+			if (_rejectFlightActive && _rejectingSnoid &&
+			    !_rejectFlightLandingScrsActive) {
+				debug("[FERRY] controller SCRB done with no landing -> sail-away cleanup");
+				_rejectingSnoid = nullptr;
+				_interactionLocked = false;
+				_rejectWalkPending = false;
+			}
+			_rejectFlightActive = false;
 		}
 	} else if (feature == _departOverlayFeature || feature == _departRunnerA || feature == _departRunnerB) {
 		// Departure overlay completed
@@ -1084,11 +1280,223 @@ void ZoombiniPuzzleFerry::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCod
 	} else if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 		// Snoid animation event
 		ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
-		if (eventCode == kZmbAnimEventM1_End) {
-			// SCRS playback completed — return snoid to idle
-			snoid->setAnimState(kSnoidAnimIdle);
-			snoid->setupIdleHotspots();
+		// IDA installs the same `ferry_rejectFlightSCRBCallback_41B50B` on
+		// the rejected snoid runner via `tunnels_playZmbScript` (case 1's
+		// scriptData=callback arg, 0x41B566). The snoid's SCRS terminator
+		// events (e.g. SCRS 1900/1902/1904/1906 ending with raw byte 3 ->
+		// adjusted code 2) therefore feed into the same dispatcher. ScummVM's
+		// page-level dispatch needs to forward those events so case 2 fires
+		// and loads the landing SCRS for visible touchdown.
+		if (snoid == _rejectingSnoid && eventCode >= 0 && eventCode <= 6) {
+			processBoatFlightEvent(eventCode);
+			return;
 		}
+		if (eventCode == kZmbAnimEventM1_End) {
+			if (snoid == _rejectingSnoid) {
+				if (_rejectFlightLandingScrsActive) {
+					// Case 2 (non-raft) or case 3 finished: snoid is at the
+					// landing destination via SCRS pInitPos alignment. Re-show
+					// it (case 1's hide-on-complete may have deactivated render
+					// before the landing SCRS started), settle its position,
+					// and re-mark the pack slot so the player can drag it again.
+					debug("[FERRY] landing SCRS done -> land at (%d,%d)",
+					      _rejectWalkDest.x, _rejectWalkDest.y);
+					snoid->setPointLoc(_rejectWalkDest);
+					snoid->setFacingLeft(false);
+					snoid->setAnimState(kSnoidAnimIdle);
+					snoid->setupIdleHotspots();
+					snoid->activateRender();
+					snoid->_packIsOccupied = true;
+					_rejectingSnoid = nullptr;
+					_rejectFlightLandingScrsActive = false;
+					// Defensive: ensure no stale lock blocks the player from
+					// picking up a new snoid after a successful return-to-pedestal.
+					_interactionLocked = false;
+					_rejectWalkPending = false;
+				} else {
+					// Case 1's flight SCRS A finished with hide-on-complete
+					// active. Three possibilities:
+					//   (a) Rowboat / raft: case 2 was never going to fire
+					//       (their SCRBs only emit case 1). Captain controller
+					//       SCRB will run to its -1 and we finish the flight
+					//       there.
+					//   (b) Dock (SCRB 1605): case 2 fires LATER from the boat
+					//       to load the visible-landing SCRS B. SCRS A is
+					//       always shorter than the gap between case 1 and
+					//       case 2 (SCRS 1902 has 7 frames vs ~16 boat frames),
+					//       so snoid -1 fires while the controller still has
+					//       case 2 pending.
+					// In both cases keep `_rejectingSnoid` valid - just leave
+					// the snoid hidden and let the boat-side handler decide
+					// the final outcome. Clearing the pointer here would let
+					// case 2 (b) early-return with no snoid to land, leaving
+					// `_interactionLocked` stuck and the puzzle frozen.
+					debug("[FERRY] flight SCRS A done, snoid hidden (waiting for boat)");
+				}
+			} else {
+				snoid->setAnimState(kSnoidAnimIdle);
+				snoid->setupIdleHotspots();
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// processBoatFlightEvent: SCRB->SCRS hand-off dispatcher fired by the boat
+// runner while the reject-flight controller SCRB (1604/1605/1606/1607) is
+// loaded.
+//
+// Verified via SCRB binary dumps under
+// `AGENTS/Z1-RESOURCE/Z1-11K-DUMP/FERRY/SCRB/{1604..1607}.bin`:
+//   SCRB 1604, 1606, 1607: emit raw byte 2 only       -> case 1
+//   SCRB 1605            : emits raw bytes 2 and 3    -> case 1, then case 2
+// (no SCRB in the Ferry pool emits raw bytes 5/6/7, so cases 4/5/6 in the
+// IDA `ferry_rejectFlightSCRBCallback_41B50B` switch are caves-only branches
+// and are not invoked here).
+//
+// IDA switch (0x41B51C):
+//   case 1 @ 0x41B53F : caves_swapRunnerScrb() then tunnels_playZmbScript(
+//                       1=hideOnComplete, callback, kRejectFlightSnoidScrsA[dest],
+//                       endFrame). Loads SCRB 1700-1703 onto the boat (the
+//                       actual rowboat/raft animation) and SCRS 1900-1906 onto
+//                       the snoid (the snoid's flight visual; pool 0 -> NORMAL
+//                       state 9). The snoid hides on completion.
+//   case 2 @ 0x41B57F : if kRejectFlightSnoidScrsB[dest] == 1907 -> raft path:
+//                         link runners, set ferry_departAnimPending = 1.
+//                       else -> ferry_zmbScript_pInitPos = &ferry_rejectFlightDest
+//                         then tunnels_playZmbScript(0=return-to-idle, NULL,
+//                         kRejectFlightSnoidScrsB[dest], endFrame), then clear
+//                         interaction lock. The pInitPos override aligns the
+//                         SCRS end-anchor to the dock destination (122,164).
+//   case 3 @ 0x41B5EE : ferry_zmbScript_pInitPos = &ferry_rejectFlightDest then
+//                       tunnels_playZmbScript(1=hide, NULL,
+//                       kRejectFlightSnoidScrsB[dest], endFrame). Same as
+//                       case 2's else-branch but hides on complete.
+//   case 6 @ 0x41B630 : if (!ferry_pendingFrogmanScrb) refill from fidget pool.
+// ---------------------------------------------------------------------------
+void ZoombiniPuzzleFerry::processBoatFlightEvent(int16 callbackCode) {
+	int16 dest = _rejectDestination;
+	if (dest < 0 || dest >= 10) {
+		// IDA `ferry_startRejectFlight_41BA30` clamps dest to 0 when >= 10
+		// (0x41BA67) before storing into `ferry_rejectDestination`. Mirror that
+		// safety here so the lookup tables stay in bounds.
+		dest = 0;
+	}
+	debug("[FERRY] flight event code=%d dest=%d snoid=%p foot=%u scrsA=%u scrsB=%u",
+	      callbackCode, dest, static_cast<void *>(_rejectingSnoid),
+	      _rejectingSnoid ? _rejectingSnoid->_trait._foot : 0,
+	      kRejectFlightSnoidScrsA[dest], kRejectFlightSnoidScrsB[dest]);
+
+	switch (callbackCode) {
+	case 1: {
+		// IDA case 1 @ 0x41B53F: load the snoid's primary flight SCRS.
+		//
+		// IDA also calls `caves_swapRunnerScrb` (0x41B463) which would load
+		// `kRejectFlightBoatSwapScrb[dest]` (1700-1703) onto the runner indexed
+		// by `word_4AB148`. In Ferry that global holds the dropped-on SEAT
+		// INDEX (1-based, set in ferry_onClickHandler @ 0x41B020), NOT a
+		// runner-table index. `runner_findByIndex(seat_idx)` therefore returns
+		// either NULL or some unrelated low-ID runner (landscape, boat-approach
+		// etc.), so `caves_swapRunnerScrb` is effectively a no-op here. The
+		// boat keeps playing the controller SCRB 1604/1605/1606/1607, which
+		// embeds the captain's throw animation, and the snoid's flight is
+		// driven solely by the SCRS loaded below.
+		if (!_rejectingSnoid)
+			break;
+		uint16 scrsA = kRejectFlightSnoidScrsA[dest];
+		debug("[FERRY] case 1: load snoid SCRS %u (hide-on-complete)", scrsA);
+		Common::SeekableReadStream *scrsStream = _vm->getResource(
+			MKTAG('S', 'C', 'R', 'S'),
+			ZmbResource(ZmbArchiveKind::kPage, scrsA));
+		if (scrsStream) {
+			// IDA `tunnels_playZmbScript(1, callback, scrsId, endFrame)`:
+			//   - chIsFacingLeft=1 -> chRand_64_0=1 (hide on complete)
+			//   - pInitPos=NULL  -> first-frame anchor (snoid starts at SCRS
+			//                       init pos defined inside the SCRS itself,
+			//                       e.g. init_x=16/init_y=235 for SCRS 1900)
+			//   - SCRS 1900-1906 belong to pool 0 -> NORMAL state 9
+			_rejectingSnoid->startScrsPlayback(scrsStream, true /* hideOnComplete */,
+			                                   false /* rejectState=NORMAL */);
+		} else {
+			warning("Ferry: primary flight SCRS %u not found", scrsA);
+		}
+		break;
+	}
+	case 2: {
+		// IDA case 2 @ 0x41B57F: raft vs landing-SCRS branch.
+		uint16 scrsB = kRejectFlightSnoidScrsB[dest];
+		debug("[FERRY] case 2: load snoid SCRS %u (return-to-idle, pInitPos=dest)",
+		      scrsB);
+		if (scrsB == 1907) {
+			// IDA raft branch @ 0x41B581: runner_linkRelativeToParent(
+			//   word_4AB144, 0, word_4AB17A); word_4AB12C = 1.
+			// Activates the raft-departure overlay (the secondary 1705/1706
+			// runners allocated by `startRejectWalk` for raft destinations)
+			// instead of loading another snoid SCRS. The snoid stays hidden
+			// from case 1.
+			_departAnimPending = true;
+			_interactionLocked = false;
+			break;
+		}
+		if (!_rejectingSnoid)
+			break;
+		Common::SeekableReadStream *scrsStream = _vm->getResource(
+			MKTAG('S', 'C', 'R', 'S'),
+			ZmbResource(ZmbArchiveKind::kPage, scrsB));
+		if (scrsStream) {
+			// IDA `tunnels_playZmbScript(0, 0, scrsId, endFrame)` with
+			// `ferry_zmbScript_pInitPos = &ferry_rejectFlightDest`:
+			//   - chIsFacingLeft=0 -> chRand_64_0=0 (return-to-idle on complete)
+			//   - pInitPos=&ferry_rejectFlightDest -> SCRS end-anchor aligned to
+			//     the destination point (dock = 122,164; rowboat = saved origin).
+			//   - SCRS 1901-1907 are in pool 0 -> NORMAL state 9.
+			_rejectingSnoid->startScrsPlayback(scrsStream, false /* hideOnComplete */,
+			                                   false /* rejectState=NORMAL */,
+			                                   &_rejectWalkDest);
+			_rejectingSnoid->activateRender();  // case 1 may have hidden the snoid
+			_rejectFlightLandingScrsActive = true;
+		} else {
+			warning("Ferry: secondary flight SCRS %u not found", scrsB);
+		}
+		// IDA 0x41B5DB: word_4AB118 = 0 (clear interaction lock).
+		_interactionLocked = false;
+		break;
+	}
+	case 3: {
+		// IDA case 3 @ 0x41B5EE: same SCRS pool as case 2 but hide on complete.
+		uint16 scrsB = kRejectFlightSnoidScrsB[dest];
+		debug("[FERRY] case 3: load snoid SCRS %u (hide, pInitPos=dest)", scrsB);
+		if (!_rejectingSnoid || scrsB == 1907)
+			break;
+		Common::SeekableReadStream *scrsStream = _vm->getResource(
+			MKTAG('S', 'C', 'R', 'S'),
+			ZmbResource(ZmbArchiveKind::kPage, scrsB));
+		if (scrsStream) {
+			_rejectingSnoid->startScrsPlayback(scrsStream, true /* hideOnComplete */,
+			                                   false /* rejectState=NORMAL */,
+			                                   &_rejectWalkDest);
+			_rejectingSnoid->activateRender();  // ensure visible during landing arc
+			// Case 3 hides on complete (matches its IDA chIsFacingLeft=1 arg)
+			// so don't set the landing flag — the snoid finishes hidden, same
+			// as case 1.
+		} else {
+			warning("Ferry: tertiary flight SCRS %u not found", scrsB);
+		}
+		break;
+	}
+	case 6: {
+		// IDA case 6 @ 0x41B630: top up the captain fidget pool when empty.
+		if (_pendingFrogmanScrb == 0) {
+			uint16 idx = _vm->_rnd->getNonRepeatRandom(5, _fidgetRandomState);
+			_pendingFrogmanScrb = kFidgetScrbPool[idx];
+		}
+		break;
+	}
+	default:
+		// Cases 4 and 5 are caves-entrance-only (takeoff/landing of the gate
+		// approach SCRS 998-1009 used by Caves Stone Cold) and are not emitted
+		// by Ferry SCRBs 1604/1605/1606/1607.
+		break;
 	}
 }
 

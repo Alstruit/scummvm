@@ -933,9 +933,13 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 				// shapes, so features without that flag stay frozen on their
 				// last frame.  In ScummVM, blitShapes looks up hotspot data
 				// by _lastFrameIdx, which is currently past _frameIdxMax
-				// (end-of-cycle signal).  Reset it to _frameIdxMax so that
-				// blitShapes can find valid hotspot data for the frozen frame.
-				feature->setLastFrameIdx(feature->getMaxFrameIdx());
+				// (end-of-cycle signal).  Reset it to the highest frame that
+				// actually carries positive-shape hotspots so the frozen pose
+				// renders the last visible captain/boat frame instead of a
+				// trailing terminator-only frame (which would leave the SCRB
+				// frozen at a stretched/distorted phantom layout - the
+				// "captain still broken" symptom on Ferry).
+				feature->setLastFrameIdx(feature->getLastShapeFrameIdx());
 				// IDA 0x461CE9–0x461D06: callback fires and RETURNS EARLY
 				// only if CHAIN_SCRIPT did NOT run (v5=1).
 				// One-shot: onHotspotShapeOrFrameFunc cleared to 0 after firing.
@@ -954,9 +958,29 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 					return;
 				}
 			} else if (!didChainScript) {
-				// IDA 0x461D0B: neither CHAIN_SCRIPT nor PLAY_ONCE → loop from beginning
-				feature->setLastFrameIdx(0);
-				feature->setLastSoundedFrameIdx(-1);
+				// IDA 0x461D0B: neither CHAIN_SCRIPT nor PLAY_ONCE → loop from beginning.
+				// EXCEPT for snoids in SCRS playback states 8/9 — those manage
+				// their own frame lifecycle in `ZmbSnoid::onSnoidAnimTick`
+				// (zoombini_scripts.cpp), which advances through `getFrameCount() - 1`
+				// (matching IDA `wScriptFrameCount`) and dispatches the end-of-script
+				// path itself. If we let preRenderFeature reset _lastFrameIdx to 0
+				// here, the snoid would loop forever between 0..maxFrameIdx (last
+				// frame WITH shape data) and never reach the trailing terminator-only
+				// frames that carry the `ferry_rejectFlightSCRBCallback_41B50B`
+				// case-2 chain event (e.g. SCRS 1900/1904/1906 frame 24's `ff03`).
+				if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+					const ZmbSnoid *snoid = static_cast<const ZmbSnoid *>(feature);
+					SnoidAnimState st = snoid->getAnimState();
+					if (st == kSnoidAnimScriptReject || st == kSnoidAnimScriptNormal) {
+						// Snoid SCRS state machine owns lifecycle: skip reset.
+					} else {
+						feature->setLastFrameIdx(0);
+						feature->setLastSoundedFrameIdx(-1);
+					}
+				} else {
+					feature->setLastFrameIdx(0);
+					feature->setLastSoundedFrameIdx(-1);
+				}
 			}
 
 			// Sub-feature detach (ScummVM-only: for sub-features running independently)
@@ -1114,6 +1138,19 @@ ZmbRenderResult ZoombiniPage::blitShapes(ZmbFeature *feature) {
 			hs._y += posDelta.y;
 		}
 
+		// IDA `snoidScript_renderFrame_4562B2` selects DIFFERENT shape pool +
+		// REGS for state 9 NORMAL playback (= ScummVM `kSnoidAnimScriptNormal`):
+		//   state 9 NORMAL : tBMP 3100 + REGS 102/103 (`dword_4B7324/4B7328`)
+		//   else (state 8 reject / idle / walk / drag / fidget):
+		//                    tBMP 3000 + REGS 100/101 (`dword_4B731C/4B7320`)
+		// Pack snoids are registered with `feature->getResource()` = tBMP 3000,
+		// so we override the resource here for state-9-NORMAL renders. Required
+		// for Ferry's reject-flight where SCRS 1900-1906 are drawn against the
+		// dedicated "in-flight" body-part sprite pool — without this override,
+		// shape indices computed from the NORMAL trait tables (kNormalFootTable
+		// etc.) point into the wrong tBMP and the snoid renders with garbled
+		// body parts.
+		ZmbResource snoidShapeRes = feature->getResource();
 		if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 			const ZmbSnoid *snoid = static_cast<const ZmbSnoid *>(feature);
 			hs._x += snoid->getPointLoc().x;
@@ -1128,7 +1165,17 @@ ZmbRenderResult ZoombiniPage::blitShapes(ZmbFeature *feature) {
 					else
 						hs._shapeIdx = 2 * hs._shapeIdx - 1;
 
-					ZmbRegs *activeRegs = snoid->_useSmallShapeRegs ? _vm->_smallSnoidShapeRegs : _vm->_snoidShapeRegs;
+					ZmbRegs *activeRegs;
+					if (snoid->getAnimState() == kSnoidAnimScriptNormal &&
+					    !snoid->_useSmallShapeRegs) {
+						// State 9 NORMAL: pair with tBMP 3100 + REGS 102/103.
+						activeRegs = _vm->_snoidScriptShapeRegs;
+						snoidShapeRes = ZmbResource(ZmbArchiveKind::kSystem, 3100);
+					} else if (snoid->_useSmallShapeRegs) {
+						activeRegs = _vm->_smallSnoidShapeRegs;
+					} else {
+						activeRegs = _vm->_snoidShapeRegs;
+					}
 					if (activeRegs) {
 						const Common::Point delta = activeRegs->getShapeDelta(hs._shapeIdx);
 						hs._x -= delta.x;
@@ -1142,13 +1189,13 @@ ZmbRenderResult ZoombiniPage::blitShapes(ZmbFeature *feature) {
 			// This happens with small snoids (resource 3200) whose walk frame
 			// shapes combined with trait bases can exceed the 568-entry limit.
 			if (hs._shapeIdx > 0 &&
-			    static_cast<uint32>(hs._shapeIdx) > _vm->_gfx->getShapeCount(feature->getResource())) {
+			    static_cast<uint32>(hs._shapeIdx) > _vm->_gfx->getShapeCount(snoidShapeRes)) {
 				continue;
 			}
 		}
 
 		bool clearBeforeRender = false;
-		const Common::Rect &drawnRect = _vm->_gfx->drawShape(screenKind, feature->getResource(), &hs, clearBeforeRender);
+		const Common::Rect &drawnRect = _vm->_gfx->drawShape(screenKind, snoidShapeRes, &hs, clearBeforeRender);
 
 		feature->setDrawRecord(hsGroup, hs, drawnRect);
 

@@ -83,6 +83,20 @@ public:
 	 */
 	ZmbRegs *_smallSnoidShapeRegs = nullptr;
 
+	/**
+	 * Registration-point offsets for SCRS-script-rendered snoid shapes
+	 * (tBMP 3100 / 0xC1C in ZOOMBINI.MHK).
+	 * Loaded once at startup from REGS 102+103 in ZOOMBINI.MHK.
+	 * Mirrors IDA's `dword_4B7324` / `dword_4B7328` (set in `midiMpcLoad_452237`
+	 * @ 0x4522BA-0x4522CB). Selected by `snoidScript_renderFrame_4562B2` for
+	 * snoids in `SNOID_ANIMATE_STATE_009_NORMAL_SCRIPT` (= ScummVM's
+	 * `kSnoidAnimScriptNormal`). Pairs with shape archive tBMP 3100 instead of
+	 * the idle/state-8/state-9-15-layer tBMP 3000 — required for Ferry's
+	 * reject-flight visual where the snoid plays SCRS 1900-1906 with
+	 * body-part shapes drawn from a different sprite pool.
+	 */
+	ZmbRegs *_snoidScriptShapeRegs = nullptr;
+
 	static constexpr uint32 kAnimateFrameRate = 60;
 	static constexpr double kAnimateFrameTimeMs = 1000.0 / kAnimateFrameRate;
 	/**
