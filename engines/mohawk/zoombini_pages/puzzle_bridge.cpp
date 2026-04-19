@@ -359,6 +359,28 @@ void ZoombiniPuzzleBridge::debugPrepareForDeparture() {
 	_anyZmbCrossed = 1;
 }
 
+Common::String ZoombiniPuzzleBridge::debugGetAnswer() const {
+	static const char *kAttrTypeNames[] = {"", "hair", "eyes", "nose", "legs"};
+
+	Common::String s = Common::String::format("Bridge (level %d): reqAttrCount=%d, laneSwap=%d\n",
+		_difficultyLevel, _reqAttrCount, _bRandomLaneSwap);
+	static const ZmbTrait::TraitCategory kAttrTypeToCategory[] = {
+		ZmbTrait::kTraitHair,
+		ZmbTrait::kTraitHair,
+		ZmbTrait::kTraitEyes,
+		ZmbTrait::kTraitNose,
+		ZmbTrait::kTraitFeet
+	};
+	for (int i = 0; i < _reqAttrCount && i < 5; i++) {
+		uint8 t = _reqAttrTypes[i];
+		uint8 v = _reqAttrValues[i];
+		ZmbTrait::TraitCategory category = (1 <= t && t <= 4) ? kAttrTypeToCategory[t] : ZmbTrait::kTraitHair;
+		const char *name = (1 <= t && t <= 4) ? kAttrTypeNames[t] : "?";
+		s += Common::String::format("  lane %d: %s=%d (%s)\n", i, name, v, ZmbTrait::debugTraitValueName(category, v));
+	}
+	return s;
+}
+
 void ZoombiniPuzzleBridge::onGoButtonActivated() {	// IDA: bridge_funcOnClick_4157EB case 2
 	// Play departing SFX and start walk-off animation, then fade out when SFX finishes.
 	if (_anyZmbCrossed) {

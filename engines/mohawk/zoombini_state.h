@@ -22,9 +22,9 @@
 #ifndef ZOOMBINI_STATE_H
 #define ZOOMBINI_STATE_H
 
+#include "common/file.h"
 #include "common/rect.h"
 #include "common/savefile.h"
-#include "common/file.h"
 #include "common/str.h"
 #include "engines/savestate.h"
 
@@ -135,36 +135,125 @@ struct ZmbTrait {
 	static constexpr int16 SNOID_MAX = 625; // 5^4 combinations
 	static constexpr byte TRAIT_NONE = 0;
 
-	/***
-	 * 0 means no trait, and 1 ~ 5 are the valid trait values.
+	/**
+	 * Hair trait (1-5 valid, 0 = none).
+	 */
+	enum HairKind : byte {
+		/**
+		 * @remark Male voice SFX
+		 */
+		kHairSpiked = 1,
+		/**
+		 * @remark Female voice SFX
+		 */
+		kHairPonytail = 2,
+		/**
+		 * @remark Male voice SFX
+		 */
+		kHairStraight = 3,
+		/**
+		 * @remark Male voice SFX
+		 */
+		kHairBalding = 4,
+		/**
+		 * @remark Female voice SFX
+		 */
+		kHairGreenCap = 5,
+	};
+
+	/**
+	 * Eye trait (1-5 valid, 0 = none).
+	 */
+	enum EyeKind : byte {
+		kEyeDuo = 1,
+		kEyeMono = 2,
+		kEyeSleepy = 3,
+		kEyeGlasses = 4,
+		kEyeSunglasses = 5,
+	};
+
+	/**
+	 * Nose trait (1-5 valid, 0 = none).
+	 */
+	enum NoseKind : byte {
+		kNoseGreen = 1,
+		kNoseYellow = 2,
+		kNoseRed = 3,
+		kNosePurple = 4,
+		kNoseBlue = 5,
+	};
+	/**
+	 * Foot trait (1-5 valid, 0 = none).
+	 */
+	enum FootKind : byte {
+		kFootSneakers = 1,
+		kFootSkates = 2,
+		kFootSpring = 3,
+		kFootWheels = 4,
+		kFootPropeller = 5,
+	};
+
+	/**
+	 * 0 means no trait, and 1-5 are the valid trait values.
+	 * 1=Spikey, 2=Ponytail, 3=Flat-top, 4=Curl, 5=Messy
 	 */
 	byte _head = TRAIT_NONE;
-	/***
-	 * 0 means no trait, and 1 ~ 5 are the valid trait values.
+	/**
+	 * 0 means no trait, and 1-5 are the valid trait values.
+	 * 1=Wide-eyed, 2=One-eye, 3=Glasses, 4=Sleepy, 5=Sunglasses
 	 */
 	byte _eye = TRAIT_NONE;
-	/***
-	 * 0 means no trait, and 1 ~ 5 are the valid trait values.
+	/**
+	 * 0 means no trait, and 1-5 are the valid trait values.
+	 * 1=Green, 2=Yellow, 3=Red, 4=Purple, 5=Blue
 	 */
 	byte _nose = TRAIT_NONE;
-	/***
-	 * 0 means no trait, and 1 ~ 5 are the valid trait values.
+	/**
+	 * 0 means no trait, and 1-5 are the valid trait values.
+	 * 1=Sneakers, 2=Roller Skate, 3=Spring, 4=Wheels, 5=Propeller
 	 */
 	byte _foot = TRAIT_NONE;
 
 	ZmbTrait() = default;
-	ZmbTrait(byte head, byte eye, byte nose, byte foot) : _head(head), _eye(eye), _nose(nose), _foot(foot) { }
+	ZmbTrait(HairKind head, EyeKind eye, NoseKind nose, FootKind foot) : _head(head), _eye(eye), _nose(nose), _foot(foot) {}
 
 	int16 snoidId() const;
 	bool isComplete() const { return snoidId() != SNOID_INCOMPLETE; }
 	void sync(Common::Serializer &s);
+
+	// ---------- Trait category enum and debug name helpers ----------
+
+	/** Unified trait category index. */
+	enum TraitCategory {
+		kTraitHair = 0,
+		kTraitEyes = 1,
+		kTraitNose = 2,
+		kTraitFeet = 3,
+	};
+
+	/**
+	 * Get human-readable trait value name.
+	 * @param category  TraitCategory (hair/eyes/nose/feet).
+	 * @param value     1-5 trait value.
+	 */
+	static const char *debugTraitValueName(TraitCategory category, int value) {
+		static const char *kNames[4][5] = {
+			{"Spiked", "Ponytail", "Straight", "Balding", "GreenCap"}, // hair
+			{"Duo", "Mono", "Sleepy", "Glasses", "Sunglasses"},        // eyes
+			{"Green", "Yellow", "Red", "Purple", "Blue"},              // nose
+			{"Sneakers", "Skates", "Spring", "Wheels", "Propeller"}    // feet
+		};
+		if (0 <= category && category <= 3 && 1 <= value && value <= 5)
+			return kNames[category][value - 1];
+		return "?";
+	}
 };
 
 // For Stored Zoombinis (the ones which are on Rest or Ville)
 struct ZmbStateStoredEntry {
 	ZmbTrait _traits;
 	Common::Rect _rect;
-	byte _name[10] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	byte _name[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 	void sync(Common::Serializer &s);
 	Common::U32String getU32Name(MohawkEngine_Zoombini *vm);
@@ -195,7 +284,9 @@ struct ZmbStateActiveEntry {
 	 */
 	uint16 _posY = 0;
 	uint8 _bIsOccupied = 0;
-	byte _name[10] = { 0, };
+	byte _name[10] = {
+		0,
+	};
 
 	void sync(Common::Serializer &s);
 	Common::U32String getU32Name(MohawkEngine_Zoombini *vm);
@@ -216,7 +307,9 @@ struct ZmbStateActivePack {
 	 */
 	int16 _bSkipUnoccupiedAnim = 0;
 	ZmbStateActiveEntry _entries[16];
-	uint8 _unk0136[302] = { 0, };
+	uint8 _unk0136[302] = {
+		0,
+	};
 
 	void sync(Common::Serializer &s);
 	void copyTo(ZmbStateActivePack &dest) {
@@ -225,7 +318,7 @@ struct ZmbStateActivePack {
 };
 
 struct ZmbStateFile { // Size: 44559 (0xAE0F)
-	// 
+	//
 	/**
 	 * 0x0000: Magic, always 00 6B in bytes
 	 */
@@ -234,7 +327,7 @@ struct ZmbStateFile { // Size: 44559 (0xAE0F)
 	 * 0x0002: Auto-sticky mouse delay threshold (big-endian in file), default 0x1E (30)
 	 */
 	uint16 _autoStickyDelay = 0x001E;
-	
+
 	// 0x0004: Flags
 	/**
 	 * 0x0004: SFX (Sound Effects) Enable Flag
@@ -282,7 +375,7 @@ struct ZmbStateFile { // Size: 44559 (0xAE0F)
 	/**
 	 * 0x0014 ~ 0x001C: Basecamp1 mushroom color state (0 ~ 4)
 	 */
-	uint16 _bcOneMushroomColors[5] = { 0, 0, 0, 0, 0 }; 
+	uint16 _bcOneMushroomColors[5] = {0, 0, 0, 0, 0};
 	/**
 	 * 0x001E: Town zoombini grid scroll column (0~5)
 	 * Restored on town load: scrolls the grid left by (scrollCol × 320) pixels.
@@ -335,29 +428,41 @@ struct ZmbStateFile { // Size: 44559 (0xAE0F)
 	uint16 _pageFlagTown = 0;
 
 	// 0x0048: Generated & Stored Zoombini Count
-	int16 _zmbGeneratedCount = 0; // 0x0048
-	int16 _zmbStoredBC1Count = 0; // 0x004A
-	int16 _zmbStoredBC2Count = 0; // 0x004C
+	int16 _zmbGeneratedCount = 0;  // 0x0048
+	int16 _zmbStoredBC1Count = 0;  // 0x004A
+	int16 _zmbStoredBC2Count = 0;  // 0x004C
 	int16 _zmbStoredTownCount = 0; // 0x004E
 
 	// 0x0050: Level Flags
 	uint8 _levelFlagRouteBigBadHungry = 0;
 	uint8 _levelFlagRouteMontDespair = 0;
 	uint8 _levelFlagLoWhosBayouHiDeepDarkForest = 0;
-	uint8 _levelFlagPageArr[15] = { 0, };
+	uint8 _levelFlagPageArr[15] = {
+		0,
+	};
 
 	// 0x0062: Memorial Stone Records
-	uint16 _memorialYear[16] = { 0, };
-	uint8 _memorialMonth[16] = { 0, };
-	uint8 _memorialDay[16] = { 0, };
-	uint8 _memorialRoute[16] = { 0, };
-	uint8 _memorialLevel[16] = { 0, };
+	uint16 _memorialYear[16] = {
+		0,
+	};
+	uint8 _memorialMonth[16] = {
+		0,
+	};
+	uint8 _memorialDay[16] = {
+		0,
+	};
+	uint8 _memorialRoute[16] = {
+		0,
+	};
+	uint8 _memorialLevel[16] = {
+		0,
+	};
 
 	// 0x00C2: Route Levels (Little Endian)
 	/**
 	 * 0 ~ 3 (Level 1 ~ 4)
 	 */
-	uint16 _routeLevels[4] = { 0, 0, 0, 0};
+	uint16 _routeLevels[4] = {0, 0, 0, 0};
 	/**
 	 * 0x00CA: Current route
 	 * @remarks 0: Not in route (game launch), 1~4: Big Bad Hungry, Who's Bayou, Deep Dark Forest, Mountain of Despair
@@ -370,7 +475,7 @@ struct ZmbStateFile { // Size: 44559 (0xAE0F)
 	ZMB_DI_PAGE _currentPage = ZMB_DI_ISLE_03;
 	ZoombiniPageType getCurrentPageType() const;
 	void setCurrentPageType(ZoombiniPageType pageType);
-	
+
 	// 0x00CE: Stored Zoombinis on Basecamp 1
 	// 16 its entries (finished game), their head/eye/nose/foot are zeroed
 	// Maybe it directs to its active pack?
@@ -385,18 +490,20 @@ struct ZmbStateFile { // Size: 44559 (0xAE0F)
 	ZmbStateStoredChunk _storedChunkTown;
 
 	// 0xA1FC: Active Zoombini Packs
-	ZmbStateActivePack _zmbPackIsle = { };
+	ZmbStateActivePack _zmbPackIsle = {};
 	uint16 _wZmbPackIsleVal = 0;
-	ZmbStateActivePack _zmbPackBC1 = { }; // 0xA462
+	ZmbStateActivePack _zmbPackBC1 = {}; // 0xA462
 	uint16 _wZmbPackBC1Val = 0;
-	ZmbStateActivePack _zmbPackBC2 = { }; // 0xA6C8
+	ZmbStateActivePack _zmbPackBC2 = {}; // 0xA6C8
 	uint16 _wZmbPackBC2Val = 0;
-	ZmbStateActivePack _zmbPackActive = { }; // 0xA92E
+	ZmbStateActivePack _zmbPackActive = {}; // 0xA92E
 	uint16 _wZmbPackActiveVal = 0;
 
 	// 0xAB94: Zoombini Twin Status
-	uint8 _twinGenStatus[625] = { 0, };
-	
+	uint8 _twinGenStatus[625] = {
+		0,
+	};
+
 	/**
 	 * 0xAE05~0xAE0B: Per-route perfect completion counters (4 x int16).
 	 * IDA: twinGenStatus[2*routeIdx+623] (routes 1-4 → indices 625,627,629,631).
@@ -405,7 +512,7 @@ struct ZmbStateFile { // Size: 44559 (0xAE0F)
 	 * corresponding _routeLevels[] entry advances by 1 (max 3).
 	 * Added in v2 save format (44559 bytes); zeroed when loading v1 saves.
 	 */
-	int16 _routePerfectCounters[4] = { 0, 0, 0, 0 };
+	int16 _routePerfectCounters[4] = {0, 0, 0, 0};
 	/**
 	 * 0xAE0D: Town Develop Level (0~6)
 	 */
@@ -422,11 +529,15 @@ struct ZmbRosterEntry {
 	/**
 	 * 22bytes + null terminator
 	 */
-	byte _saveName[23] = { 0, };
-	/** 
-	 * 8bytes + null terminator 
-	*/
-	byte _fileName[9] = { 0, };
+	byte _saveName[23] = {
+		0,
+	};
+	/**
+	 * 8bytes + null terminator
+	 */
+	byte _fileName[9] = {
+		0,
+	};
 
 	void sync(Common::Serializer &r);
 	Common::U32String getSaveName(MohawkEngine_Zoombini *vm) const;
@@ -447,7 +558,7 @@ struct ZmbRosterFile {
 	/**
 	 * Up to 50 entries.
 	 */
-	ZmbRosterEntry _entries[50] = { };
+	ZmbRosterEntry _entries[50] = {};
 
 	void sync(Common::Serializer &r);
 };
@@ -472,13 +583,13 @@ public:
 	void buildNameGeneratedTable();
 
 	bool isStateDirty() const { return _f._isDirty; }
-	bool isFirstLaunch() { 
+	bool isFirstLaunch() {
 		bool ret = _isFirstLaunch;
 		_isFirstLaunch = false;
 		return ret;
 	}
 
-	ZMB_DIFFICULTY_ID getDifficultyIdFromPageFlag(uint16& pageFlag);
+	ZMB_DIFFICULTY_ID getDifficultyIdFromPageFlag(uint16 &pageFlag);
 	uint16 &getPageFlagFromPageType(ZoombiniPageType pageType);
 	ZMB_DIFFICULTY_ID getDifficultyIdFromPageType(ZoombiniPageType pageType);
 	int16 readActivePageRouteLevel();
@@ -539,19 +650,39 @@ public:
 	void setEnableTransitions(bool val);
 	void setLessActionEnabled(bool val);
 	void setCursorVisible(bool val);
-	bool toggleSound() { setEnableSound(!getEnableSound()); return getEnableSound(); }
-	bool toggleMusic() { setEnableMusic(!getEnableMusic()); return getEnableMusic(); }
-	bool toggleStickyMouse() { setEnableStickyMouse(!getEnableStickyMouse()); return getEnableStickyMouse(); }
-	bool toggleTransitions() { setEnableTransitions(!getEnableTransitions()); return getEnableTransitions(); }
-	bool toggleLessMoreAction() { setLessActionEnabled(!isLessActionEnabled()); return isLessActionEnabled(); }
-	bool toggleCursorVisibility() { setCursorVisible(!isCursorVisible()); return isCursorVisible(); }
-	
+	bool toggleSound() {
+		setEnableSound(!getEnableSound());
+		return getEnableSound();
+	}
+	bool toggleMusic() {
+		setEnableMusic(!getEnableMusic());
+		return getEnableMusic();
+	}
+	bool toggleStickyMouse() {
+		setEnableStickyMouse(!getEnableStickyMouse());
+		return getEnableStickyMouse();
+	}
+	bool toggleTransitions() {
+		setEnableTransitions(!getEnableTransitions());
+		return getEnableTransitions();
+	}
+	bool toggleLessMoreAction() {
+		setLessActionEnabled(!isLessActionEnabled());
+		return isLessActionEnabled();
+	}
+	bool toggleCursorVisibility() {
+		setCursorVisible(!isCursorVisible());
+		return isCursorVisible();
+	}
+
 	ZmbStateFile _f;
 	ZmbRosterFile _r;
-	Common::Array<ZmbFeature*> _loadedZmbFeatures;
+	Common::Array<ZmbFeature *> _loadedZmbFeatures;
 
 	uint16 _practiceLevel = 0;
-	byte _zoombiniNameGeneratedTable[625] = { 0,};
+	byte _zoombiniNameGeneratedTable[625] = {
+		0,
+	};
 
 	/**
 	 * Practice-mode state snapshot. IDA: rodmap_onLeave @ 0x42A9D6 saves the
@@ -577,13 +708,13 @@ private:
 	Common::SaveFileManager *_saveFileMan;
 
 	bool _isFirstLaunch = true;
-	
+
 	/**
 	 * Volatile runtime flag, not stored in save file.
 	 */
 	bool _flagCursorVisible = true;
 
-	struct HelpSTRL{
+	struct HelpSTRL {
 		uint16 _helpResBase = 0;
 		uint16 _pageNameIdx = 0;
 		uint16 _unk3 = 0;
@@ -591,9 +722,8 @@ private:
 		uint16 _unk5 = 0;
 		uint16 _unk6 = 0;
 
-		HelpSTRL() { }
-		HelpSTRL(uint16 helpResNo, uint16 unk2, uint16 unk3, uint16 unk4, uint16 unk5, uint16 unk6) :
-			_helpResBase(helpResNo), _pageNameIdx(unk2), _unk3(unk3), _unk4(unk4), _unk5(unk5), _unk6(unk6) { }
+		HelpSTRL() {}
+		HelpSTRL(uint16 helpResNo, uint16 unk2, uint16 unk3, uint16 unk4, uint16 unk5, uint16 unk6) : _helpResBase(helpResNo), _pageNameIdx(unk2), _unk3(unk3), _unk4(unk4), _unk5(unk5), _unk6(unk6) {}
 	};
 
 	Common::HashMap<ZoombiniPageType, HelpSTRL> _helpStrlMap;

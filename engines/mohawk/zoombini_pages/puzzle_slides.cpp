@@ -416,6 +416,25 @@ void ZoombiniPuzzleSlides::debugPrepareForDeparture() {
 	debugC(kZmbDebugPage, "Slides: debug prepared solved board (%d/%d runners)", placedCount, _loadedZmbCount);
 }
 
+Common::String ZoombiniPuzzleSlides::debugGetAnswer() const {
+	Common::String s = Common::String::format("Slides (level %d): numSlots=%d, numPairs=%d, slotBase=%d\n",
+		_difficultyLevel, _numSlots, _numPairs, _slotBaseState);
+	s += "  Pair types (attr per link): ";
+	for (int i = 0; i < _numPairs && i < 16; i++) {
+		const char *name = "?";
+		switch (_pairTypeArray[i]) {
+		case kAttrHair: name = "hair"; break;
+		case kAttrEyes: name = "eyes"; break;
+		case kAttrNose: name = "nose"; break;
+		case kAttrLegs: name = "legs"; break;
+		default: break;
+		}
+		s += Common::String::format("%s ", name);
+	}
+	s += "\n";
+	return s;
+}
+
 // =============================================================================
 // Grid Initialization
 // IDA: slides_initGridByDifficulty @ 0x4468F8

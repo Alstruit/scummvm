@@ -363,6 +363,26 @@ void ZoombiniPuzzleNet::onGoButtonActivated() {
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
+Common::String ZoombiniPuzzleNet::debugGetAnswer() const {
+	// Net axis: 0=foot, 1=nose, 2=eye, 3=head (same as Hotel packed-DWORD order)
+	static const char *kAxisNames[] = {"foot", "nose", "eye", "head"};
+
+	const char *rowName = (0 <= _attrRowLabel && _attrRowLabel <= 3) ? kAxisNames[_attrRowLabel] : "?";
+	const char *colName = (0 <= _attrColLabel && _attrColLabel <= 3) ? kAxisNames[_attrColLabel] : "?";
+	const char *seedName = (0 <= _seed && _seed <= 3) ? kAxisNames[_seed] : "?";
+
+	Common::String s = Common::String::format("Net (level %d): columns=%d\n",
+		_difficultyLevel, _columnCount);
+	s += Common::String::format("  Row axis: %s(%d), Col axis: %s(%d), Seed: %s(%d)\n",
+		rowName, _attrRowLabel, colName, _attrColLabel, seedName, _seed);
+	s += Common::String::format("  Permutation index: %d\n", _attrPermutationIdx);
+	s += "  Column sizes: ";
+	for (int i = 0; i < _columnCount && i < 12; i++)
+		s += Common::String::format("%d ", _columnSizes[i]);
+	s += "\n";
+	return s;
+}
+
 void ZoombiniPuzzleNet::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;

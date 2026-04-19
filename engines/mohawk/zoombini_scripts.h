@@ -1087,6 +1087,12 @@ public:
 	uint16 getHoldingAnimPhase() const { return _holdingAnimPhase; }
 
 	/**
+	 * Build virtual hotspots for the generic common-image pose family.
+	 * rawShape 1/2/3 correspond to SCRS 100/101/102 in zmbAnimHotspotArr.
+	 */
+	void setupCommonImageHotspots(uint16 rawShape, bool useSmallShapeRegs);
+
+	/**
 	 * Set up virtual hotspots for the idle pose based on the snoid's current traits.
 	 * Uses the IDA-reversed lookup tables (foot/nose/eye/head × 5 trait values).
 	 * Call this after setting _trait, before the first render frame.
@@ -1103,6 +1109,12 @@ public:
 	 * Also sets _useSmallShapeRegs = true so the renderer uses the small REGS offsets.
 	 */
 	void setupSmallIdleHotspots();
+
+	/**
+	 * Rebuild hotspots for the current generic common-image pose.
+	 * Used by arrival and turn states, which keep the current _shapeImageIdx.
+	 */
+	void setupCurrentCommonImageHotspots();
 
 	/** True when this snoid uses the small-scale SHPL/REGS (resource 3200, XFER_0 only). */
 	bool _useSmallShapeRegs = false;

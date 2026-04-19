@@ -480,6 +480,38 @@ void ZoombiniPuzzleSmoke::onGoButtonActivated() {
 	_pendingGoDepart = true;
 }
 
+Common::String ZoombiniPuzzleSmoke::debugGetAnswer() const {
+	// _questionAttrs layout: [0]=head, [1]=eye, [2]=nose, [3]=foot (primary)
+	//                        [4]=head, [5]=eye, [6]=nose, [7]=foot (secondary)
+	static const char *kSlotNames[] = {"head", "eye", "nose", "foot"};
+	// Category mapping for value names: head->0(hair), eye->1(eyes), nose->2(nose), foot->3(feet)
+
+	Common::String s = Common::String::format("Smoke (level %d): questionResult=%d\n",
+		_difficultyLevel, _questionResult);
+	s += "  Question attrs (primary):  ";
+	static const ZmbTrait::TraitCategory kQuestionCategories[] = {
+		ZmbTrait::kTraitHair,
+		ZmbTrait::kTraitEyes,
+		ZmbTrait::kTraitNose,
+		ZmbTrait::kTraitFeet
+	};
+	for (int i = 0; i < 4; i++) {
+		int16 v = _questionAttrs[i];
+		ZmbTrait::TraitCategory category = kQuestionCategories[i];
+		const char *valName = (1 <= v && v <= 5) ? ZmbTrait::debugTraitValueName(category, v) : "-";
+		s += Common::String::format("%s=%d(%s) ", kSlotNames[i], v, valName);
+	}
+	s += "\n  Question attrs (secondary): ";
+	for (int i = 4; i < 8; i++) {
+		int16 v = _questionAttrs[i];
+		ZmbTrait::TraitCategory category = kQuestionCategories[i - 4];
+		const char *valName = (1 <= v && v <= 5) ? ZmbTrait::debugTraitValueName(category, v) : "-";
+		s += Common::String::format("%s=%d(%s) ", kSlotNames[i - 4], v, valName);
+	}
+	s += "\n";
+	return s;
+}
+
 void ZoombiniPuzzleSmoke::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;

@@ -70,6 +70,7 @@ public:
 
 protected:
 	void onGoButtonActivated() override;
+	Common::String debugGetAnswer() const override;
 
 private:
 	void loadZoombinisFromPack();

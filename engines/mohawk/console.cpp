@@ -974,6 +974,7 @@ ZoombiniConsole::ZoombiniConsole(MohawkEngine_Zoombini *vm) : GUI::Debugger(), _
 	registerCmd("goXfer",				WRAP_METHOD(ZoombiniConsole, Cmd_GoXfer));
 	registerCmd("goPractice",			WRAP_METHOD(ZoombiniConsole, Cmd_GoPractice));
 	registerCmd("finishPuzzle",			WRAP_METHOD(ZoombiniConsole, Cmd_FinishPuzzle));
+	registerCmd("printAnswer",			WRAP_METHOD(ZoombiniConsole, Cmd_PrintAnswer));
 }
 
 ZoombiniConsole::~ZoombiniConsole() {
@@ -2265,6 +2266,24 @@ bool ZoombiniConsole::Cmd_FinishPuzzle(int argc, const char **argv) {
 
 	interactive->debugFinishPuzzle();
 	debugPrintf("Departure triggered.\n");
+	return true;
+}
+
+bool ZoombiniConsole::Cmd_PrintAnswer(int argc, const char **argv) {
+	ZoombiniPage *page = _vm->getActivePage();
+	if (!page) {
+		debugPrintf("No active page.\n");
+		return true;
+	}
+
+	ZoombiniInteractive *interactive = dynamic_cast<ZoombiniInteractive *>(page);
+	if (!interactive) {
+		debugPrintf("Current page is not an interactive page.\n");
+		return true;
+	}
+
+	Common::String answer = interactive->debugGetAnswer();
+	debugPrintf("%s\n", answer.c_str());
 	return true;
 }
 

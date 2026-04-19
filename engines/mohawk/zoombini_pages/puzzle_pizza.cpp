@@ -316,6 +316,28 @@ void ZoombiniPuzzlePizza::onGoButtonActivated() {
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
+Common::String ZoombiniPuzzlePizza::debugGetAnswer() const {
+	Common::String s = Common::String::format("Pizza (level %d): targetToppings=%d\n",
+		_difficultyLevel, _targetToppingCount);
+	s += "  correct: ";
+	for (int i = 0; i < 16; i++) {
+		if (_correctToppings[i] != 0)
+			s += Common::String::format("%d ", _correctToppings[i]);
+	}
+	s += "\n  wrong A: ";
+	for (int i = 0; i < 16; i++) {
+		if (_wrongToppingsA[i] != 0)
+			s += Common::String::format("%d ", _wrongToppingsA[i]);
+	}
+	s += "\n  wrong B: ";
+	for (int i = 0; i < 16; i++) {
+		if (_wrongToppingsB[i] != 0)
+			s += Common::String::format("%d ", _wrongToppingsB[i]);
+	}
+	s += "\n";
+	return s;
+}
+
 // ---------------------------------------------------------------------------
 // loadZoombinisFromPack
 // ---------------------------------------------------------------------------

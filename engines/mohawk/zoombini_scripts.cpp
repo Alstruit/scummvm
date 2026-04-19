@@ -236,7 +236,11 @@ ZmbRenderResult ZmbFeature::onPostRender(ZoombiniPage *page) {
 
 	// IDA: runner_postRenderStandard (0x46182F) — post-render pass.
 	// Blits shapes to screen, then calls custom postRender callback.
-	ZmbRenderResult ret = (page->*(_eventHooks._renderFunc))(this);
+	// Default renderFunc is blitShapes (runner_postRenderStandard equivalent).
+	OnRenderFunc renderFunc = _eventHooks._renderFunc;
+	if (!renderFunc)
+		renderFunc = &ZoombiniPage::blitShapes;
+	ZmbRenderResult ret = (page->*renderFunc)(this);
 	if (ret == ZmbRenderResult::kRendered && _eventHooks._postRenderFunc)
 		(page->*(_eventHooks._postRenderFunc))(this);
 	return ret;
@@ -437,14 +441,31 @@ ZmbHotspotGroup *ZmbFeature::getHotspotGroup(int32 frameId) {
 	if (it != _hsFrameMap.end())
 		hsGroup = it->_value;
 
+	// IDA: runner_preRenderStandard LABEL_70 (0x4620F5) walks a flat hotspot
+	// array indexed by dwHotspotIdx.  When wGroupFrameIdx exceeds
+	// wScriptFrameCount (e.g. non-animated features whose frame counter
+	// keeps incrementing), the walk finds no new groups and the previously
+	// written hotspot data persists in the array.  Model this by falling
+	// back to the highest available frame when frameId is beyond the map.
+	if (!hsGroup && frameId > _frameIdxMax) {
+		for (int32 altFrameId = _frameIdxMax; 0 <= altFrameId; altFrameId--) {
+			it = _hsFrameMap.find(altFrameId);
+			if (it != _hsFrameMap.end()) {
+				hsGroup = it->_value;
+				break;
+			}
+		}
+	}
+
 	if (!hsGroup)
 		return nullptr;
 
 	if (hsGroup->getHotspotCount() == 0 && 0 < frameId) {
 		// No hotspots for the frame - Fall back to the highest-indexed frame that has at least one hotspot.
-		for (int32 altFrameId = frameId - 1; 0 <= altFrameId && hsGroup->getHotspotCount() == 0; altFrameId--) {
+		for (int32 altFrameId = MIN(frameId - 1, _frameIdxMax); 0 <= altFrameId && hsGroup->getHotspotCount() == 0; altFrameId--) {
 			it = _hsFrameMap.find(altFrameId);
-			assert(it != _hsFrameMap.end());
+			if (it == _hsFrameMap.end())
+				continue;
 			hsGroup = it->_value;
 		}
 	}
@@ -854,6 +875,13 @@ void ZmbSnoid::setAnimState(SnoidAnimState state, const Common::Point *pos) {
 			setupSmallIdleHotspots();
 		else
 			setupIdleHotspots();
+	} else if (state == kSnoidAnimArrive || state == kSnoidAnimTurnRight || state == kSnoidAnimTurnLeft) {
+		// IDA animateZoombini_455E76 immediately rebuilds hsArr from the current
+		// common-image pose (SCRS 100/101/102) for states 1/2/4.  Without this,
+		// ScummVM keeps rendering the previous state's virtual hotspots until a
+		// later tick, which leaves Ferry seat drops in the drag pose and sorts the
+		// snoid against the seat with the wrong footprint.
+		setupCurrentCommonImageHotspots();
 	}
 
 	_animState = state;
@@ -1104,6 +1132,8 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 				setupSmallIdleHotspots();
 			else
 				setupIdleHotspots();
+		} else {
+			setupCurrentCommonImageHotspots();
 		}
 		break;
 	}
@@ -1532,86 +1562,62 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 	return needsRedraw;
 }
 
-void ZmbSnoid::setupIdleHotspots() {
-	// IDA-reversed lookup tables: trait value (1-5) → combined shapeIdx offset.
-	// Index 0 is unused (TRAIT_NONE); traits are 1-indexed.
-	// Source: wArrZmbBodyFoot_4A4770, wArrZmbBodyNose_4A477C,
-	//         wArrZmbBodyEye_4A4788,  wArrZmbBodyHead_4A4794
+void ZmbSnoid::setupCommonImageHotspots(uint16 rawShape, bool useSmallShapeRegs) {
+	// IDA zmbRunner_setAnimShape_456785 sub-kind 0/1/2 uses the generic common-image
+	// family (SCRS 100/101/102) where rawShape 1/2/3 selects the body-part variant and
+	// the per-layer positions are synthesized from trait tables.
 	static const uint16 kFootTable[6] = {0, 191, 246, 335, 360, 411};
 	static const uint16 kNoseTable[6] = {0, 171, 175, 179, 183, 187};
 	static const uint16 kEyeTable[6] = {0, 91, 107, 123, 139, 155};
 	static const uint16 kHeadTable[6] = {0, 11, 27, 43, 59, 75};
 
-	// rawShapeFromData = 2: corresponds to SCRS_101 (index 1 in zmbAnimHotspotArr_4B7094),
-	// which is the idle/seated pose selected by animateZoombini_455E76 for wAnimKind==3.
-	// IDA forces chZmbAnimShapeCommonImageIdx=1 → SCRS_101 → shapeId=2 for all layers.
-	// (rawShapeFromData=1 / SCRS_100 is a front/center-facing pose, not the seated idle.)
-	static constexpr uint16 kRawShapeIdle = 2;
-
-	uint8 foot = _trait._foot;
-	uint8 nose = _trait._nose;
-	uint8 eye = _trait._eye;
-	uint8 head = _trait._head;
-
-	if (foot < 1 || foot > 5)
-		foot = 1;
-	if (nose < 1 || nose > 5)
-		nose = 1;
-	if (eye < 1 || eye > 5)
-		eye = 1;
-	if (head < 1 || head > 5)
-		head = 1;
-
-	Common::Array<ZmbHotspot> hotspots;
-	// Layer order matching IDA's zmbRunner_setAnimShape_456785 sub-kind=0:
-	// slot 0=foot, slot 1=body(0), slot 2=nose, slot 3=eye, slot 4=head
-	hotspots.push_back(ZmbHotspot(0, kFootTable[foot] + kRawShapeIdle, 0, 0, 0));
-	hotspots.push_back(ZmbHotspot(1, 0 + kRawShapeIdle, 0, 0, 0)); // body anchor
-	hotspots.push_back(ZmbHotspot(2, kNoseTable[nose] + kRawShapeIdle, 0, 0, 0));
-	hotspots.push_back(ZmbHotspot(3, kEyeTable[eye] + kRawShapeIdle, 0, 0, 0));
-	hotspots.push_back(ZmbHotspot(4, kHeadTable[head] + kRawShapeIdle, 0, 0, 0));
-
-	_usesVirtualHotspots = true;
-	setVirtualHotspots(hotspots);
-}
-
-void ZmbSnoid::setupSmallIdleHotspots() {
-	_useSmallShapeRegs = true;
-	// Small-snoid body-part index tables from original binary (word_4A48B8..DC).
-	// IDA: sub_4572C5(0) swaps global wArrZmbBody* tables to these values.
-	// Used with SHPL resource 3200 (0xC80) in the System/Common MHK.
-	// Trait value (1-5) → combined shapeIdx base offset into resource 3200.
 	static const uint16 kSmallFootTable[6] = {0, 131, 174, 227, 235, 278};
 	static const uint16 kSmallNoseTable[6] = {0, 111, 115, 119, 123, 127};
 	static const uint16 kSmallEyeTable[6] = {0, 91, 95, 99, 103, 107};
 	static const uint16 kSmallHeadTable[6] = {0, 11, 27, 43, 59, 75};
 
-	// Same idle rawShape as normal: index 2 = SCRS_101 idle pose.
-	static constexpr uint16 kRawShapeIdle = 2;
+	const uint16 *footTable = useSmallShapeRegs ? kSmallFootTable : kFootTable;
+	const uint16 *noseTable = useSmallShapeRegs ? kSmallNoseTable : kNoseTable;
+	const uint16 *eyeTable = useSmallShapeRegs ? kSmallEyeTable : kEyeTable;
+	const uint16 *headTable = useSmallShapeRegs ? kSmallHeadTable : kHeadTable;
 
-	uint8 foot = _trait._foot;
-	uint8 nose = _trait._nose;
-	uint8 eye = _trait._eye;
-	uint8 head = _trait._head;
+	uint8 foot = (_trait._foot >= 1 && _trait._foot <= 5) ? _trait._foot : 1;
+	uint8 nose = (_trait._nose >= 1 && _trait._nose <= 5) ? _trait._nose : 1;
+	uint8 eye = (_trait._eye >= 1 && _trait._eye <= 5) ? _trait._eye : 1;
+	uint8 head = (_trait._head >= 1 && _trait._head <= 5) ? _trait._head : 1;
 
-	if (foot < 1 || foot > 5)
-		foot = 1;
-	if (nose < 1 || nose > 5)
-		nose = 1;
-	if (eye < 1 || eye > 5)
-		eye = 1;
-	if (head < 1 || head > 5)
-		head = 1;
+	rawShape = CLIP<uint16>(rawShape, 1, 3);
+	_useSmallShapeRegs = useSmallShapeRegs;
 
 	Common::Array<ZmbHotspot> hotspots;
-	hotspots.push_back(ZmbHotspot(0, kSmallFootTable[foot] + kRawShapeIdle, 0, 0, 0));
-	hotspots.push_back(ZmbHotspot(1, 0 + kRawShapeIdle, 0, 0, 0));
-	hotspots.push_back(ZmbHotspot(2, kSmallNoseTable[nose] + kRawShapeIdle, 0, 0, 0));
-	hotspots.push_back(ZmbHotspot(3, kSmallEyeTable[eye] + kRawShapeIdle, 0, 0, 0));
-	hotspots.push_back(ZmbHotspot(4, kSmallHeadTable[head] + kRawShapeIdle, 0, 0, 0));
+	hotspots.push_back(ZmbHotspot(0, footTable[foot] + rawShape, 0, 0, 0));
+	hotspots.push_back(ZmbHotspot(1, 0 + rawShape, 0, 0, 0));
+	hotspots.push_back(ZmbHotspot(2, noseTable[nose] + rawShape, 0, 0, 0));
+	hotspots.push_back(ZmbHotspot(3, eyeTable[eye] + rawShape, 0, 0, 0));
+	hotspots.push_back(ZmbHotspot(4, headTable[head] + rawShape, 0, 0, 0));
 
 	_usesVirtualHotspots = true;
 	setVirtualHotspots(hotspots);
+}
+
+void ZmbSnoid::setupCurrentCommonImageHotspots() {
+	setupCommonImageHotspots(static_cast<uint16>(CLIP<int>(static_cast<int>(_shapeImageIdx), 0, 2) + 1),
+		_useSmallShapeRegs);
+}
+
+void ZmbSnoid::setupIdleHotspots() {
+	// rawShapeFromData = 2: corresponds to SCRS_101 (index 1 in zmbAnimHotspotArr_4B7094),
+	// which is the idle/seated pose selected by animateZoombini_455E76 for wAnimKind==3.
+	// IDA forces chZmbAnimShapeCommonImageIdx=1 → SCRS_101 → shapeId=2 for all layers.
+	// (rawShapeFromData=1 / SCRS_100 is a front/center-facing pose, not the seated idle.)
+	static constexpr uint16 kRawShapeIdle = 2;
+	setupCommonImageHotspots(kRawShapeIdle, false);
+}
+
+void ZmbSnoid::setupSmallIdleHotspots() {
+	// Same idle rawShape as normal: index 2 = SCRS_101 idle pose.
+	static constexpr uint16 kRawShapeIdle = 2;
+	setupCommonImageHotspots(kRawShapeIdle, true);
 }
 
 int16 ZmbSnoid::getBodyLayerBaseOffset(uint8 layer, uint8 layerShift) const {

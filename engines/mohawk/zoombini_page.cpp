@@ -514,6 +514,18 @@ void ZoombiniPage::mergeSortedListInto(Common::Array<ZmbFeature *> &existingList
 				break;
 			}
 
+			// IDA 0x460B84: the original linked-list merge checks `v4->pNext`
+			// BEFORE comparing sort keys. When v4 is the LAST entry (pNext==NULL),
+			// it unconditionally appends the incoming entity after it — no sort key
+			// or ZSORT constraint check. This is critical for ferry seats: a snoid
+			// whose bounding box fits inside the seat would otherwise pass all
+			// ZSORT constraints and be inserted BEFORE (behind) the seat.
+			if (i + 1 >= existingList.size()) {
+				// Append after last entry (insertPos stays at existingList.size())
+				found = true;
+				break;
+			}
+
 			const Common::Rect &exRect = existing->getZSortRect();
 
 			// Sort key comparison: incoming should go before existing?
@@ -928,17 +940,13 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 				// IDA 0x461CDD: pFeatureRunner->core188.wBoolDoRender = 0
 				feature->deactivateRender();
 				// IDA 0x461846: postRenderStandard draws shapes even when
-				// wBoolDoRender=0, unless FLAG_01000000_RENDER_AFTER_EVENT
-				// is set.  The original's hsArr retains the last LABEL_70
-				// shapes, so features without that flag stay frozen on their
-				// last frame.  In ScummVM, blitShapes looks up hotspot data
-				// by _lastFrameIdx, which is currently past _frameIdxMax
-				// (end-of-cycle signal).  Reset it to the highest frame that
-				// actually carries positive-shape hotspots so the frozen pose
-				// renders the last visible captain/boat frame instead of a
-				// trailing terminator-only frame (which would leave the SCRB
-				// frozen at a stretched/distorted phantom layout - the
-				// "captain still broken" symptom on Ferry).
+				// wBoolDoRender=0, unless FLAG_01000000_DEFER_RENDER is set.
+				// The original's LABEL_70 for empty frames returns without
+				// overwriting hsArr, so hsArr retains the PREVIOUS frame's
+				// shapes.  ScummVM's getHotspotGroup() fallback models this:
+				// empty frames fall back to the previous frame with shapes.
+				// Reset _lastFrameIdx to getLastShapeFrameIdx() so the
+				// frozen feature renders its last visible shapes.
 				feature->setLastFrameIdx(feature->getLastShapeFrameIdx());
 				// IDA 0x461CE9–0x461D06: callback fires and RETURNS EARLY
 				// only if CHAIN_SCRIPT did NOT run (v5=1).

@@ -78,6 +78,7 @@ public:
 protected:
 	void onEveryFrame() override;
 	void onGoButtonActivated() override;
+	Common::String debugGetAnswer() const override;
 	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;

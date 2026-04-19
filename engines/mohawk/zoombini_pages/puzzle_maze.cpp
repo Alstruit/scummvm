@@ -174,7 +174,7 @@ int16 ZoombiniPuzzleMaze::s_variantIdx3 = 0;
 
 // IDA: word_4A1FC4[2*i] / word_4A1FC6[2*i] — Attribute slot mapping tables
 // Maps path slot index (0-20) to (trait category offset, trait value).
-// Usage: traitCategory = kAttrSlotType[slotIdx] + 1 (1-4), traitValue = kAttrSlotValue[slotIdx] (0-5)
+// Usage: slot type maps to ZmbTrait::TraitCategory, traitValue = kAttrSlotValue[slotIdx] (0-5)
 const int16 ZoombiniPuzzleMaze::kAttrSlotType[21] = {
 	0, 0, 0, 0, 0, 0,     // 0-5: hair (category 0)
 	1, 1, 1, 1, 1,        // 6-10: eyes (category 1)
@@ -400,6 +400,33 @@ void ZoombiniPuzzleMaze::loadFeatures() {
 void ZoombiniPuzzleMaze::onGoButtonActivated() {
 	_departXferSrcSiPage = ZMB_SI_MAZE_16;
 	ZoombiniInteractive::onGoButtonActivated();
+}
+
+Common::String ZoombiniPuzzleMaze::debugGetAnswer() const {
+	// Maze: cellAttrType 1=hair, 2=eyes, 3=nose, 4=feet; cellAttrValue 1-5
+	static const char *kAttrTypeNames[] = {"", "hair", "eyes", "nose", "feet"};
+
+	Common::String s = Common::String::format("Maze (level %d):\n", _difficultyLevel);
+	s += "  Cell attribute grid (non-empty cells):\n";
+	static const ZmbTrait::TraitCategory kAttrTypeToCategory[] = {
+		ZmbTrait::kTraitHair,
+		ZmbTrait::kTraitHair,
+		ZmbTrait::kTraitEyes,
+		ZmbTrait::kTraitNose,
+		ZmbTrait::kTraitFeet
+	};
+	for (int r = 0; r < kGridRows; r++) {
+		for (int c = 0; c < kGridCols; c++) {
+			int16 t = _cellAttrType[r][c];
+			int16 v = _cellAttrValue[r][c];
+			if (t == 0 && v == 0)
+				continue;
+			ZmbTrait::TraitCategory category = (1 <= t && t <= 4) ? kAttrTypeToCategory[t] : ZmbTrait::kTraitHair;
+			const char *name = (1 <= t && t <= 4) ? kAttrTypeNames[t] : "?";
+			s += Common::String::format("    [%2d,%2d] %s=%d (%s)\n", r, c, name, v, ZmbTrait::debugTraitValueName(category, v));
+		}
+	}
+	return s;
 }
 
 void ZoombiniPuzzleMaze::loadZoombinisFromPack() {
