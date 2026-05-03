@@ -76,6 +76,7 @@ public:
 
 protected:
 	void debugPrepareForDeparture() override;
+	Common::String debugGetAnswer() const override;
 	void onGoButtonActivated() override;
 	void executeDeparture() override;
 

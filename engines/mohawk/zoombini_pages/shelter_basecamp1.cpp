@@ -266,10 +266,10 @@ void ZoombiniShelterBasecampOne::loadFeatures() {
 	// IDA: bc1_bFinalArrival = (generatedCount >= 625) && (bc0Count + storedBC1Count < 16)
 	// IDA: bc1_bCanProceed = (totalLoaded > 0) && (bc0Count + storedBC1Count <= totalLoaded)
 	_notFirstArrival = (f._zmbGeneratedCount >= 625) &&
-		(static_cast<int16>(f._zmbPackIsle._wPackZmbCount) + f._zmbStoredBC1Count < 16);
+					   (static_cast<int16>(f._zmbPackIsle._wPackZmbCount) + f._zmbStoredBC1Count < 16);
 	if (_notFirstArrival) {
 		_canGoEnabled = (totalLoadedCount > 0) &&
-			(static_cast<int16>(f._zmbPackIsle._wPackZmbCount) + f._zmbStoredBC1Count <= totalLoadedCount);
+						(static_cast<int16>(f._zmbPackIsle._wPackZmbCount) + f._zmbStoredBC1Count <= totalLoadedCount);
 	} else {
 		_canGoEnabled = (16 <= totalLoadedCount);
 	}
@@ -457,7 +457,7 @@ void ZoombiniShelterBasecampOne::scroll_postRender(ZmbFeature *feature) {
 			// LeftFour is suppressed if not mid-animation and fewer than 5 columns remain to the left.
 			int16 steps = (buttonIdx == kScrollButtons_LeftFour) ? 5 : 1;
 			if (buttonIdx == kScrollButtons_LeftFour &&
-			    !_storageMatrixInAnimation && _storageLeftmostColumnIdx < 5)
+				!_storageMatrixInAnimation && _storageLeftmostColumnIdx < 5)
 				steps = 0;
 			for (; steps > 0; steps--) {
 				if (_storageMatrixInAnimation || _storageLeftmostColumnIdx <= 0) {
@@ -468,7 +468,7 @@ void ZoombiniShelterBasecampOne::scroll_postRender(ZmbFeature *feature) {
 				}
 			}
 			_vm->_state->_f._storedChunkBC1._leftmostColumnIdx =
-			    static_cast<uint16>(_storageLeftmostColumnIdx);
+				static_cast<uint16>(_storageLeftmostColumnIdx);
 			break;
 		}
 		case kScrollButtons_RightOne:
@@ -480,7 +480,7 @@ void ZoombiniShelterBasecampOne::scroll_postRender(ZmbFeature *feature) {
 				maxCol = 120;
 			int16 steps = (buttonIdx == kScrollButtons_RightFour) ? 5 : 1;
 			if (buttonIdx == kScrollButtons_RightFour &&
-			    !_storageMatrixInAnimation && _storageLeftmostColumnIdx + 5 > maxCol)
+				!_storageMatrixInAnimation && _storageLeftmostColumnIdx + 5 > maxCol)
 				steps = 0;
 			for (; steps > 0; steps--) {
 				if (_storageMatrixInAnimation) {
@@ -494,7 +494,7 @@ void ZoombiniShelterBasecampOne::scroll_postRender(ZmbFeature *feature) {
 				}
 			}
 			_vm->_state->_f._storedChunkBC1._leftmostColumnIdx =
-			    static_cast<uint16>(_storageLeftmostColumnIdx);
+				static_cast<uint16>(_storageLeftmostColumnIdx);
 			break;
 		}
 		default:
@@ -717,14 +717,14 @@ int16 ZoombiniShelterBasecampOne::storeArrivingZoombinis() {
 			if (!chunk._entries[j]._traits.isComplete()) {
 				// Advance to the next occupied active entry
 				while (activeIdx < static_cast<int16>(active._wPackZmbCount) &&
-				       active._entries[activeIdx]._bIsOccupied == 0)
+					   active._entries[activeIdx]._bIsOccupied == 0)
 					activeIdx++;
 				if (activeIdx >= static_cast<int16>(active._wPackZmbCount))
 					break;
 				chunk._entries[j]._traits = active._entries[activeIdx]._traits;
-				chunk._entries[j]._rect   = Common::Rect();
+				chunk._entries[j]._rect = Common::Rect();
 				memcpy(chunk._entries[j]._name, active._entries[activeIdx]._name,
-				       sizeof(chunk._entries[j]._name));
+					   sizeof(chunk._entries[j]._name));
 				activeIdx++;
 				stored++;
 			}
@@ -735,14 +735,14 @@ int16 ZoombiniShelterBasecampOne::storeArrivingZoombinis() {
 		int16 activeIdx = 0;
 		for (int16 k = 0; k < activeCount; k++) {
 			while (activeIdx < static_cast<int16>(active._wPackZmbCount) &&
-			       active._entries[activeIdx]._bIsOccupied == 0)
+				   active._entries[activeIdx]._bIsOccupied == 0)
 				activeIdx++;
 			if (activeIdx >= static_cast<int16>(active._wPackZmbCount))
 				break;
 			chunk._entries[k + v0]._traits = active._entries[activeIdx]._traits;
-			chunk._entries[k + v0]._rect   = Common::Rect();
+			chunk._entries[k + v0]._rect = Common::Rect();
 			memcpy(chunk._entries[k + v0]._name, active._entries[activeIdx]._name,
-			       sizeof(chunk._entries[k + v0]._name));
+				   sizeof(chunk._entries[k + v0]._name));
 			activeIdx++;
 		}
 		return 1;
@@ -1268,7 +1268,7 @@ int16 ZoombiniShelterBasecampOne::loadZoombinisFromPack(ZmbStateActivePack &pack
 			occupiedPosIdx++;
 		} else {
 			pos = Common::Point(entry._posX,
-							entry._posY);
+								entry._posY);
 		}
 
 		// Create ZmbSnoid from pack entry

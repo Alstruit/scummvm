@@ -54,6 +54,7 @@ public:
 
 protected:
 	void onGoButtonActivated() override;
+	Common::String debugGetAnswer() const override;
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;
 	void endDrag(const Common::Point &dropPos);

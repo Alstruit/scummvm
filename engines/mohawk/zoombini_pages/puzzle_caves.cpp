@@ -422,6 +422,40 @@ void ZoombiniPuzzleCaves::onGoButtonActivated() {
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
+Common::String ZoombiniPuzzleCaves::debugGetAnswer() const {
+	static const char *kAttrTypeNames[] = {"", "hair", "eyes", "nose", "legs"};
+
+	Common::String s = Common::String::format("Caves (level %d): guardComplexity=%d, entranceCount=%d\n",
+		_difficultyLevel, _guardComplexity, _entranceCount);
+	for (int i = 0; i < 2; i++) {
+		int16 t = _baseAttrTypes[i];
+		const char *name = (1 <= t && t <= 4) ? kAttrTypeNames[t] : "?";
+		s += Common::String::format("  Guard %d base attr: %s(%d)\n", i, name, t);
+	}
+	s += "  Entrance requirements (slot -> attrReq/attrOffset):\n";
+	for (int i = 0; i < _entranceCount && i < 11; i++) {
+		s += Common::String::format("    slot %2d: req=%d offset=%d\n",
+			i, _entranceAttrReq[i], _entranceAttrOffset[i]);
+	}
+	s += "  Attr columns: ";
+	static const ZmbTrait::TraitCategory kAttrTypeToCategory[] = {
+		ZmbTrait::kTraitHair,
+		ZmbTrait::kTraitHair,
+		ZmbTrait::kTraitEyes,
+		ZmbTrait::kTraitNose,
+		ZmbTrait::kTraitFeet
+	};
+	for (int i = 0; i < 10; i++) {
+		if (_attrColumns[i] != 0) {
+			int16 t = _baseAttrTypes[0];
+			ZmbTrait::TraitCategory category = (1 <= t && t <= 4) ? kAttrTypeToCategory[t] : ZmbTrait::kTraitHair;
+			s += Common::String::format("%d(%s) ", _attrColumns[i], ZmbTrait::debugTraitValueName(category, _attrColumns[i]));
+		}
+	}
+	s += "\n";
+	return s;
+}
+
 void ZoombiniPuzzleCaves::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;

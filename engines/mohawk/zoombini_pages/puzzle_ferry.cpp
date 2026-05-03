@@ -344,6 +344,53 @@ void ZoombiniPuzzleFerry::onGoButtonActivated() {
 	_goButtonPressed = true;
 }
 
+Common::String ZoombiniPuzzleFerry::debugGetAnswer() const {
+	Common::String s = Common::String::format("Ferry (level %d): seatingSCRB=%d, seats=%d\n",
+		_difficultyLevel, _seatingSCRB, _drawOnRegCount);
+	s += "  Rule: adjacent seats must share at least one trait\n";
+
+	// Show current seating with occupant traits
+	s += "  Seat occupancy:\n";
+	for (int16 seat = 0; seat < _drawOnRegCount; seat++) {
+		uint16 occupantId = getDrawOnRegOccupant(seat);
+		s += Common::String::format("    seat %2d:", seat);
+		if (occupantId == 0) {
+			s += " (empty)";
+		} else {
+			ZmbSnoid *snoid = getSnoid(occupantId);
+			if (snoid) {
+				const ZmbTrait &t = snoid->_trait;
+				s += Common::String::format(" head=%d(%s) eye=%d(%s) nose=%d(%s) foot=%d(%s)",
+					t._head, ZmbTrait::debugTraitValueName(ZmbTrait::kTraitHair, t._head),
+					t._eye, ZmbTrait::debugTraitValueName(ZmbTrait::kTraitEyes, t._eye),
+					t._nose, ZmbTrait::debugTraitValueName(ZmbTrait::kTraitNose, t._nose),
+					t._foot, ZmbTrait::debugTraitValueName(ZmbTrait::kTraitFeet, t._foot));
+			}
+		}
+		// Show neighbors
+		bool hasNeighbor = false;
+		for (int n = 0; n < 8; n++) {
+			if (_adjacencyMatrix[seat][n] != 0)
+				hasNeighbor = true;
+		}
+		if (hasNeighbor) {
+			s += " adj:[";
+			bool first = true;
+			for (int n = 0; n < 8; n++) {
+				if (_adjacencyMatrix[seat][n] != 0) {
+					if (!first)
+						s += ",";
+					s += Common::String::format("%d", _adjacencyMatrix[seat][n] - 1);
+					first = false;
+				}
+			}
+			s += "]";
+		}
+		s += "\n";
+	}
+	return s;
+}
+
 void ZoombiniPuzzleFerry::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;

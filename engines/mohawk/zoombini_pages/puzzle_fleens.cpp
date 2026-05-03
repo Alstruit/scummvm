@@ -310,6 +310,32 @@ void ZoombiniPuzzleFleens::onGoButtonActivated() {
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
+Common::String ZoombiniPuzzleFleens::debugGetAnswer() const {
+	// Fleens patternType is 1-based: 1=feet(zmb:head), 2=nose(zmb:eye), 3=eye(zmb:nose)
+	static const char *kFleensPatternTypeNames[] = {"", "feet", "nose", "eye"};
+
+	Common::String s = Common::String::format("Fleens (level %d): mismatchCount=%d\n",
+		_difficultyLevel, _mismatchCount);
+	s += "  Mismatched Zoombini indices: ";
+	for (int i = 0; i < _mismatchCount && i < 3; i++)
+		s += Common::String::format("%d ", _mismatchIdx[i]);
+	s += "\n";
+	s += Common::String::format("  Trait offsets (mod-5): foot=%d nose=%d eye=%d hair=%d\n",
+		_traitOffsets[0], _traitOffsets[1], _traitOffsets[2], _traitOffsets[3]);
+	s += Common::String::format("  Trait slot order: %d %d %d %d\n",
+		_traitSlotOrder[0], _traitSlotOrder[1], _traitSlotOrder[2], _traitSlotOrder[3]);
+	s += "  Challenge patterns:\n";
+	for (int i = 0; i < 12; i++) {
+		if (_fleensPatternType[i] == 0)
+			continue;
+		int16 ft = _fleensPatternType[i];
+		const char *ftName = (1 <= ft && ft <= 3) ? kFleensPatternTypeNames[ft] : "?";
+		s += Common::String::format("    pattern %2d: type=%d(%s) value=%d extra=%d\n",
+			i, ft, ftName, _fleensPatternValue[i], _fleensPatternExtra[i]);
+	}
+	return s;
+}
+
 // ---------------------------------------------------------------------------
 // onEveryFrame: Complete per-frame state machine.
 // IDA: fleens_onHoverPerFrame @ 0x41C81B

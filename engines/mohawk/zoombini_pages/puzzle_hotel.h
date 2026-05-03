@@ -53,6 +53,7 @@ public:
 
 protected:
 	void onGoButtonActivated() override;
+	Common::String debugGetAnswer() const override;
 	ZmbSnoid *findSnoidAtPoint(const Common::Point &pos) override;
 
 private:

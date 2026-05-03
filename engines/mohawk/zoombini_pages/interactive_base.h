@@ -54,6 +54,12 @@ public:
 	 */
 	virtual void debugPrepareForDeparture() {}
 
+	/**
+	 * Override to return a human-readable description of the current puzzle rule/answer.
+	 * Default implementation returns "(no answer required)".
+	 */
+	virtual Common::String debugGetAnswer() const { return "(no answer required)"; }
+
 protected:
 	/**
 	 * Represent buttons that continously do something while being pressed, e.g. storage scroll buttons
@@ -378,10 +384,10 @@ private:
 	// [*] Ambient Sound Driver
 	// IDA: ambient_runPerFrameSoundDriver_435F33 — runs from every puzzle tick handler.
 	void runAmbientSoundDriver();
-	uint32 _ambientNextPlayFrame = 0;    ///< Frame counter when next ambient sound is due
-	uint16 _ambientLastSndId = 0;        ///< Resource ID of the last played ambient SND
-	uint32 _ambientPoolBitmask = 0;      ///< Non-repeating bitmask for pool randomization
-	uint16 _ambientPreloadCounter = 0;   ///< Counter for periodic preload cycle (mod 16)
+	uint32 _ambientNextPlayFrame = 0;     ///< Frame counter when next ambient sound is due
+	uint16 _ambientLastSndId = 0;         ///< Resource ID of the last played ambient SND
+	uint32 _ambientPoolBitmask = 0;       ///< Non-repeating bitmask for pool randomization
+	uint16 _ambientPreloadCounter = 0;    ///< Counter for periodic preload cycle (mod 16)
 	Audio::SoundHandle _ambientSndHandle; ///< Handle of the currently playing ambient sound
 
 	/**

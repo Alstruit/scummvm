@@ -57,6 +57,8 @@ class ZoombiniPuzzle : public ZoombiniInteractive {
 public:
 	ZoombiniPuzzle(MohawkEngine_Zoombini *vm, ZoombiniPageType pageType);
 	~ZoombiniPuzzle() override;
+
+	virtual Common::String debugGetAnswer() const { return "(no answer available)"; }
 };
 
 } // End of namespace Mohawk

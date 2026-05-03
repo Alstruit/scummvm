@@ -45,6 +45,34 @@ enum LillyCallbackMode {
 	kCBLillyMoveStep,     // Move queue normal step: phase 7 → moveQueue
 };
 
+enum LillyPadAttrType : byte {
+	kLillyPadAttrNone = 0,
+	kLillyPadAttrPattern = 1,
+	kLillyPadAttrShape = 2,
+	kLillyPadAttrColor = 3,
+};
+
+enum LillyPadPattern : byte {
+	kLillyPadPatternFlower = 0,
+	kLillyPadPatternCross = 1,
+	kLillyPadPatternDiamond = 2,
+};
+
+enum LillyPadColor : byte {
+	kLillyPadColorMagenta = 0,
+	kLillyPadColorRed = 1,
+	kLillyPadColorOrange = 2,
+	kLillyPadColorCyan = 3,
+	kLillyPadColorBeige = 4,
+};
+
+enum LillyPadShape : byte {
+	kLillyPadShapeOneCut = 0,
+	kLillyPadShapeTwoCut = 1,
+	kLillyPadShapeThreePointed = 2,
+	kLillyPadShapeFourPointed = 3,
+};
+
 /**
  * Per-runner pathfinding and movement state for the Lilly puzzle.
  * Maps to the original engine's per-runner struct fields at byte offsets
@@ -62,7 +90,7 @@ struct ZmbLillyRunnerState {
 	int16 stepCount = 1;        // Step cost counter. IDA: core188+0xD7 (runner+263)
 
 	// --- Attribute constraint ---
-	byte attrType = 0;          // Attribute constraint type 1/2/3. IDA: runner+222 (per-page)
+	LillyPadAttrType attrType = kLillyPadAttrNone; // Attribute constraint type. IDA: runner+222 (per-page)
 	byte attrValue = 0;         // Attribute constraint value. IDA: runner+223 (per-page)
 	byte obsCombinedAttr = 0;   // Obstacle combined attr = attrValue + BFS offset. IDA: runner+224 (per-page)
 
@@ -115,7 +143,8 @@ struct ZmbLillyRunnerState {
 		direction = 0;
 		targetRow = 11;
 		stepCount = 1;
-		attrType = attrValue = obsCombinedAttr = 0;
+		attrType = kLillyPadAttrNone;
+		attrValue = obsCombinedAttr = 0;
 		memset(visitGrid, 0, sizeof(visitGrid));
 		obstRow = obstCol = prevRow = prevCol = 0;
 		moveTimer = 0;
@@ -156,6 +185,7 @@ public:
 
 protected:
 	void onGoButtonActivated() override;
+	Common::String debugGetAnswer() const override;
 	void onEveryFrame() override;
 	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
@@ -362,9 +392,9 @@ private:
 	 * Seeds from grid cells matching the given attr value, then expands via BFS.
 	 * IDA: maze_initBFSGrid (0x4294EB)
 	 * @param attrValue The attribute value index (BFS layer).
-	 * @param attrType  The attribute type (1=hair, 2=eyes, 3=nose) — used as grid offset.
+	 * @param attrType  The lily-pad attribute type (pattern/pad shape/color) — used as grid offset.
 	 */
-	void initBFSGrid(int16 attrValue, int16 attrType);
+	void initBFSGrid(int16 attrValue, LillyPadAttrType attrType);
 
 	/**
 	 * Expand one BFS cell in 4 directions (up/right/down/left).
@@ -374,13 +404,13 @@ private:
 	 * @param attrValue BFS layer index.
 	 * @param attrType  Attribute type for grid matching.
 	 */
-	void bfsExpandCell(int16 col, int16 row, int16 attrValue, int16 attrType);
+	void bfsExpandCell(int16 col, int16 row, int16 attrValue, LillyPadAttrType attrType);
 
 	/**
 	 * Read grid attribute value for a given type and 0-based position.
 	 * Helper for BFS code that uses attrType as an index.
 	 */
-	byte getGridAttrByType(int16 attrType, int16 row0, int16 col) const;
+	byte getGridAttrByType(LillyPadAttrType attrType, int16 row0, int16 col) const;
 
 	// --- Direction SCRB tables ---
 	// IDA: word_4A1738/40/48/50 — indexed by previous direction
@@ -399,14 +429,14 @@ private:
 	// IDA: word_4A1832 — zoombini count to required grid row count
 	static const int16 kZmbToRowCount[21];
 
-	// IDA: byte_4A181E — combinedAttr lookup base: combinedAttr = attr1 + kCombinedAttrBase[attr3]
+	// IDA: byte_4A181E — combinedAttr lookup base: combinedAttr = pattern + kCombinedAttrBase[color]
 	static const byte kCombinedAttrBase[5];
 
 	// IDA: word_4A185C — row/column validity for pattern placement (0=invalid)
 	static const int16 kRowColValidity[13];
 
 	// IDA: word_4A17EA — challenge pattern attr type pool (12 entries)
-	static const int16 kPatternAttrType[13];
+	static const LillyPadAttrType kPatternAttrType[13];
 	// IDA: word_4A1804 — challenge pattern attr value pool (12 entries)
 	static const int16 kPatternAttrValue[13];
 	// IDA: word_4A14A6 — challenge pattern extra index pool (12 entries)
@@ -433,7 +463,6 @@ private:
 	bool _bRenderEnabled = false;
 
 	// --- Difficulty parameters ---
-	int16 _mudBallCount = 0;
 	int16 _obstacleRows = 0;
 
 	// --- Zoombini counts ---
@@ -451,13 +480,13 @@ private:
 	byte _gridOccupancy[12][13];
 	/** 12x13 exit reservation grid for the enter/rotate/cross handoff. IDA: byte_4AC691 */
 	byte _gridExitReservation[12][13];
-	/** 12x13 attribute type 1 grid (hair). IDA: byte_4AC685 */
+	/** 12x13 attribute type 1 grid (lily-pad pattern: flower/X/diamond). IDA: byte_4AC685 */
 	byte _gridAttr1[12][13];
-	/** 12x13 attribute type 2 grid (eyes). IDA: byte_4AC686 */
+	/** 12x13 attribute type 2 grid (lily-pad shape). IDA: byte_4AC686 */
 	byte _gridAttr2[12][13];
-	/** 12x13 attribute type 3 grid (nose/feet). IDA: byte_4AC687 */
+	/** 12x13 attribute type 3 grid (lily-pad color). IDA: byte_4AC687 */
 	byte _gridAttr3[12][13];
-	/** 12x13 combined attr grid = attr1 + kCombinedAttrBase[attr3]. IDA: unk_4AC688 */
+	/** 12x13 combined attr grid = pattern + kCombinedAttrBase[color]. IDA: unk_4AC688 */
 	byte _gridCombinedAttr[12][13];
 
 	/** Cell bounding rects for hit testing. IDA: word_4AC67C/67E/unk_4AC680/682 */
@@ -467,7 +496,7 @@ private:
 	Common::Point _gridCellPos[12][13];
 
 	// --- Challenge pattern state (fleens_generateChallengePatterns) ---
-	int16 _patternType[13] = {};     // word_4AEC9E — attr type per pattern (1/2/3)
+	LillyPadAttrType _patternType[13] = {}; // word_4AEC9E — attr type per pattern
 	int16 _patternValue[13] = {};    // word_4AECA0 — attr value per pattern
 	int16 _patternExtra[13] = {};    // word_4AECA2 — extra index per pattern
 	int16 _patternUsageCount[13] = {}; // word_4A1874 — usage count per pattern (max 2)
@@ -476,7 +505,7 @@ private:
 
 	// --- Obstacle entry point table (for diff 3/4) ---
 	int16 _obstacleEntryCols[16] = {};   // word_4AE36E — obstacle entry column
-	int16 _obstacleEntryType[16] = {};   // word_4AE370 — obstacle attr type
+	LillyPadAttrType _obstacleEntryType[16] = {}; // word_4AE370 — obstacle attr type
 	int16 _obstacleEntryValue[16] = {};  // word_4AE372 — obstacle attr value
 	int16 _obstacleEntryExtra[16] = {};  // word_4AE374 — obstacle extra
 	int16 _obstacleEntryCount = 0;
@@ -485,7 +514,7 @@ private:
 	byte _obstacleGrid[12][13] = {};
 
 	/** Obstacle attr type used for ALL obstacles (single global value). IDA: word_4AE370 byte access */
-	byte _obstacleAttrType = 0;
+	LillyPadAttrType _obstacleAttrType = kLillyPadAttrNone;
 
 	// --- BFS obstacle pathfinding arrays ---
 	// Per-layer: 507 entries (13 rows * ~39 cols, padded). Layers indexed by attr value.

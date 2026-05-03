@@ -29,6 +29,88 @@
 
 namespace Mohawk {
 
+namespace {
+
+const char *lillyPadAttrTypeName(LillyPadAttrType type) {
+	switch (type) {
+	case kLillyPadAttrPattern:
+		return "pattern";
+	case kLillyPadAttrShape:
+		return "pad-shape";
+	case kLillyPadAttrColor:
+		return "color";
+	default:
+		return "none";
+	}
+}
+
+const char *lillyPadPatternName(LillyPadPattern pattern) {
+	switch (pattern) {
+	case kLillyPadPatternFlower:
+		return "flower";
+	case kLillyPadPatternCross:
+		return "cross";
+	case kLillyPadPatternDiamond:
+		return "diamond";
+	default:
+		return "unknown";
+	}
+}
+
+const char *lillyPadColorName(LillyPadColor color) {
+	switch (color) {
+	case kLillyPadColorMagenta:
+		return "magenta";
+	case kLillyPadColorRed:
+		return "red";
+	case kLillyPadColorOrange:
+		return "orange";
+	case kLillyPadColorCyan:
+		return "cyan";
+	case kLillyPadColorBeige:
+		return "beige";
+	default:
+		return "unknown";
+	}
+}
+
+const char *lillyPadShapeName(LillyPadShape shape) {
+	switch (shape) {
+	case kLillyPadShapeOneCut:
+		return "oneCut";
+	case kLillyPadShapeTwoCut:
+		return "twoCut";
+	case kLillyPadShapeThreePointed:
+		return "threePointed";
+	case kLillyPadShapeFourPointed:
+		return "fourPointed";
+	default:
+		return "unknown";
+	}
+}
+
+Common::String formatLillyPadAttrValue(LillyPadAttrType type, int value) {
+	switch (type) {
+	case kLillyPadAttrPattern:
+		if (0 <= value && value <= 2)
+			return Common::String::format("pattern=%s(%d)", lillyPadPatternName(static_cast<LillyPadPattern>(value)), value);
+		break;
+	case kLillyPadAttrShape:
+		if (0 <= value && value <= 3)
+			return Common::String::format("padShape=%s(%d)", lillyPadShapeName(static_cast<LillyPadShape>(value)), value);
+		break;
+	case kLillyPadAttrColor:
+		if (0 <= value && value <= 4)
+			return Common::String::format("color=%s(%d)", lillyPadColorName(static_cast<LillyPadColor>(value)), value);
+		break;
+	default:
+		break;
+	}
+	return Common::String::format("value=%d", value);
+}
+
+} // namespace
+
 // =================================================================
 // Static data tables (from IDA binary data)
 // =================================================================
@@ -69,8 +151,11 @@ const int16 ZoombiniPuzzleLilly::kRowColValidity[13] = {
 };
 
 // IDA: word_4A17EA — pattern attr type pool (indices 0-12)
-const int16 ZoombiniPuzzleLilly::kPatternAttrType[13] = {
-	1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 0
+const LillyPadAttrType ZoombiniPuzzleLilly::kPatternAttrType[13] = {
+	kLillyPadAttrPattern, kLillyPadAttrPattern, kLillyPadAttrPattern,
+	kLillyPadAttrShape, kLillyPadAttrShape, kLillyPadAttrShape, kLillyPadAttrShape,
+	kLillyPadAttrColor, kLillyPadAttrColor, kLillyPadAttrColor, kLillyPadAttrColor, kLillyPadAttrColor,
+	kLillyPadAttrNone
 };
 
 // IDA: word_4A1804 — pattern attr value pool
@@ -346,6 +431,98 @@ void ZoombiniPuzzleLilly::onGoButtonActivated() {
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
+Common::String ZoombiniPuzzleLilly::debugGetAnswer() const {
+	// Lilly pad attributes are independent from Zoombini traits:
+	// attr1=pattern (flower/X/diamond), attr2=pad shape, attr3=color.
+	static const char *kGridStrategyNames[] = {
+		"mixed board (no dedicated obstacle family)",
+		"mixed board (no dedicated obstacle family)",
+		"mixed board (no dedicated obstacle family)",
+		"pattern-driven board",
+		"pad-shape-driven board",
+		"color-driven board"
+	};
+
+	int scriptedSlotCount = 0;
+	int scriptedPlacementCount = 0;
+	for (int i = 1; i < 13; i++) {
+		if (_patternMask[i] == 0)
+			scriptedSlotCount++;
+		if (_patternUsageCount[i] > 0)
+			scriptedPlacementCount += _patternUsageCount[i];
+	}
+
+	const char *strategyName = (0 <= _gridType && _gridType <= 5) ? kGridStrategyNames[_gridType] : "unknown";
+	const char *primaryFamily = (_gridType == 3) ? "pattern" :
+		(_gridType == 4) ? "pad-shape" :
+		(_gridType == 5) ? "color" : "none";
+
+	Common::String s = Common::String::format("Lilly (level %d): %s\n",
+		_difficultyLevel, strategyName);
+	s += Common::String::format("  Strategy: gridType=%d, primaryFamily=%s, zoombinis=%d, scriptedSlots=%d, scriptedPlacements=%d, swapThreshold=%d\n",
+		_gridType, primaryFamily, _totalZmbCount, scriptedSlotCount, scriptedPlacementCount, _swapThreshold);
+
+	if (_difficultyLevel == kPuzzleDiffLevel1) {
+		s += Common::String::format("    level1 uses mixed cells with only %d scripted slot(s) enabled from the 12 pattern slots; remaining attributes are random-filled.\n",
+			scriptedSlotCount);
+	} else if (_difficultyLevel == kPuzzleDiffLevel2) {
+		s += "    level2 enables the full mixed pattern pool, then unlocks cell-swaps; no dedicated obstacle family is used.\n";
+	} else {
+		s += Common::String::format("    level%d picks one lily-pad attribute family as the obstacle-driving layer; top-row hits from that family become obstacle entry columns.\n",
+			_difficultyLevel);
+	}
+
+	s += "  Pattern family order (chosen without replacement):\n";
+	s += "    pattern   slots 1-3 : ";
+	for (int i = 1; i <= 3; i++) {
+		s += Common::String::format("[%d:%s placements=%d] ", i,
+			formatLillyPadAttrValue(_patternType[i], _patternValue[i]).c_str(), _patternUsageCount[i]);
+	}
+	s += "\n    pad-shape slots 4-7 : ";
+	for (int i = 4; i <= 7; i++) {
+		s += Common::String::format("[%d:%s placements=%d] ", i,
+			formatLillyPadAttrValue(_patternType[i], _patternValue[i]).c_str(), _patternUsageCount[i]);
+	}
+	s += "\n    color     slots 8-12: ";
+	for (int i = 8; i <= 12; i++) {
+		s += Common::String::format("[%d:%s placements=%d] ", i,
+			formatLillyPadAttrValue(_patternType[i], _patternValue[i]).c_str(), _patternUsageCount[i]);
+	}
+	s += "\n";
+
+	s += "  Active scripted slots: ";
+	bool hasActiveSlot = false;
+	for (int i = 1; i < 13; i++) {
+		if (_patternMask[i] != 0 || _patternType[i] == kLillyPadAttrNone)
+			continue;
+		hasActiveSlot = true;
+		LillyPadAttrType t = _patternType[i];
+		const char *name = lillyPadAttrTypeName(t);
+		s += Common::String::format("%d:%s(%s, placements=%d) ", i, name,
+			formatLillyPadAttrValue(t, _patternValue[i]).c_str(), _patternUsageCount[i]);
+	}
+	if (!hasActiveSlot)
+		s += "none";
+	s += "\n";
+
+	if (_obstacleEntryCount > 0) {
+		const char *obsName = lillyPadAttrTypeName(_obstacleAttrType);
+		s += Common::String::format("  Obstacle plan: sharedAttr=%s(%d), entryCount=%d, entryColumns=",
+			obsName, static_cast<int>(_obstacleAttrType), _obstacleEntryCount);
+		for (int i = 0; i < _obstacleEntryCount && i < 16; i++) {
+			if (i != 0)
+				s += ", ";
+			s += Common::String::format("col%d(%s)", _obstacleEntryCols[i],
+				formatLillyPadAttrValue(_obstacleEntryType[i], _obstacleEntryValue[i]).c_str());
+		}
+		s += "\n";
+		s += "    obstacle runners read the chosen lily-pad attribute from row 0 of their entry column and pathfind only through cells with that same value.\n";
+	} else {
+		s += "  Obstacle plan: none; this board is solved by reading the mixed grid and, from level 2 onward, using swaps to repair bad routes.\n";
+	}
+	return s;
+}
+
 void ZoombiniPuzzleLilly::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	const Common::Point offscreenPos(680, 220);
@@ -380,20 +557,16 @@ void ZoombiniPuzzleLilly::setDifficultyParams() {
 	// IDA: lilly_setDifficultyParams (0x4264AC)
 	switch (_difficultyLevel) {
 	case kPuzzleDiffLevel1:
-		_mudBallCount = 0;
 		_obstacleRows = 0;
 		break;
 	case kPuzzleDiffLevel2:
-		_mudBallCount = 4;
 		_obstacleRows = 0;
 		break;
 	case kPuzzleDiffLevel3:
-		_mudBallCount = 5;
 		_obstacleRows = 2;
 		break;
 	case kPuzzleDiffLevel4:
 	default:
-		_mudBallCount = 6;
 		_obstacleRows = 3;
 		break;
 	}
@@ -525,24 +698,30 @@ void ZoombiniPuzzleLilly::generateChallengePatterns() {
 	// Generates 12 challenge pattern triplets (type, value, extra) by
 	// random selection without replacement from 3 pools.
 
-	// Pool A: indices 0-2 (attr type 1 = hair, 3 values)
-	int16 poolAType[3], poolAValue[3], poolAExtra[3];
+	// Pool A: indices 0-2 (attr type 1 = lily-pad pattern, 3 values: flower/X/diamond)
+	LillyPadAttrType poolAType[4] = {};
+	int16 poolAValue[4] = {};
+	int16 poolAExtra[4] = {};
 	for (int i = 0; i < 3; i++) {
 		poolAType[i] = kPatternAttrType[i];
 		poolAValue[i] = kPatternAttrValue[i];
 		poolAExtra[i] = kPatternAttrExtra[i];
 	}
 
-	// Pool B: indices 3-6 (attr type 2 = eyes, 4 values)
-	int16 poolBType[4], poolBValue[4], poolBExtra[4];
+	// Pool B: indices 3-6 (attr type 2 = lily-pad color, 4 values)
+	LillyPadAttrType poolBType[5] = {};
+	int16 poolBValue[5] = {};
+	int16 poolBExtra[5] = {};
 	for (int i = 0; i < 4; i++) {
 		poolBType[i] = kPatternAttrType[3 + i];
 		poolBValue[i] = kPatternAttrValue[3 + i];
 		poolBExtra[i] = kPatternAttrExtra[3 + i];
 	}
 
-	// Pool C: indices 7-11 (attr type 3 = nose/feet, 5 values)
-	int16 poolCType[5], poolCValue[5], poolCExtra[5];
+	// Pool C: indices 7-11 (attr type 3 = lily-pad shape, 5 values)
+	LillyPadAttrType poolCType[6] = {};
+	int16 poolCValue[6] = {};
+	int16 poolCExtra[6] = {};
 	for (int i = 0; i < 5; i++) {
 		poolCType[i] = kPatternAttrType[7 + i];
 		poolCValue[i] = kPatternAttrValue[7 + i];
@@ -554,7 +733,8 @@ void ZoombiniPuzzleLilly::generateChallengePatterns() {
 	int16 poolCSize = 4; // 5 entries
 
 	for (int16 i = 1; i < 13; i++) {
-		int16 *curType, *curValue, *curExtra;
+		LillyPadAttrType *curType;
+		int16 *curValue, *curExtra;
 		int16 *curSize;
 
 		if (static_cast<uint>(i - 1) < 3) {
@@ -722,7 +902,7 @@ void ZoombiniPuzzleLilly::initGridWithAttributes() {
 
 				// Adjust based on grid type
 				if (n == 0) {
-					// Grid 0: attr type 1 (hair), indices 1-3
+					// Grid 0: attr type 1 (pattern), indices 1-3
 					if (_gridType == 3) {
 						adjustedIdx = rawVal;
 					} else {
@@ -731,7 +911,7 @@ void ZoombiniPuzzleLilly::initGridWithAttributes() {
 					if (adjustedIdx > 3)
 						adjustedIdx = 1;
 				} else if (n == 1) {
-					// Grid 1: attr type 2 (eyes), indices 4-7
+					// Grid 1: attr type 2 (color), indices 4-7
 					if (_gridType == 4) {
 						adjustedIdx = rawVal;
 					} else {
@@ -740,7 +920,7 @@ void ZoombiniPuzzleLilly::initGridWithAttributes() {
 					if (adjustedIdx > 7)
 						adjustedIdx = 4;
 				} else { // n == 2
-					// Grid 2: attr type 3 (nose), indices 8-12
+					// Grid 2: attr type 3 (pad shape), indices 8-12
 					if (_gridType == 5) {
 						adjustedIdx = rawVal;
 					} else {
@@ -767,16 +947,16 @@ void ZoombiniPuzzleLilly::initGridWithAttributes() {
 
 			// Apply pattern attributes if valid index
 			if (patternIdx > 0 && patternIdx < 13) {
-				int16 pType = _patternType[patternIdx];
+				LillyPadAttrType pType = _patternType[patternIdx];
 				int16 pValue = _patternValue[patternIdx];
 
-				if (pType == 1) {
+				if (pType == kLillyPadAttrPattern) {
 					hasAttr1 = true;
 					_gridAttr1[k][m] = static_cast<byte>(pValue);
-				} else if (pType == 2) {
+				} else if (pType == kLillyPadAttrShape) {
 					hasAttr2 = true;
 					_gridAttr2[k][m] = static_cast<byte>(pValue);
-				} else if (pType == 3) {
+				} else if (pType == kLillyPadAttrColor) {
 					hasAttr3 = true;
 					_gridAttr3[k][m] = static_cast<byte>(pValue);
 				}
@@ -835,9 +1015,9 @@ void ZoombiniPuzzleLilly::initGridWithAttributes() {
 	// IDA: word_4AE370 byte access — obstacle attr type used by all obstacles.
 	// Taken from the first obstacle entry's type.
 	if (_obstacleEntryCount > 0)
-		_obstacleAttrType = static_cast<byte>(_obstacleEntryType[0]);
+		_obstacleAttrType = _obstacleEntryType[0];
 	else
-		_obstacleAttrType = 0;
+		_obstacleAttrType = kLillyPadAttrNone;
 
 	// --- Phase 9: Initial cell swaps (difficulty > 1) ---
 	if (_difficultyLevel >= kPuzzleDiffLevel2) {
@@ -1104,8 +1284,8 @@ void ZoombiniPuzzleLilly::processRotateQueue() {
 	// IDA: lilly_funcMain at 0x423C62 — Rotate animation queue.
 	// Processes rotation ONLY when activeEnterRunner is set.
 	// SCRB selection depends on runner's attrType:
-	//   attrType == 3 → odd SCRBs: 10061/10063/10065
-	//   attrType != 3 → even SCRBs: 10060/10062/10064
+	//   pad-shape attrType → odd SCRBs: 10061/10063/10065
+	//   other attrTypes   → even SCRBs: 10060/10062/10064
 	if (_rotateQueueSize <= 0 || _activeEnterRunner < 0)
 		return;
 
@@ -1118,7 +1298,7 @@ void ZoombiniPuzzleLilly::processRotateQueue() {
 		int16 randVal = _vm->_rnd->getRandomNumber(0, 2);
 
 		rs.callbackMode = kCBLillyRotate;
-		if (rs.attrType == 3) {
+		if (rs.attrType == kLillyPadAttrShape) {
 			loadScrbOntoFeature(_zmbRunners[runnerIdx], 2 * randVal + 10061);
 		} else {
 			loadScrbOntoFeature(_zmbRunners[runnerIdx], 2 * randVal + 10060);
@@ -1570,13 +1750,13 @@ uint16 ZoombiniPuzzleLilly::advancePathOnGrid(int16 runnerIdx) {
 				v5 = 0;
 			} else {
 				// Check attribute constraint
-				if (rs.attrType == 1) {
+				if (rs.attrType == kLillyPadAttrPattern) {
 					if (_gridAttr1[newRow][newCol] != rs.attrValue)
 						v5 = 0;
-				} else if (rs.attrType == 2) {
+				} else if (rs.attrType == kLillyPadAttrColor) {
 					if (_gridAttr2[newRow][newCol] != rs.attrValue)
 						v5 = 0;
-				} else if (rs.attrType == 3) {
+				} else if (rs.attrType == kLillyPadAttrShape) {
 					if (_gridAttr3[newRow][newCol] != rs.attrValue)
 						v5 = 0;
 				}
@@ -1743,13 +1923,13 @@ void ZoombiniPuzzleLilly::computeShortestPath(byte targetRow, int16 runnerIdx) {
 
 			// Attribute validation
 			if (v5) {
-				if (rs.attrType == 1) {
+				if (rs.attrType == kLillyPadAttrPattern) {
 					if (_gridAttr1[testCol][testRow] != rs.attrValue)
 						v5 = 0;
-				} else if (rs.attrType == 2) {
+				} else if (rs.attrType == kLillyPadAttrColor) {
 					if (_gridAttr2[testCol][testRow] != rs.attrValue)
 						v5 = 0;
-				} else if (rs.attrType == 3) {
+				} else if (rs.attrType == kLillyPadAttrShape) {
 					if (_gridAttr3[testCol][testRow] != rs.attrValue)
 						v5 = 0;
 				}
@@ -2242,12 +2422,12 @@ void ZoombiniPuzzleLilly::handleZoombiniClick(ZmbFeature *clickedRunner) {
 	int16 entryCol = rs.entryPointIdx;
 	if (entryCol >= 0 && entryCol < 12) {
 		// Use grid attribute layer based on current puzzle attribute type.
-		// _obstacleAttrType encodes which layer this difficulty uses (1-3).
-		rs.attrType = _obstacleAttrType != 0 ? _obstacleAttrType : 1;
+		// _obstacleAttrType encodes which layer this difficulty uses.
+		rs.attrType = _obstacleAttrType != kLillyPadAttrNone ? _obstacleAttrType : kLillyPadAttrPattern;
 		switch (rs.attrType) {
-		case 1: rs.attrValue = _gridAttr1[entryCol][0]; break;
-		case 2: rs.attrValue = _gridAttr2[entryCol][0]; break;
-		case 3: rs.attrValue = _gridAttr3[entryCol][0]; break;
+		case kLillyPadAttrPattern: rs.attrValue = _gridAttr1[entryCol][0]; break;
+		case kLillyPadAttrShape: rs.attrValue = _gridAttr2[entryCol][0]; break;
+		case kLillyPadAttrColor: rs.attrValue = _gridAttr3[entryCol][0]; break;
 		default: rs.attrValue = 0; break;
 		}
 		rs.obsCombinedAttr = rs.attrValue;
@@ -2326,9 +2506,9 @@ bool ZoombiniPuzzleLilly::isCellValidForRunner(int16 col, int16 row, int16 runne
 
 	// Cell must match attribute constraint
 	switch (rs.attrType) {
-	case 1: return _gridAttr1[row][col] == rs.attrValue;
-	case 2: return _gridAttr2[row][col] == rs.attrValue;
-	case 3: return _gridAttr3[row][col] == rs.attrValue;
+	case kLillyPadAttrPattern: return _gridAttr1[row][col] == rs.attrValue;
+	case kLillyPadAttrShape: return _gridAttr2[row][col] == rs.attrValue;
+	case kLillyPadAttrColor: return _gridAttr3[row][col] == rs.attrValue;
 	default: return true;
 	}
 }
@@ -2906,7 +3086,7 @@ void ZoombiniPuzzleLilly::swapCellsAndUpdateRunners(int16 colA, int16 rowA, int1
 		rs.visitGrid[rowA][colA] = 0;
 		rs.visitGrid[rowB][colB] = 0;
 
-		if (rs.attrType >= 1 && rs.attrType <= 3) {
+		if (rs.attrType != kLillyPadAttrNone) {
 			byte attrAtA = getGridAttrByType(rs.attrType, rowA, colA);
 			byte attrAtB = getGridAttrByType(rs.attrType, rowB, colB);
 			if (attrAtA == rs.attrValue || attrAtB == rs.attrValue)
@@ -2929,7 +3109,7 @@ void ZoombiniPuzzleLilly::swapCellsAndUpdateRunners(int16 colA, int16 rowA, int1
 		rs.visitGrid[rowA][colA] = 0;
 		rs.visitGrid[rowB][colB] = 0;
 
-		if (rs.attrType >= 1 && rs.attrType <= 3) {
+		if (rs.attrType != kLillyPadAttrNone) {
 			byte attrAtA = getGridAttrByType(rs.attrType, rowA, colA);
 			byte attrAtB = getGridAttrByType(rs.attrType, rowB, colB);
 			if (attrAtA == rs.attrValue || attrAtB == rs.attrValue) {
@@ -2944,7 +3124,7 @@ void ZoombiniPuzzleLilly::swapCellsAndUpdateRunners(int16 colA, int16 rowA, int1
 	// IDA: Re-initialize BFS grids for all affected layers
 	for (int16 k = 0; k < _gridType; k++) {
 		if (cellData[2 * k] != 0)
-			initBFSGrid(cellData[2 * k + 1], cellData[2 * k]);
+			initBFSGrid(cellData[2 * k + 1], static_cast<LillyPadAttrType>(cellData[2 * k]));
 	}
 
 	_bCellSelectActive = false;
@@ -3000,16 +3180,16 @@ void ZoombiniPuzzleLilly::initCellRunnerPosition(int16 col, int16 row, ZmbFeatur
 // BFS Obstacle Pathfinding
 // =================================================================
 
-byte ZoombiniPuzzleLilly::getGridAttrByType(int16 attrType, int16 row0, int16 col) const {
+byte ZoombiniPuzzleLilly::getGridAttrByType(LillyPadAttrType attrType, int16 row0, int16 col) const {
 	switch (attrType) {
-	case 1: return _gridAttr1[row0][col];
-	case 2: return _gridAttr2[row0][col];
-	case 3: return _gridAttr3[row0][col];
+	case kLillyPadAttrPattern: return _gridAttr1[row0][col];
+	case kLillyPadAttrShape: return _gridAttr2[row0][col];
+	case kLillyPadAttrColor: return _gridAttr3[row0][col];
 	default: return 0;
 	}
 }
 
-void ZoombiniPuzzleLilly::bfsExpandCell(int16 col, int16 row1, int16 attrValue, int16 attrType) {
+void ZoombiniPuzzleLilly::bfsExpandCell(int16 col, int16 row1, int16 attrValue, LillyPadAttrType attrType) {
 	// IDA: maze_bfsExpandCell (0x42971D)
 	// Expand one cell in 4 directions. row1 is 1-based.
 	// Dir 0=up(row-1, record dir→2), 1=right(col+1, dir→3), 2=down(row+1, dir→0), 3=left(col-1, dir→1).
@@ -3092,7 +3272,7 @@ void ZoombiniPuzzleLilly::bfsExpandCell(int16 col, int16 row1, int16 attrValue, 
 	}
 }
 
-void ZoombiniPuzzleLilly::initBFSGrid(int16 attrValue, int16 attrType) {
+void ZoombiniPuzzleLilly::initBFSGrid(int16 attrValue, LillyPadAttrType attrType) {
 	// IDA: maze_initBFSGrid (0x4294EB)
 	// Initialize BFS arrays for one layer (one attr value).
 	// Seeds from grid cells where the attribute matches attrValue.
@@ -3234,15 +3414,15 @@ void ZoombiniPuzzleLilly::spawnObstacleRunner() {
 
 		// IDA: runner+271 = grid attr value at [obstCol][obstRow] for attrType
 		switch (rs.attrType) {
-		case 1: rs.attrValue = _gridAttr1[rs.obstCol][rs.obstRow]; break;
-		case 2: rs.attrValue = _gridAttr2[rs.obstCol][rs.obstRow]; break;
-		case 3: rs.attrValue = _gridAttr3[rs.obstCol][rs.obstRow]; break;
+		case kLillyPadAttrPattern: rs.attrValue = _gridAttr1[rs.obstCol][rs.obstRow]; break;
+		case kLillyPadAttrShape: rs.attrValue = _gridAttr2[rs.obstCol][rs.obstRow]; break;
+		case kLillyPadAttrColor: rs.attrValue = _gridAttr3[rs.obstCol][rs.obstRow]; break;
 		default: rs.attrValue = 0; break;
 		}
 
 		// IDA: runner+272 = attrValue + kPatternAttrExtra[kObstacleBFSOffset[attrType]]
-		if (rs.attrType < 5) {
-			int16 offset = kObstacleBFSOffset[rs.attrType];
+		if (static_cast<byte>(rs.attrType) < 5) {
+			int16 offset = kObstacleBFSOffset[static_cast<byte>(rs.attrType)];
 			if (offset >= 0 && offset < 13)
 				rs.obsCombinedAttr = static_cast<byte>(rs.attrValue + kPatternAttrExtra[offset]);
 		}
@@ -3332,15 +3512,15 @@ uint16 ZoombiniPuzzleLilly::advanceObstacleForwardStep(int16 runnerIdx) {
 
 			// IDA: runner+271 = grid attr value at target cell for this type
 			switch (rs.attrType) {
-			case 1: rs.attrValue = _gridAttr1[nextCol][curRow]; break;
-			case 2: rs.attrValue = _gridAttr2[nextCol][curRow]; break;
-			case 3: rs.attrValue = _gridAttr3[nextCol][curRow]; break;
+			case kLillyPadAttrPattern: rs.attrValue = _gridAttr1[nextCol][curRow]; break;
+			case kLillyPadAttrShape: rs.attrValue = _gridAttr2[nextCol][curRow]; break;
+			case kLillyPadAttrColor: rs.attrValue = _gridAttr3[nextCol][curRow]; break;
 			default: rs.attrValue = 0; break;
 			}
 
 			// IDA: runner+272 = attrValue + kPatternAttrExtra[kObstacleBFSOffset[attrType]]
-			if (rs.attrType < 5) {
-				int16 bfsOffset = kObstacleBFSOffset[rs.attrType];
+			if (static_cast<byte>(rs.attrType) < 5) {
+				int16 bfsOffset = kObstacleBFSOffset[static_cast<byte>(rs.attrType)];
 				if (bfsOffset >= 0 && bfsOffset < 13)
 					rs.obsCombinedAttr = static_cast<byte>(rs.attrValue + kPatternAttrExtra[bfsOffset]);
 			}

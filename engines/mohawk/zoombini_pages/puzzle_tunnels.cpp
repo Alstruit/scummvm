@@ -2188,6 +2188,33 @@ void ZoombiniPuzzleTunnels::onGoButtonActivated() {
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
+Common::String ZoombiniPuzzleTunnels::debugGetAnswer() const {
+	static const char *kAttrTypeNames[] = {"", "hair", "eyes", "nose", "legs"};
+
+	Common::String s = Common::String::format("Tunnels (level %d): guardCount=%d\n",
+		_difficultyLevel, _guardCount);
+	for (int i = 0; i < _guardCount && i < 2; i++) {
+		const TunnelGuard &g = _guards[i];
+		s += Common::String::format("  guard %d: side=%s, conditions=%d\n",
+			i, g.sideFlag ? "right" : "left", g.condCount);
+		static const ZmbTrait::TraitCategory kAttrTypeToCategory[] = {
+			ZmbTrait::kTraitHair,
+			ZmbTrait::kTraitHair,
+			ZmbTrait::kTraitEyes,
+			ZmbTrait::kTraitNose,
+			ZmbTrait::kTraitFeet
+		};
+		for (int j = 0; j < g.condCount && j < 2; j++) {
+			uint8 t = g.attrType[j];
+			uint8 v = g.attrValue[j];
+			ZmbTrait::TraitCategory category = (1 <= t && t <= 4) ? kAttrTypeToCategory[t] : ZmbTrait::kTraitHair;
+			const char *name = (1 <= t && t <= 4) ? kAttrTypeNames[t] : "?";
+			s += Common::String::format("    cond %d: %s=%d (%s)\n", j, name, v, ZmbTrait::debugTraitValueName(category, v));
+		}
+	}
+	return s;
+}
+
 ZmbEventHandleResult ZoombiniPuzzleTunnels::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
 	// Sticky mouse: second click ends drag
 	if (isDragging() && _vm->_state->getEnableStickyMouse()) {

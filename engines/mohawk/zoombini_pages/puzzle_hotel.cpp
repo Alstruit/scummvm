@@ -301,6 +301,45 @@ void ZoombiniPuzzleHotel::onGoButtonActivated() {
 	ZoombiniInteractive::onGoButtonActivated();
 }
 
+Common::String ZoombiniPuzzleHotel::debugGetAnswer() const {
+	// Hotel axis: 0=foot, 1=nose, 2=eye, 3=head
+	static const char *kAxisNames[] = {"foot", "nose", "eye", "head"};
+
+	const char *axis1Name = (0 <= _attrAxis1 && _attrAxis1 <= 3) ? kAxisNames[_attrAxis1] : "?";
+	const char *axis2Name = (0 <= _attrAxis2 && _attrAxis2 <= 3) ? kAxisNames[_attrAxis2] : "?";
+	const char *axis3Name = (0 <= _attrAxis3 && _attrAxis3 <= 3) ? kAxisNames[_attrAxis3] : "?";
+
+	Common::String s = Common::String::format("Hotel (level %d):\n", _difficultyLevel);
+	s += Common::String::format("  Axes: dim1=%s(%d) dim2=%s(%d) dim3=%s(%d)\n",
+		axis1Name, _attrAxis1, axis2Name, _attrAxis2, axis3Name, _attrAxis3);
+	static const ZmbTrait::TraitCategory kPackedAxisToCategory[] = {
+		ZmbTrait::kTraitFeet,
+		ZmbTrait::kTraitNose,
+		ZmbTrait::kTraitEyes,
+		ZmbTrait::kTraitHair
+	};
+	ZmbTrait::TraitCategory axis1Category = (0 <= _attrAxis1 && _attrAxis1 <= 3) ? kPackedAxisToCategory[_attrAxis1] : ZmbTrait::kTraitHair;
+	ZmbTrait::TraitCategory axis2Category = (0 <= _attrAxis2 && _attrAxis2 <= 3) ? kPackedAxisToCategory[_attrAxis2] : ZmbTrait::kTraitHair;
+	ZmbTrait::TraitCategory axis3Category = (0 <= _attrAxis3 && _attrAxis3 <= 3) ? kPackedAxisToCategory[_attrAxis3] : ZmbTrait::kTraitHair;
+	s += "  Grid1 (row): ";
+	for (int i = 0; i < 25; i++) {
+		if (_attrGrid1[i] != 0)
+			s += Common::String::format("%d(%s) ", _attrGrid1[i], ZmbTrait::debugTraitValueName(axis1Category, _attrGrid1[i]));
+	}
+	s += "\n  Grid2 (floor): ";
+	for (int i = 0; i < 25; i++) {
+		if (_attrGrid2[i] != 0)
+			s += Common::String::format("%d(%s) ", _attrGrid2[i], ZmbTrait::debugTraitValueName(axis2Category, _attrGrid2[i]));
+	}
+	s += "\n  Grid3 (column): ";
+	for (int i = 0; i < 5; i++) {
+		if (_attrGrid3[i] != 0)
+			s += Common::String::format("%d(%s) ", _attrGrid3[i], ZmbTrait::debugTraitValueName(axis3Category, _attrGrid3[i]));
+	}
+	s += "\n";
+	return s;
+}
+
 void ZoombiniPuzzleHotel::loadZoombinisFromPack() {
 	ZmbStateFile &f = _vm->_state->_f;
 	uint16 posIdx = 0;

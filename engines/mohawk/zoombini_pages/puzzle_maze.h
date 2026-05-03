@@ -100,6 +100,7 @@ public:
 
 protected:
 	void onGoButtonActivated() override;
+	Common::String debugGetAnswer() const override;
 	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
 	void onEveryFrame() override;
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
@@ -380,7 +381,7 @@ private:
 
 	/**
 	 * Attribute slot mapping: maps slot index (0-20) to trait category offset.
-	 * Usage: traitCategory = kAttrSlotType[slotIdx] + 1 (1=hair,2=eyes,3=nose,4=feet).
+	 * Usage: kAttrSlotType[slotIdx] maps to ZmbTrait::TraitCategory.
 	 * IDA: word_4A1FC4[2*i]
 	 */
 	static const int16 kAttrSlotType[21];

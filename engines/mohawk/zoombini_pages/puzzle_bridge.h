@@ -55,6 +55,7 @@ public:
 protected:
 	void onGoButtonActivated() override;
 	void debugPrepareForDeparture() override;
+	Common::String debugGetAnswer() const override;
 
 	/**
 	 * Build the attribute toll table and select the winning combination.
