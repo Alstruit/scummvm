@@ -166,6 +166,7 @@ private:
 	void setDifficultyParams();
 	void initGridWithAttributes();
 	void createZoombiniRunners();
+	void createInitialObstacleRunners();
 	void loadRegsCoordinateTables();
 	void generateChallengePatterns();
 
@@ -286,6 +287,14 @@ private:
 	 * 4-frame blink animation overlay on the highlighted cell.
 	 */
 	ZmbRenderResult renderCursorIndicator(ZmbFeature *feature);
+
+	/**
+	 * Pre-render shape callback for obstacle (toad) runners.
+	 * IDA: maze_updateMultiLegPath (0x429E72)
+	 * Adds the lane index (0-11) to the pattern overlay shape_id,
+	 * selecting one of 12 distinct toad back patterns from tBMP 10000.
+	 */
+	void obstaclePreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
 
 	// --- Helpers ---
 
@@ -409,6 +418,9 @@ private:
 
 	// IDA: dword_4A1650 — exit/entry positions (packed X,Y per entry)
 	static const Common::Point kEntryPositions[12];
+
+	// IDA: unk_4A15A8 — initial staging positions for zoombini runners (20 slots)
+	static const Common::Point kInitialPositions[20];
 
 	// =================================================================
 	// Member variables

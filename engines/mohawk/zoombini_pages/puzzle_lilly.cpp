@@ -89,6 +89,15 @@ const Common::Point ZoombiniPuzzleLilly::kEntryPositions[12] = {
 	{39, 289}, {18, 313}, {47, 327}, {17, 345}, {43, 363}, {53, 393}
 };
 
+// IDA: unk_4A15A8 — initial staging positions for zoombini runners (20 slots)
+// These are the upper-left waiting area positions before grid entry.
+const Common::Point ZoombiniPuzzleLilly::kInitialPositions[20] = {
+	{101, 27}, {100, 42}, {95, 55}, {88, 69}, {78, 80},
+	{88, 24},  {85, 39},  {80, 54}, {72, 67}, {62, 81},
+	{74, 25},  {70, 40},  {64, 53}, {56, 67}, {46, 79},
+	{59, 25},  {55, 39},  {49, 53}, {41, 65}, {44, 31}
+};
+
 // IDA: word_4A14C0 — BFS layer offset by attr type.
 // attrType 0=unused, 1→offset 0, 2→offset 3, 3→offset 7
 const int16 ZoombiniPuzzleLilly::kObstacleBFSOffset[5] = {0, 0, 3, 7, 0};
@@ -197,12 +206,13 @@ void ZoombiniPuzzleLilly::loadFeatures() {
 	// IDA: word_4A14C8 — virtual grid renderer with custom render callback
 	// Original: runner_registerAndAllocate(0,0,0,0,0,
 	//     maze_clearAndInvalidateRect, maze_renderAllGridSprites_426BFB, FLAGS)
+	// scrbId=0: callback-only runner with no SCRB animation data.
 	{
 		ZmbFeature::EventHooks hooks;
 		hooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(
 			&ZoombiniPuzzleLilly::renderGridSprites));
 		_gridRendererFeature = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 10000), 10000, 0,
+			ZmbResource(ZmbArchiveKind::kPage, 10000), 0, 0,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY,
 			hooks);
 	}
@@ -210,26 +220,34 @@ void ZoombiniPuzzleLilly::loadFeatures() {
 	// IDA: lilly_cursorRunnerIdx — cursor indicator with custom render callback
 	// Original: runner_registerAndAllocate(0,0,0,5,0,
 	//     maze_computeDrawnCellRect, maze_renderCursorIndicator_426DF9, FLAGS)
+	// scrbId=0: callback-only runner with no SCRB animation data.
 	{
 		ZmbFeature::EventHooks hooks;
 		hooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(
 			&ZoombiniPuzzleLilly::renderCursorIndicator));
 		_cursorRunnerFeature = loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, 10000), 10001, 5,
+			ZmbResource(ZmbArchiveKind::kPage, 10000), 0, 5,
 			ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY,
 			hooks);
 	}
 
 	// IDA: lilly_cellAnimRunnerA/B — cell animation runners
+	// Original: wBoolDoRender=0 initially; activated later by setRunnerClickRect().
 	_cellAnimRunnerA = loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, 10000), 10002, 4,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
+	_cellAnimRunnerA->deactivateRender();
 	_cellAnimRunnerB = loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, 10000), 10003, 4,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_04000000_OVERLAY);
+	_cellAnimRunnerB->deactivateRender();
 
 	// Create per-zoombini runners
 	createZoombiniRunners();
+
+	// IDA: maze_registerObstacleRunners_42651C — register 12 initial obstacle
+	// runners ("toads") on the left bank at entry positions with SCRB 10043+j.
+	createInitialObstacleRunners();
 
 	// 5 overlay features for SCRB 14000-14004
 	for (uint16 i = 0; i < 5; i++) {
@@ -244,13 +262,35 @@ void ZoombiniPuzzleLilly::loadFeatures() {
 			ZmbResource(ZmbArchiveKind::kPage, 11000), 11000, 5,
 			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE);
 
+		// IDA 0x42354A: runner_registerAndAllocate(0, 0, &pFeatureCore, 6, 10078+unlockProgress,
+		//     runner_preRenderStandard, runner_postRenderStandard,
+		//     FLAG_00000002|FLAG_00080000|FLAG_00100000|FLAG_04000000)
+		// After creation: v7->bitmask = 0; v7->core188.wBoolDoRender = 0;
+		//     v7->core188.posLoc = (38, 415).
+		// Event 4 activation: v5->bitmask = 0x980002 (POS_DELTA|PLAY_ONCE|DEFER_ANIM|TYPE_TOWN).
+		//   scrb_loadOnRunner at 0x4604DC: when POS_DELTA set, pos2 = hsArr[0].pos.
+		//   ScummVM: initValues() sets _pointRef from SCRB first hotspot when POS_DELTA present.
+		// FLAG_01000000_DEFER_RENDER: needed so deactivateRender() actually suppresses blitShapes.
 		_frogRunnerFeature = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 10000), 10078, 6,
+			ZmbFeature::FLAG_00800000_POS_DELTA |
+			ZmbFeature::FLAG_01000000_DEFER_RENDER |
 			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 			ZmbFeature::FLAG_04000000_OVERLAY);
+
+		// IDA 0x423567: Cell select state = 4 for difficulty >= 2
+		_cellSelectState = 4;
 		if (_frogRunnerFeature) {
+			// IDA 0x423590: posLoc = (38, 415). With POS_DELTA, getPosDelta() returns
+			// posLoc - pointRef = (38,415) - SCRB_first_hotspot(332,272) = (-294, 143).
+			// blitShapes adds this delta to shape positions, centering the wand at (38, 415).
 			_frogRunnerFeature->setPointLoc(Common::Point(38, 415));
 			_frogRunnerFeature->deactivateRender();
+
+			// Apply per-shape REGS for registration point correction.
+			auto itRegs = _regsMap.find(10000);
+			if (itRegs != _regsMap.end())
+				_frogRunnerFeature->setShapeRegs(itRegs->_value);
 		}
 	}
 
@@ -280,6 +320,16 @@ void ZoombiniPuzzleLilly::loadFeatures() {
 	// Initialize obstacle timer
 	// IDA: lilly_nextObstacleTimer = current_frame + 600
 	_nextObstacleTimer = getCurrentFrameCounter() + 600;
+
+	// IDA 0x4237A1: At end of init, explicitly re-load the frog SCRB to start
+	// the intro animation. The original calls scrb_loadOnRunner(1, 11000, frogRunner)
+	// which overrides DEFER_ANIM via scheduleRender → activateRender + activateAnimate.
+	// Without this, the SCRB 11000 animation never plays and events 3/4/5 never fire.
+	if (_difficultyLevel >= kPuzzleDiffLevel2 && _frogScrbFeature) {
+		loadScrbOntoFeature(_frogScrbFeature, 11000);
+		// IDA: ui_bDragLockActive = totalCount - (totalCount-1) = 1
+		_remainingZmbs = 1;
+	}
 
 	// Activate puzzle
 	_bPuzzleActive = true;
@@ -814,6 +864,7 @@ void ZoombiniPuzzleLilly::initGridWithAttributes() {
 
 void ZoombiniPuzzleLilly::createZoombiniRunners() {
 	// IDA: word_4AE3C2[] — per-zoombini runners at SCRB 10109+i
+	// Original: runner_registerAndAllocate(0, 0, (POINTS *)&unk_4A15A8 + i, 4, i+10109, ...)
 	for (int16 i = 0; i < _totalZmbCount && i < kMaxRunners; i++) {
 		_zmbRunners[i] = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 10000), 10109 + i, 4,
@@ -821,7 +872,16 @@ void ZoombiniPuzzleLilly::createZoombiniRunners() {
 			ZmbFeature::FLAG_04000000_OVERLAY);
 
 		if (_zmbRunners[i]) {
-			_zmbRunners[i]->deactivateRender();
+			// IDA: position from unk_4A15A8 table.
+			// Original: non-last-2 runners are VISIBLE at icon positions with
+			// DEFER_ANIM (first frame shown, animation deferred). Last 2 runners
+			// have wBoolDoRender=0 set explicitly (then walk-in for diff==1).
+			_zmbRunners[i]->setPointLoc(kInitialPositions[i]);
+			_zmbRunners[i]->deactivateAnimate();  // DEFER_ANIM: first frame only
+			if (i >= _totalZmbCount - 2) {
+				// IDA: v4->core188.wBoolDoRender = 0 for last 2
+				_zmbRunners[i]->deactivateRender();
+			}
 		}
 
 		// IDA: Exit animation child runner — separate feature for exit SCRB 10129+row.
@@ -831,7 +891,7 @@ void ZoombiniPuzzleLilly::createZoombiniRunners() {
 		_exitAnimFeatures[i] = loadScrbFeature(
 			ZmbResource(ZmbArchiveKind::kPage, 10000), 10129 + i, 4,
 			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
-			ZmbFeature::FLAG_04000000_OVERLAY);
+			ZmbFeature::FLAG_01000000_DEFER_RENDER | ZmbFeature::FLAG_04000000_OVERLAY);
 
 		if (_exitAnimFeatures[i]) {
 			_exitAnimFeatures[i]->deactivateRender();
@@ -843,9 +903,100 @@ void ZoombiniPuzzleLilly::createZoombiniRunners() {
 	if (_difficultyLevel == kPuzzleDiffLevel1) {
 		for (int16 i = MAX(0, _totalZmbCount - 2); i < _totalZmbCount; i++) {
 			if (_zmbRunners[i]) {
-				_zmbRunners[i]->activateRender();
 				loadScrbOntoFeature(_zmbRunners[i], 10089 + i);
+				_runnerStates[i].callbackMode = kCBLillyDepart;
 			}
+		}
+		// IDA: ui_bDragLockActive = totalCount - (totalCount-1) = 1
+		_remainingZmbs = 1;
+	}
+}
+
+void ZoombiniPuzzleLilly::createInitialObstacleRunners() {
+	// IDA: maze_registerObstacleRunners_42651C (0x42651C) — 659 bytes.
+	// Registers 12 obstacle runners ("toads") on the left bank at entry positions.
+	// Each gets SCRB 10043+j (entry idle), bitmask 0x980002 (clickable).
+	// Lane assignment is randomized via shuffle-without-replacement.
+	static const int kObstacleCount = 12;
+
+	// IDA: v47[0..11] = {0,1,...,11} — shuffle deck (lane indices)
+	int16 deck[kObstacleCount];
+	for (int16 i = 0; i < kObstacleCount; i++)
+		deck[i] = i;
+	int16 deckSize = kObstacleCount - 1; // IDA: v50 = 11
+
+	for (int16 j = 0; j < kObstacleCount; j++) {
+		// IDA: Pick random lane from remaining deck
+		int16 randIdx = _vm->_rnd->getRandomNumber(0, deckSize);
+		int16 lane = deck[randIdx];
+
+		// IDA: v37 = v46[2*lane] (attrType), v38 = v45[2*lane] (attrValue)
+		// v46 = kPatternAttrType, v45 = kPatternAttrValue (same tables at 0x4A177A, 0x4A1792)
+		// word_4ABFE2[j] = v37, word_4ABFFA[j] = v38 — write-only globals, not needed in ScummVM
+
+		// IDA: Remove picked lane from deck (shift left)
+		for (int16 k = randIdx; k < deckSize; k++)
+			deck[k] = deck[k + 1];
+		--deckSize;
+
+		// IDA: runner_registerAndAllocate(0, 0, v11, 7, j+10043, pre, post, 0x180002)
+		// Priority = rand(3,6), SCRB = j+10043
+		int16 runnerIdx = _totalZmbCount + j;
+		if (runnerIdx >= kMaxRunners)
+			break;
+
+		_zmbRunners[runnerIdx] = loadScrbFeature(
+			ZmbResource(ZmbArchiveKind::kPage, 10000), 10043 + j, 7,
+			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
+			ZmbFeature::FLAG_04000000_OVERLAY);
+
+		if (!_zmbRunners[runnerIdx])
+			continue;
+
+		// IDA: scrb_loadOnRunner(1, j+10043, runner) — load entry idle SCRB
+		loadScrbOntoFeature(_zmbRunners[runnerIdx], 10043 + j);
+
+		// IDA: runner[8] = 0x980002 — make clickable on left bank
+		// In ScummVM, clickability is handled by hasClickRect() + isRenderActivated() checks.
+		// The SCRB 10043+j provides the click rect via hotspot groups.
+
+		_obstacleRunners[j] = runnerIdx;
+
+		// Initialize runner state for this obstacle
+		ZmbLillyRunnerState &rs = _runnerStates[runnerIdx];
+		rs.clear();
+		rs.isObstacle = true;
+		rs.entryPointIdx = lane; // IDA: v39 = lane (entry position index)
+
+		// IDA: runner->onPreRenderShapeFunc = maze_updateMultiLegPath_429E72
+		// Adds lane offset to the pattern overlay shape_id before rendering.
+		_zmbRunners[runnerIdx]->setPreRenderShapeFunc(
+			reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniPuzzleLilly::obstaclePreRenderShape));
+
+		// IDA: scrb_useFeatureGroup(0, 2, 10000) — obstacle runners use tBMP 10000
+		// with REGS 10000/10001 for per-shape position offsets.
+		auto itRegs = _regsMap.find(10000);
+		if (itRegs != _regsMap.end())
+			_zmbRunners[runnerIdx]->setShapeRegs(itRegs->_value);
+	}
+
+	_obstacleRunnerCount = kObstacleCount;
+
+}
+
+void ZoombiniPuzzleLilly::obstaclePreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
+	// IDA: maze_updateMultiLegPath (0x429E72)
+	// Adds lane index (runner[272]) to hsArr[1].shapeid (pattern overlay).
+	// This selects one of 12 distinct toad back patterns from tBMP 10000
+	// sub-images 78-89 (shape_id 79-90).
+	for (int16 j = 0; j < _obstacleRunnerCount; j++) {
+		int16 ri = _obstacleRunners[j];
+		if (ri >= 0 && ri < kMaxRunners && _zmbRunners[ri] == feature) {
+			int16 lane = _runnerStates[ri].entryPointIdx;
+			if (hotspots.size() >= 2 && hotspots[1]._shapeIdx > 0) {
+				hotspots[1]._shapeIdx += lane;
+			}
+			return;
 		}
 	}
 }
@@ -1796,50 +1947,125 @@ ZmbEventHandleResult ZoombiniPuzzleLilly::onLButtonDown(const Common::Point &abs
 		return result;
 
 	// Guard: check puzzle state
-	if (!_bPuzzleActive || _bCellSelectActive)
+	if (!_bPuzzleActive)
 		return ZmbEventHandleResult::kPassthrough;
 
-	// IDA: Case 4 — Zoombini click
-	// Find clicked zoombini runner via bitmask 9961474 (0x980002)
-	for (int16 i = 0; i < _totalZmbCount; i++) {
-		if (!_zmbRunners[i] || !_zmbRunners[i]->isRenderActivated())
-			continue;
+	// IDA: Cell-pair swap clicks must pass through even while _bCellSelectActive
+	// is set, because the swap handler is what advances cellSelectState 4→5→6.
+	// In the original, this runs inside the blocking modal fleens_runAttrSelectLoop.
+	// Only runner clicks (zoombini/obstacle/frog) are gated by _bCellSelectActive.
 
-		ZmbLillyRunnerState &rs = _runnerStates[i];
-		if (rs.placed)
-			continue;
+	// --- Runner clicks: blocked during active cell selection ---
+	if (!_bCellSelectActive) {
 
-		// Hit test against runner feature
-		if (_zmbRunners[i]->hasClickRect() &&
-		    _zmbRunners[i]->getClickRect().contains(absPos)) {
-			// IDA fleens_interactiveCellSelectLoop (mouse mode): the player's
-			// click position selects which entry lane the snoid takes, not
-			// runnerIdx % 12 auto-assignment. Pick the nearest entry-point
-			// row based on the click's Y coordinate.
-			int16 nearestEntry = 0;
-			int32 bestDist = INT32_MAX;
-			for (int16 e = 0; e < 12; e++) {
-				int32 dy = (int32)absPos.y - kEntryPositions[e].y;
-				int32 d = dy * dy;
-				if (d < bestDist) { bestDist = d; nearestEntry = e; }
+		// IDA: Case 4 — Zoombini/Frog click
+		// Original: click_findRunnerAtPoint(1, 0x980002, pPos) finds the frog or
+		// a returned zoombini (bitmask 0x980002). ScummVM equivalent: check
+		// isRenderActivated() + hasClickRect() + clickRect.contains().
+		//
+		// Gate: ui_bDragLockActive (mapped to _remainingZmbs) > 0 blocks zoombini
+		// clicks but still allows obstacles/frog (type == 2). After auto-entered
+		// runners fire their SCRB event 1, _remainingZmbs reaches 0.
+
+		// --- Zoombini runner click (only when _remainingZmbs <= 0) ---
+		if (_remainingZmbs <= 0) {
+			for (int16 i = 0; i < _totalZmbCount; i++) {
+				if (!_zmbRunners[i] || !_zmbRunners[i]->isRenderActivated())
+					continue;
+
+				ZmbLillyRunnerState &rs = _runnerStates[i];
+				if (rs.placed)
+					continue;
+
+				// Hit test against runner feature
+				if (_zmbRunners[i]->hasClickRect() &&
+				    _zmbRunners[i]->getClickRect().contains(absPos)) {
+					// IDA fleens_interactiveCellSelectLoop (mouse mode): the player's
+					// click position selects which entry lane the snoid takes.
+					// Pick the nearest entry-point row based on the click's Y coordinate.
+					int16 nearestEntry = 0;
+					int32 bestDist = INT32_MAX;
+					for (int16 e = 0; e < 12; e++) {
+						int32 dy = (int32)absPos.y - kEntryPositions[e].y;
+						int32 d = dy * dy;
+						if (d < bestDist) { bestDist = d; nearestEntry = e; }
+					}
+					_runnerStates[i].entryPointIdx = nearestEntry;
+					handleZoombiniClick(_zmbRunners[i]);
+
+					// IDA 0x424974: Chain mechanism — activate next hidden runner from pool.
+					// In the original, word_4AE3C2[placedZmbCount] (child runner) gets
+					// SCRB 10109+idx loaded with exit callback → auto-enters via event chain.
+					// The body stays at icon cluster. In ScummVM single-runner architecture,
+					// re-load the icon idle SCRB with deferred animation so the next runner
+					// is visible at its icon position but doesn't auto-enter. Player must
+					// click it to start grid entry.
+					if (_placedZmbCount < _totalZmbCount) {
+						int16 nextIdx = _placedZmbCount;
+						if (nextIdx >= 0 && nextIdx < kMaxRunners && _zmbRunners[nextIdx]) {
+							loadScrbOntoFeature(_zmbRunners[nextIdx], 10109 + nextIdx);
+							_zmbRunners[nextIdx]->deactivateAnimate(); // DEFER_ANIM: show first frame only
+							_runnerStates[nextIdx].callbackMode = kCBLillyNone;
+						}
+						_placedZmbCount++;
+					}
+
+					return ZmbEventHandleResult::kConsumed;
+				}
 			}
-			_runnerStates[i].entryPointIdx = nearestEntry;
-			handleZoombiniClick(_zmbRunners[i]);
-			return ZmbEventHandleResult::kConsumed;
 		}
-	}
 
-	// IDA: Frog click — start cell swap selection (difficulty >= 2)
-	// Original: clicking frog enters modal loop with cellSelectState=4.
-	// Non-blocking: clicking frog sets _cellSelectState=4 to enable cell clicks.
-	if (_frogRunnerFeature && _frogRunnerFeature->isRenderActivated() &&
-	    _cellSelectState == 0 && _swapLevel < 6) {
-		if (_frogRunnerFeature->hasClickRect() &&
-		    _frogRunnerFeature->getClickRect().contains(absPos)) {
-			_cellSelectState = 4;
-			return ZmbEventHandleResult::kConsumed;
+		// --- Obstacle (toad) click — enter cell swap mode ---
+		// IDA: click_findRunnerAtPoint(1, 0x980002, pPos) matches obstacle runners
+		// (attrType != 0). For obstacles, fleens_runAttrSelectLoop enters swap mode
+		// (fleens_cellSelectState=4, lilly_cellSelectState=4). Obstacle clicks bypass
+		// the _remainingZmbs gate (original: ui_bDragLockActive bypass for type==2).
+		for (int16 j = 0; j < _obstacleRunnerCount; j++) {
+			int16 ri = _obstacleRunners[j];
+			if (ri < 0 || ri >= kMaxRunners || !_zmbRunners[ri])
+				continue;
+			if (_zmbRunners[ri]->hasClickRect() &&
+			    _zmbRunners[ri]->getClickRect().contains(absPos)) {
+				// IDA: fleens_runAttrSelectLoop at 0x4287B2: when attrType != 0,
+				// sets fleens_cellSelectState=4, lilly_cellSelectState=4 (swap mode).
+				// Only consume click when state can change (state 0→4). Otherwise,
+				// let click fall through to cell swap handler (state 4/5 below).
+				if (_cellSelectState == 0 && _swapLevel < 6) {
+					_cellSelectState = 4;
+					return ZmbEventHandleResult::kConsumed;
+				}
+				// When swap mode is already active, clicking a toad on the left
+				// bank should not cancel swap mode. Consume the click to prevent
+				// the "outside grid" else branch from resetting cellSelectState.
+				return ZmbEventHandleResult::kConsumed;
+			}
 		}
-	}
+		debugC(1, kZmbDebugAnimation, "Lilly: click at (%d,%d), obstCount=%d, cellSel=%d",
+			absPos.x, absPos.y, _obstacleRunnerCount, _cellSelectState);
+		for (int16 j = 0; j < _obstacleRunnerCount; j++) {
+			int16 ri = _obstacleRunners[j];
+			if (ri < 0 || ri >= kMaxRunners || !_zmbRunners[ri])
+				continue;
+			bool hc = _zmbRunners[ri]->hasClickRect();
+			Common::Rect cr = hc ? _zmbRunners[ri]->getClickRect() : Common::Rect();
+			debugC(1, kZmbDebugAnimation, "  obst[%d] ri=%d hasClick=%d rect=(%d,%d,%d,%d) renderAct=%d",
+				j, ri, hc ? 1 : 0, cr.left, cr.top, cr.right, cr.bottom,
+				_zmbRunners[ri]->isRenderActivated() ? 1 : 0);
+		}
+
+		// --- Frog click — start cell swap selection (difficulty >= 2) ---
+		// Original: clicking frog enters modal loop (fleens_interactiveCellSelectLoop).
+		// Non-blocking: clicking frog sets _cellSelectState=4 to enable cell clicks.
+		if (_frogRunnerFeature && _frogRunnerFeature->isRenderActivated() &&
+		    _cellSelectState == 0 && _swapLevel < 6) {
+			if (_frogRunnerFeature->hasClickRect() &&
+			    _frogRunnerFeature->getClickRect().contains(absPos)) {
+				_cellSelectState = 4;
+				return ZmbEventHandleResult::kConsumed;
+			}
+		}
+
+	} // end !_bCellSelectActive
 
 	// IDA: Cell-pair swap selection (from fleens_interactiveCellSelectLoop, 0x4286A5)
 	// When cellSelectState is 4 or 5, clicking an unoccupied cell selects it for swap.
@@ -2027,6 +2253,12 @@ void ZoombiniPuzzleLilly::handleZoombiniClick(ZmbFeature *clickedRunner) {
 		rs.obsCombinedAttr = rs.attrValue;
 	}
 
+	// IDA: Set dirByte for arrival animation. processArriveQueue loads
+	// SCRB 10019 + rs.dirByte. In the original, the chain activation stores
+	// lilly_clickedCellIdx (= entry column 0-11) into hsArr[5].shapeid,
+	// which processArriveQueue reads as the direction byte.
+	rs.dirByte = static_cast<byte>(rs.entryPointIdx);
+
 	// IDA: Load entry SCRB (10109 + runnerIdx) on the child runner.
 	// In the original, SCRB 10109+idx fires event 2 (adjusted from 0xFF03)
 	// at frame 5, which routes through exitCallback → arriveQueue.
@@ -2053,15 +2285,10 @@ void ZoombiniPuzzleLilly::handleZoombiniClick(ZmbFeature *clickedRunner) {
 	// Initialize BFS path for this runner
 	initRunnerBFSPath(runnerIdx);
 
-	_placedZmbCount++;
-
-	// IDA: When all zoombinis placed and unlock progress == 6, count matches
-	if (_placedZmbCount == _totalZmbCount) {
-		if (_swapLevel == 6) {
-			countMatchesAndPlaySound();
-		}
-		_bAdvanceEnabled = true;
-	}
+	// NOTE: _placedZmbCount is NOT incremented here. In the original
+	// (0x4249D9), lilly_placedZmbCount is incremented in the click handler
+	// AFTER activating the next pool runner, not during placement.
+	// The increment is in onLButtonDown's chain activation code.
 
 	// IDA: Set kCBLillyDepart callback mode. SCRB 10109+idx fires event 2
 	// (0xFF03 terminator, adjusted=2) at frame 5, which chains through:
@@ -2152,6 +2379,30 @@ void ZoombiniPuzzleLilly::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCod
 			break;
 		}
 	}
+
+	// --- exitAnimFeature event routing ---
+	// In the original, SCRB 10000 is loaded on the grandchild runner (runner+72
+	// of the child). Event 20 from SCRB 10000 fires on the grandchild, whose
+	// callback (maze_handlePathBuildEvent) pushes to readyQueue. In ScummVM,
+	// SCRB 10000 is loaded on _exitAnimFeatures[], which are not in _zmbRunners[].
+	// Route their events back to the corresponding runner index.
+	if (runnerIdx < 0) {
+		for (int16 i = 0; i < kMaxRunners; i++) {
+			if (_exitAnimFeatures[i] == feature) {
+				runnerIdx = i;
+				break;
+			}
+		}
+		if (runnerIdx >= 0) {
+			// IDA: maze_handlePathBuildEvent event 20 → readyQueue push
+			if (eventCode == 20) {
+				if (_readyQueueSize < kMaxMoveQueueSize)
+					_readyQueue[_readyQueueSize++] = runnerIdx;
+			}
+			return;
+		}
+	}
+
 	if (runnerIdx < 0)
 		return;
 
@@ -2194,9 +2445,10 @@ void ZoombiniPuzzleLilly::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCod
 			// Snap position
 			if (rs.obstCol < 12 && rs.obstRow < 13)
 				feature->setPointLoc(_gridCellPos[rs.obstCol][rs.obstRow]);
-			// Clear direction byte. IDA: runner+242=0
+			// IDA: *(byte*)(runner+242) = 0 — clear placed flag so runner is clickable again
+			rs.placed = false;
 			rs.direction = 0;
-			// IDA: runner[8] = 0x980002 (flags)
+			// IDA: runner[8] = 0x980002 (flags) — runner becomes clickable on left bank
 			_completedExitRunner = runnerIdx;
 		}
 		break;
@@ -2265,7 +2517,7 @@ void ZoombiniPuzzleLilly::handleRunnerExitCallback(int16 exitCode, int16 runnerI
 	// IDA: maze_runnerExitCallback (0x425CCA)
 	switch (exitCode) {
 	case 1:
-		// IDA: call maze_setRunnerIdxVar(5), decrement remainingZmbs
+		// IDA: call maze_setRunnerIdxVar(5), decrement ui_bDragLockActive
 		_swapBlinkMax = 5; // IDA: lilly_stateVar6 = 5
 		if (--_remainingZmbs < 0)
 			_remainingZmbs = 0;
@@ -2494,17 +2746,16 @@ void ZoombiniPuzzleLilly::handleScriptEvent(int16 eventId, ZmbFeature *eventFeat
 	// IDA: maze_scriptEventHandler (0x425D55)
 	switch (eventId) {
 	case 3:
-		// IDA: Show exit SCRBs for last 2 runners (difficulty > 1).
-		// Loads SCRB 10089+i and sets depart callbacks for exit animation.
+		// IDA 0x425D55 case 3: Activate last 2 zoombini runners with exit SCRBs.
+		// Original uses the ZOOMBINI RUNNERS (word_4AE3C2[]), NOT separate features.
+		// Sets wBoolDoRender=1, loads SCRB 10089+i, and sets depart callbacks
+		// (preRender=maze_advanceRunnerStep, hotspot=maze_runnerExitCallback).
 		if (_difficultyLevel >= kPuzzleDiffLevel2) {
-			for (int16 i = 0; i < _totalZmbCount; i++) {
-				if (i == _totalZmbCount - 2 || i == _totalZmbCount - 1) {
-					if (_exitAnimFeatures[i]) {
-						if (_zmbRunners[i])
-							_exitAnimFeatures[i]->setPointLoc(_zmbRunners[i]->getPointLoc());
-						_exitAnimFeatures[i]->activateRender();
-						loadScrbOntoFeature(_exitAnimFeatures[i], 10089 + i);
-					}
+			for (int16 i = MAX((int16)0, (int16)(_totalZmbCount - 2)); i < _totalZmbCount; i++) {
+				if (_zmbRunners[i]) {
+					_zmbRunners[i]->activateRender();
+					loadScrbOntoFeature(_zmbRunners[i], 10089 + i);
+					_runnerStates[i].callbackMode = kCBLillyDepart;
 				}
 			}
 		}
