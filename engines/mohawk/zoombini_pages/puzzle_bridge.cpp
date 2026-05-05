@@ -128,7 +128,9 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 	memset(_reqAttrValues, 0, sizeof(_reqAttrValues));
 	_bRandomLaneSwap = 0;
 	_successCount = 0;
+	_failureCount = 0;
 	_bridgeTransitCount = 0;
+
 	_isRejectPlaying = 0;
 	_currentMatchResult = 0;
 	_currentDropLane = 0;
@@ -962,8 +964,9 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 
 		// Guard: skip if too many crossed, or reject in transit, or not enough time
 		bool skip = false;
-		if (_successCount >= 6)
+		if (_successCount >= _totalZmbCount)
 			skip = true;
+
 		if (_trailMatchResult[0] && _bridgeTransitCount > 4)
 			skip = true;
 		if (!skip && (getCurrentFrameCounter() - _lastFrameSnapshot) < 0x2D)
@@ -1293,8 +1296,11 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 	case kZmbAnimEventM1_End: {
 		// End of SCRS playback: reposition rejected Zoombini.
 		_bRetryAllowed = 0;
-		if (_isRejectPlaying)
+		if (_isRejectPlaying) {
+			_failureCount++;
 			_isRejectPlaying = 0;
+		}
+
 
 		// Find a non-colliding position to place the rejected Zoombini.
 		// Use the lane positions as reference for repositioning.
@@ -1382,8 +1388,9 @@ ZmbEventHandleResult ZoombiniPuzzleBridge::onLButtonDown(const Common::Point &ab
 	// IDA original also checked (ui_bDragLockActive <= 0 || bridge_bFirstInteraction)
 	// to prevent re-entering drag-start while a drag was in progress. In ScummVM this
 	// is already covered by isDragging() above.
-	if (_successCount >= 6 || isDragging())
+	if (_successCount >= _totalZmbCount || isDragging())
 		return ZmbEventHandleResult::kPassthrough;
+
 
 	ZmbSnoid *snoid = findSnoidAtPoint(absPos);
 	if (!snoid)

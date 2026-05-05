@@ -394,6 +394,9 @@ void ZoombiniPuzzleCaves::loadFeatures() {
 	_outOfZoneDrop = false;
 	_interactionLocked = false;
 	_hintFlashCounter = 0;
+	_failureCount = 0;
+	_sealedEntrances = 0;
+
 
 	// IDA: caves_funcInit global initialization
 	_rejectScrsBaseId = 12004;
@@ -1016,8 +1019,16 @@ void ZoombiniPuzzleCaves::handleWrongPlacement(ZmbSnoid *snoid, int16 droppedSlo
 	// Door animation chain: setupDoorAnimation(0) → event 1 (reject SCRS) → event 5 →
 	// setupDoorAnimation(1) → event 2 (redirect SCRS) → event 4 (complete).
 
+	_failureCount++;
+	if (_failureCount >= 10) {
+		// Avalanche! Seal all entrances.
+		_sealedEntrances = 0xFFFFFFFF;
+		debugC(1, kZmbDebugAnimation, "Caves: Avalanche! All entrances sealed.");
+	}
+
 	// IDA: word_4AB04A = runnerIdx
 	_activeDropSnoid = snoid;
+
 	_selectedEntranceIdx = droppedSlot;
 	_matchingEntranceIdx = correctSlot;
 
@@ -1063,7 +1074,15 @@ void ZoombiniPuzzleCaves::endDrag(const Common::Point &dropPos) {
 	int16 droppedSlot = getEntranceSlotAtPoint(snoidPos);
 
 	if (droppedSlot >= 0) {
+		// Check if entrance is sealed
+		if (_sealedEntrances & (1 << droppedSlot)) {
+			// Entrance is sealed - return snoid to idle and treat as out-of-zone drop (or just return)
+			snoid->setAnimState(kSnoidAnimIdle);
+			snoid->setupIdleHotspots();
+			return;
+		}
 		// Dropped on a cave entrance — check if it matches
+
 		int16 correctSlot = findMatchingGlyphSlot(snoid->_trait, droppedSlot);
 
 		// IDA caves_funcOnClick_417CDB: simple equality test. `hoverEntranceIdx == selectedEntranceIdx` → correct.

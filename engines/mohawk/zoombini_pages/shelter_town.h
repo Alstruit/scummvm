@@ -38,11 +38,10 @@ public:
 
 protected:
 	void onEveryFrame() override;
+	ZmbEventHandleResult onMouseMove(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
-
-	// Callback methods for virtual town Zoombini render feature
-	ZmbRenderResult townZoombini_render(ZmbFeature *feature);
-	void townZoombini_postRender(ZmbFeature *feature);
+	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;
+	ZmbSnoid *findSnoidAtPoint(const Common::Point &pos) override;
 
 	// --- Memorial card overlay system (IDA town_renderMemorialCard @ 0x4595C0) ---
 
@@ -57,11 +56,17 @@ protected:
 	/** Dismiss the memorial card overlay. IDA: click anywhere → dismiss. */
 	void hideMemorialCard();
 
+	/** Resolve a town walker drag release. */
+	void endDrag(const Common::Point &dropPos);
+
 	/** Hit-test against memorial statue hotspots (16 card slots). IDA: click_hitTestMemorialHotspots @ 0x458FF4. */
 	int16 hitTestMemorialHotspots(const Common::Point &pos) const;
+	bool isTownButtonRect(const Common::Point &pos) const;
 
-	// Pre-render shape callback for overlay features (SCRB 1002, 1003, 1001)
+	// Pre-render shape callback for population-gated overlay features (SCRB 1002, 1003)
 	void overlay_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
+	void memorialMarkers_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
+	void memorialCard_onPostRender(ZmbFeature *feature);
 
 	/**
 	 * Transfer active pack Zoombinis into town stored chunk entries.
@@ -70,11 +75,11 @@ protected:
 	void transferActivePackToTownStorage();
 
 	/**
-	 * IDA town_shiftRunnersForScroll(steps): horizontally shifts inhabitant
-	 * runner X positions by `steps * 320` pixels (one column = 320px wide
-	 * town section). Called once per scroll-column position at init.
+	 * IDA town_shiftRunnersForScroll(phaseIdx): horizontally shifts town
+	 * entity positions by one 320px column with wrap across the 1920px world.
+	 * phaseIdx 1 scrolls right (entities move left); phaseIdx 0 scrolls left.
 	 */
-	void shiftRunnersForScroll(int16 steps);
+	void shiftRunnersForScroll(int16 phaseIdx);
 
 	/**
 	 * IDA town_advanceLayerFrameState(scrollCol): advances the parallax
@@ -86,12 +91,17 @@ protected:
 	enum PageResourceId : uint16 {
 		kResBackground1200 = 1200,
 
+		kResBitmapShape2000_Cursors = 2000,
 		kResBitmapShape1100 = 1100,
 
 		kResScrb1000_Overlay = 1000,
 		kResScrb1001_Overlay = 1001,
 		kResScrb1002_Overlay = 1002,
 		kResScrb1003_Overlay = 1003,
+		kResScrb1004_MemorialCard = 1004,
+		kResScrb1005_MemorialCard = 1005,
+		kResScrb1006_MemorialCard = 1006,
+		kResScrb1007_MemorialCard = 1007,
 
 		kResScrb4000_SubFeature = 4000,
 		kResScrb4999_Reject = 4999,
@@ -113,14 +123,19 @@ protected:
 	};
 
 	// -----------------------------------------------------------------------
-	// Shape indices within SHPL 1100 (town overlays and buttons)
+	// Shape indices within TOWN cursor/button resources
 	// -----------------------------------------------------------------------
 	enum ShapeId : uint16 {
+		// IDA regs_loadPairWithShapes(2000): hover cursor shapes.
+		kShape2000_ArrowLeft_01 = 1,
+		kShape2000_ArrowRight_02 = 2,
+		kShape2000_Magnifier_03 = 3,
+
 		// Exit gate scroll buttons (from picker_renderExitGateScrb / picker_renderHotspot_45876F)
 		kShape1100_ExitGateLeftNormal_05 = 5,
 		kShape1100_ExitGateLeftPressed_06 = 6,
-		kShape1100_ExitGateRightNormal_24 = 24,
-		kShape1100_ExitGateRightPressed_25 = 25,
+		kShape1000_ExitGateRightNormal_24 = 24,
+		kShape1000_ExitGateRightPressed_25 = 25,
 	};
 
 	/**
@@ -218,7 +233,11 @@ protected:
 	 */
 	bool _memorialCardActive = false;
 	int16 _memorialCardSlotIdx = -1;
+	ZmbFeature *_memorialCardFeature = nullptr;
+	uint16 _memorialHotspotCount = 0;
 	Common::Rect _memorialHotspots[16] = {};
+	int16 _memorialSlotMapping[16] = {};
+	uint16 _hoverCursorShapeIdx = ZmbHotspot::kShapeNone;
 
 	/**
 	 * Pre-render shape callback for the memorial zodiac statue (SCRB 6000).

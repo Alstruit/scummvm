@@ -256,8 +256,15 @@ private:
 	 */
 	ZmbSnoid *_slotOccupied[21] = {};
 
+	/** Number of wrong placements before avalanche. */
+	int16 _failureCount = 0;
+
+	/** Bitmask of sealed entrances (1 = sealed). */
+	uint32 _sealedEntrances = 0;
+
 	/** Total slots filled so far (matches advancing the search base). IDA: HIWORD(caves_nTotalSlotCount_4A08FC) */
 	int16 _totalSlotCount = 0;
+
 
 	/** Loaded Zoombini trait count. IDA: unk_4A0904 */
 	int16 _loadedZmbCount = 0;

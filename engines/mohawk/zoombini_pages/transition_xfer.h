@@ -46,6 +46,8 @@ public:
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 
 protected:
+	void xfer5TownCount_onPostRender(ZmbFeature *feature);
+
 	// Constants
 	enum kPageResourceId : uint16 {
 		kResBackground1000_BigBadHungry = 1000,
@@ -103,6 +105,8 @@ protected:
 	bool _scrsTriggerPhase1 = false;   ///< True once the first snoid trigger has fired (XFER_0: enables env SCRB branch)
 	uint16 _xferSnoidCount = 0;        ///< Total snoids loaded for this XFER (for trigger indexing)
 	uint16 _scrsResIdBase = 5199;      ///< SCRS resource base for foot-trait offset (XFER_0: 5199, XFER_5: 6199)
+	int16 _xfer5DisplayedTownCount = 0; ///< XFER_5 sign count, seeded from stored town count and incremented by SCRS event 50.
+	ZmbFeature *_xfer5ForegroundFeatures[2] = {nullptr, nullptr}; ///< XFER_5 SCRB 6106/6107 animated foreground dirty coverage.
 
 	// SCRB animation callback state (XFER_0 and XFER_5 only)
 	// IDA: xfer_scrbAnimCallback_467DD4 — handles SCRS event codes during playback.

@@ -319,7 +319,6 @@ void ZmbFeature::parseStream(Common::SeekableReadStream *stream) {
 
 void ZmbFeature::parseFrames(Common::SeekableReadStream *stream, uint16 frameCount) {
 	// Each Hotspot entry: [ID_UINT16] [X_UINT16] [Y_UINT16] ... [FF 00]
-	uint32 totalCount = 0;
 	for (int32 frameIdx = 0; frameIdx < static_cast<int32>(frameCount); frameIdx++) {
 		ZmbHotspotGroup *hsGroup = new ZmbHotspotGroup(_id, frameIdx);
 		_hsFrameMap[frameIdx] = hsGroup;
@@ -360,7 +359,6 @@ void ZmbFeature::parseFrames(Common::SeekableReadStream *stream, uint16 frameCou
 			// reject-flight controller SCRBs leave behind).
 			if (shapeid > 0)
 				_lastShapeFrameIdx = MAX(_lastShapeFrameIdx, frameIdx);
-			totalCount += 1;
 		}
 	}
 }
@@ -1192,9 +1190,7 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 				// Advance phase each tick and wrap to 2 (looping frames start at 2)
 				// IDA: When wGroupFrameIdx0098 >= wScriptFrameCount, reset to 2 and seek.
 				if (_holdingAnimPhase >= anim.frameCount) {
-					// Reset to frame 2 for looping (frame 0 and 1 are direction-based entry poses)
-					// IDA: Small snoid mode (word_4A48B6) resets to 0 instead of 2
-					_holdingAnimPhase = 2;
+					_holdingAnimPhase = _useSmallShapeRegs ? 0 : 2;
 				}
 				updateHoldingHotspots(page);
 				++_holdingAnimPhase;
@@ -1879,6 +1875,15 @@ void ZmbSnoid::updateFidgetHotspots(ZoombiniPage *page, int fidgetSet, int varia
 	static const uint16 kNoseTable[6] = {0, 171, 175, 179, 183, 187};
 	static const uint16 kEyeTable[6] = {0, 91, 107, 123, 139, 155};
 	static const uint16 kHeadTable[6] = {0, 11, 27, 43, 59, 75};
+	static const uint16 kSmallFootTable[6] = {0, 131, 174, 227, 235, 278};
+	static const uint16 kSmallNoseTable[6] = {0, 111, 115, 119, 123, 127};
+	static const uint16 kSmallEyeTable[6] = {0, 91, 95, 99, 103, 107};
+	static const uint16 kSmallHeadTable[6] = {0, 11, 27, 43, 59, 75};
+
+	const uint16 *footTbl = _useSmallShapeRegs ? kSmallFootTable : kFootTable;
+	const uint16 *noseTbl = _useSmallShapeRegs ? kSmallNoseTable : kNoseTable;
+	const uint16 *eyeTbl = _useSmallShapeRegs ? kSmallEyeTable : kEyeTable;
+	const uint16 *headTbl = _useSmallShapeRegs ? kSmallHeadTable : kHeadTable;
 
 	uint8 foot = CLIP<uint8>(_trait._foot, 1, 5);
 	uint8 nose = CLIP<uint8>(_trait._nose, 1, 5);
@@ -1896,11 +1901,11 @@ void ZmbSnoid::updateFidgetHotspots(ZoombiniPage *page, int fidgetSet, int varia
 
 	// Fidget SCRSes all have variant=0; apply arrangement 0 unconditionally here too.
 	int16 traitBase[5];
-	traitBase[0] = static_cast<int16>(kFootTable[foot]);
+	traitBase[0] = static_cast<int16>(footTbl[foot]);
 	traitBase[1] = 0;
-	traitBase[2] = static_cast<int16>(kNoseTable[nose]);
-	traitBase[3] = static_cast<int16>(kEyeTable[eye]);
-	traitBase[4] = static_cast<int16>(kHeadTable[head]);
+	traitBase[2] = static_cast<int16>(noseTbl[nose]);
+	traitBase[3] = static_cast<int16>(eyeTbl[eye]);
+	traitBase[4] = static_cast<int16>(headTbl[head]);
 
 	Common::Array<ZmbHotspot> hotspots;
 	for (int s = 0; s < 5; s++)
@@ -1922,6 +1927,15 @@ void ZmbSnoid::updateHoldingHotspots(ZoombiniPage *page) {
 	static const uint16 kNoseTable[6] = {0, 171, 175, 179, 183, 187};
 	static const uint16 kEyeTable[6] = {0, 91, 107, 123, 139, 155};
 	static const uint16 kHeadTable[6] = {0, 11, 27, 43, 59, 75};
+	static const uint16 kSmallFootTable[6] = {0, 131, 174, 227, 235, 278};
+	static const uint16 kSmallNoseTable[6] = {0, 111, 115, 119, 123, 127};
+	static const uint16 kSmallEyeTable[6] = {0, 91, 95, 99, 103, 107};
+	static const uint16 kSmallHeadTable[6] = {0, 11, 27, 43, 59, 75};
+
+	const uint16 *footTbl = _useSmallShapeRegs ? kSmallFootTable : kFootTable;
+	const uint16 *noseTbl = _useSmallShapeRegs ? kSmallNoseTable : kNoseTable;
+	const uint16 *eyeTbl = _useSmallShapeRegs ? kSmallEyeTable : kEyeTable;
+	const uint16 *headTbl = _useSmallShapeRegs ? kSmallHeadTable : kHeadTable;
 
 	uint8 foot = CLIP<uint8>(_trait._foot, 1, 5);
 	uint8 nose = CLIP<uint8>(_trait._nose, 1, 5);
@@ -1944,11 +1958,11 @@ void ZmbSnoid::updateHoldingHotspots(ZoombiniPage *page) {
 
 	// Holding SCRSes use variant=0 (normal arrangement).
 	int16 traitBase[5];
-	traitBase[0] = static_cast<int16>(kFootTable[foot]);
+	traitBase[0] = static_cast<int16>(footTbl[foot]);
 	traitBase[1] = 0;
-	traitBase[2] = static_cast<int16>(kNoseTable[nose]);
-	traitBase[3] = static_cast<int16>(kEyeTable[eye]);
-	traitBase[4] = static_cast<int16>(kHeadTable[head]);
+	traitBase[2] = static_cast<int16>(noseTbl[nose]);
+	traitBase[3] = static_cast<int16>(eyeTbl[eye]);
+	traitBase[4] = static_cast<int16>(headTbl[head]);
 
 	Common::Array<ZmbHotspot> hotspots;
 	for (int s = 0; s < 5; s++)

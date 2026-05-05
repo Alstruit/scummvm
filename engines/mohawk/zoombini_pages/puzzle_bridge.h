@@ -244,8 +244,11 @@ protected:
 	/** Page is initialized and running. IDA: word_4AAE10 */
 	int16 _isActive = 0;
 
-	/** Number of successfully crossed Zoombinis (0-6 max). IDA: word_4AAE62 */
+	/** Number of successfully crossed Zoombinis (0-16 max). IDA: word_4AAE62 */
 	int16 _successCount = 0;
+
+	/** Number of failed crossing attempts (pegs dropped). */
+	int16 _failureCount = 0;
 
 	/** Number of Zoombinis currently on the bridge (in transit). IDA: word_4AAE76 */
 	int16 _bridgeTransitCount = 0;

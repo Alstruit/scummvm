@@ -21,6 +21,7 @@
 
 #include "common/system.h"
 
+#include "mohawk/cursors.h"
 #include "mohawk/mohawk.h"
 #include "mohawk/sound.h"
 
@@ -30,8 +31,31 @@
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_random.h"
 #include "mohawk/zoombini_state.h"
+#include "mohawk/zoombini_scripts.h"
+#include "mohawk/zoombini_text.h"
 
 namespace Mohawk {
+
+static const Common::Rect kTownHelpButtonRect(600, 365, 639, 402);
+static const Common::Rect kTownMapButtonRect(600, 403, 639, 440);
+
+static const uint8 kTownMemorialCardScrbTypeBySlot[16] = {
+	2, 2, 4, 4, 2, 3, 3, 1, 4, 1, 1, 2, 4, 2, 3, 4
+};
+
+static const uint8 kTownMemorialCardTextTypeBySlot[16] = {
+	7, 1, 4, 5, 13, 3, 10, 11, 14, 15, 0, 8, 12, 9, 2, 6
+};
+
+static const int16 kTownMemorialMarkerOffsets[16][2] = {
+	{0x0048, 0x0046}, {0x0076, 0x007E}, {0x0051, 0x0076}, {0x004D, 0x003F},
+	{0x0041, 0x00E3}, {0x0090, 0x0053}, {0x006B, 0x0051}, {0x0090, 0x00BA},
+	{0x0031, 0x0061}, {0x0039, 0x0094}, {0x0056, 0x002E}, {0x0043, 0x0077},
+	{0x006C, 0x0050}, {0x004C, 0x0061}, {0x002F, 0x00B5}, {0x0077, 0x0041}
+};
+
+static const int16 kTownMemorialCardRowTopY[5] = {0x0000, 0x0024, 0x00C4, 0x00D2, 0x00E6};
+static const int16 kTownMemorialCardRowBottomY[5] = {0x0024, 0x00C4, 0x00D2, 0x00E6, 0x00F4};
 
 ZoombiniShelterTown::ZoombiniShelterTown(MohawkEngine_Zoombini *vm) : ZoombiniShelter(vm, ZoombiniPageType::kTown) {
 }
@@ -96,6 +120,7 @@ void ZoombiniShelterTown::loadFeatures() {
 	_townPopDensity = density + 24;
 
 	// Preload images
+	_vm->_gfx->preloadImage(kResBitmapShape2000_Cursors);
 	_vm->_gfx->preloadImage(kResBitmapShape1100);
 	_vm->_gfx->preloadImage(1000);
 	_vm->_gfx->preloadImage(4000);
@@ -104,6 +129,11 @@ void ZoombiniShelterTown::loadFeatures() {
 
 	// Load REGS
 	loadREGS(ZmbArchiveKind::kPage, kResRegs2000);
+
+	setMapButton(kTownMapButtonRect, kShape1100_ExitGateLeftNormal_05, kShape1100_ExitGateLeftPressed_06);
+	loadGoMapButtonsFeature(kResBitmapShape1100);
+	setHelpButton(kTownHelpButtonRect);
+	loadHelpButtonFeature();
 
 	// [*] SCRB 1000: Main overlay
 	_overlayFeatures[0] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), kResScrb1000_Overlay, 0,
@@ -130,9 +160,9 @@ void ZoombiniShelterTown::loadFeatures() {
 						hooks);
 	}
 
-	{ // [*] SCRB 1001: Overlay with REGS + pre-render shape callback
+	{ // [*] SCRB 1001: Memorial markers with saved-route gating
 		ZmbFeature::EventHooks hooks;
-		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::overlay_preRenderShape));
+		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterTown::memorialMarkers_preRenderShape));
 		_overlayFeatures[3] = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), kResScrb1001_Overlay, 0,
 						ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 						ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY |
@@ -220,20 +250,17 @@ void ZoombiniShelterTown::loadFeatures() {
 				if (snoid) {
 					snoid->_trait = f._storedChunkTown._entries[storedIdx]._traits;
 					snoid->_name = f._storedChunkTown._entries[storedIdx].getU32Name(_vm);
+					snoid->_useSmallShapeRegs = true;
 				}
 			}
 		}
+
 	}
 
-	// Memorial hotspot rects — 4×4 grid on the statue's pedestal (IDA layout
-	// approximation). The statue is centered around (320, 200), with the
-	// pedestal occupying ~(280, 160) to (400, 280).
-	for (int16 i = 0; i < 16; i++) {
-		int16 row = i / 4;
-		int16 col = i % 4;
-		int16 x0 = 280 + col * 30;
-		int16 y0 = 160 + row * 30;
-		_memorialHotspots[i] = Common::Rect(x0, y0, x0 + 30, y0 + 30);
+	_memorialHotspotCount = 0;
+	for (int16 markerIdx = 0; markerIdx < 16; markerIdx++) {
+		_memorialHotspots[markerIdx] = Common::Rect();
+		_memorialSlotMapping[markerIdx] = -1;
 	}
 
 	// IDA town_initAndSetupPuzzle @ 0x458074:
@@ -288,7 +315,8 @@ void ZoombiniShelterTown::loadFeatures() {
 					// IDA: bitmask &= ~1; bitmask |= 2; → change TYPE_SNOID to TYPE_TOWN_ENTITY
 					snoid->removeFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID);
 					snoid->addFlag(ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY);
-					snoid->setupIdleHotspots();
+					snoid->setResource(ZmbResource(ZmbArchiveKind::kSystem, 3200));
+					snoid->setupSmallIdleHotspots();
 					_walkingZmbSnoidIds[_walkingZmbCount] = snoidId;
 					_walkingZmbCount++;
 				}
@@ -296,15 +324,6 @@ void ZoombiniShelterTown::loadFeatures() {
 				--walkIdx;
 			}
 		}
-	}
-
-	{ // [*] Virtual Feature: Town Zoombini render (renders walking Zoombinis)
-		ZmbFeature::EventHooks hooks;
-		hooks.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniShelterTown::townZoombini_render));
-		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterTown::townZoombini_postRender));
-		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
-						ZmbFeature::FLAG_00001000_TOPMOST,
-						hooks);
 	}
 
 	// IDA 0x4581d9: SCRB 6000 memorial statue feature
@@ -570,37 +589,6 @@ void ZoombiniShelterTown::transferActivePackToTownStorage() {
 	}
 }
 
-ZmbRenderResult ZoombiniShelterTown::townZoombini_render(ZmbFeature *feature) {
-	// Virtual feature render: captures the background rect for later compositing.
-	// Walking Zoombinis are rendered through their own snoid feature runners.
-	return ZmbRenderResult::kRendered;
-}
-
-void ZoombiniShelterTown::townZoombini_postRender(ZmbFeature *feature) {
-	// Post-render: renders exit gate scroll buttons at overlay positions.
-	// Original: town_onPostRenderButtons (0x45880F) calls picker_renderExitGateScrb
-	// for buttons 1 (left gate, shape 5) and 2 (right gate, shape 24).
-	//
-	// IDA: picker_renderHotspot_45876F
-	// - buttonIdx 1 → shape 5 (normal), 6 (pressed) — left gate exit
-	// - buttonIdx 2 → shape 24 (normal), 25 (pressed) — right gate exit
-	//
-	// Position data from off_4A71B4 + 18*buttonIdx (RECT16 with x,y at offsets 0,2):
-	// - Button 1: (600, 403)
-	// - Button 2: (600, 441)
-
-	ZoombiniGraphics::ScreenKind screenKind = ZoombiniGraphics::kShapeScreen;
-	ZmbResource shapeBitmap = ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100);
-
-	// Render left exit gate button (shape 5, button index 1)
-	_vm->_gfx->drawShape(screenKind, shapeBitmap, kShape1100_ExitGateLeftNormal_05,
-						 Common::Point(600, 403));
-
-	// Render right exit gate button (shape 24, button index 2)
-	_vm->_gfx->drawShape(screenKind, shapeBitmap, kShape1100_ExitGateRightNormal_24,
-						 Common::Point(600, 441));
-}
-
 void ZoombiniShelterTown::overlay_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
 	// Filters overlay building shapes by town population density threshold.
 	// Original: town_preRenderFilterByPopulation (0x45945c)
@@ -611,6 +599,41 @@ void ZoombiniShelterTown::overlay_preRenderShape(ZmbFeature *feature, ZmbHotspot
 		} else {
 			i++;
 		}
+	}
+}
+
+void ZoombiniShelterTown::memorialMarkers_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
+	const ZmbStateFile &stateFile = _vm->_state->_f;
+	_memorialHotspotCount = 0;
+	for (int16 markerIdx = 0; markerIdx < 16; markerIdx++) {
+		_memorialHotspots[markerIdx] = Common::Rect();
+		_memorialSlotMapping[markerIdx] = -1;
+	}
+
+	for (uint hotspotIdx = 0; hotspotIdx < hotspots.size(); ) {
+		const uint16 shapeIdx = hotspots[hotspotIdx]._shapeIdx;
+		if (shapeIdx < 7 || 22 < shapeIdx) {
+			hotspotIdx++;
+			continue;
+		}
+
+		const int16 slotIdx = static_cast<int16>(shapeIdx) - 7;
+		const uint16 markerIdx = _memorialHotspotCount;
+		if (_memorialHotspotCount < 16)
+			_memorialHotspotCount++;
+
+		if (stateFile._memorialRoute[slotIdx] == 0) {
+			hotspots.remove_at(hotspotIdx);
+			continue;
+		}
+
+		if (markerIdx < 16) {
+			const int16 left = hotspots[hotspotIdx]._x + kTownMemorialMarkerOffsets[slotIdx][0] - 28;
+			const int16 top = hotspots[hotspotIdx]._y + kTownMemorialMarkerOffsets[slotIdx][1] - 14;
+			_memorialHotspots[markerIdx] = Common::Rect(left, top, left + 56, top + 28);
+			_memorialSlotMapping[markerIdx] = slotIdx;
+		}
+		hotspotIdx++;
 	}
 }
 
@@ -804,6 +827,57 @@ void ZoombiniShelterTown::memorialStatue_preRenderShape(ZmbFeature *feature, Zmb
 	}
 }
 
+ZmbEventHandleResult ZoombiniShelterTown::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
+	uint16 cursorShapeIdx = ZmbHotspot::kShapeNone;
+	if (!isDragging() && !_memorialCardActive) {
+		// IDA town_onHoverPerFrame/ui_setButtonCursorState: state 3 = memorial,
+		// state 2 = right scroll, state 1 = left scroll.
+		if (hitTestMemorialHotspots(absPos) >= 0) {
+			cursorShapeIdx = kShape2000_Magnifier_03;
+		} else if (!isTownButtonRect(absPos) && 560 < absPos.x) {
+			cursorShapeIdx = kShape2000_ArrowRight_02;
+		} else if (!isTownButtonRect(absPos) && absPos.x < 80) {
+			cursorShapeIdx = kShape2000_ArrowLeft_01;
+		}
+	}
+
+	if (cursorShapeIdx != _hoverCursorShapeIdx) {
+		if (cursorShapeIdx == ZmbHotspot::kShapeNone) {
+			_vm->_cursor->setDefaultCursor();
+		} else {
+			ZmbRegs *regs = _regsMap[kResRegs2000];
+			ZoombiniCursorManager *zmbCursor = dynamic_cast<ZoombiniCursorManager *>(_vm->_cursor);
+			assert(zmbCursor);
+			zmbCursor->setShapeCursor(ZmbArchiveKind::kPage, kResBitmapShape2000_Cursors,
+				cursorShapeIdx, regs->getShapeDelta(cursorShapeIdx));
+		}
+		_hoverCursorShapeIdx = cursorShapeIdx;
+	}
+
+	if (_memorialCardActive)
+		return ZmbEventHandleResult::kConsumed;
+
+	return ZoombiniShelter::onMouseMove(absPos, relPos);
+}
+
+bool ZoombiniShelterTown::isTownButtonRect(const Common::Point &pos) const {
+	return kTownHelpButtonRect.contains(pos) || kTownMapButtonRect.contains(pos);
+}
+
+ZmbSnoid *ZoombiniShelterTown::findSnoidAtPoint(const Common::Point &pos) {
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		ZmbSnoid *snoid = *it;
+		if (!snoid)
+			continue;
+		if (snoid->getFlags() != ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY)
+			continue;
+		if (snoid->findDrawRecordAtPoint(pos))
+			return snoid;
+	}
+
+	return nullptr;
+}
+
 ZmbEventHandleResult ZoombiniShelterTown::onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) {
 	// IDA town_onClickHandler @ 0x457CE3 case 3:
 	//   if (memorial card active) { hideMemorialCard(); return; }
@@ -815,6 +889,13 @@ ZmbEventHandleResult ZoombiniShelterTown::onLButtonDown(const Common::Point &abs
 		hideMemorialCard();
 		return ZmbEventHandleResult::kConsumed;
 	}
+	if (isDragging()) {
+		if (_vm->_state->getEnableStickyMouse()) {
+			endDrag(absPos);
+			return ZmbEventHandleResult::kConsumed;
+		}
+		return ZmbEventHandleResult::kConsumed;
+	}
 
 	// Memorial hotspot hit test (16 card slots on the statue)
 	int16 slotHit = hitTestMemorialHotspots(absPos);
@@ -823,44 +904,97 @@ ZmbEventHandleResult ZoombiniShelterTown::onLButtonDown(const Common::Point &abs
 		return ZmbEventHandleResult::kConsumed;
 	}
 
+	if (isTownButtonRect(absPos)) {
+		ZmbEventHandleResult result = ZoombiniShelter::onLButtonDown(absPos, relPos);
+		return (result == ZmbEventHandleResult::kConsumed) ? result : ZmbEventHandleResult::kConsumed;
+	}
+
 	// Left/right edge scroll
 	ZmbStateFile &f = _vm->_state->_f;
-	if (absPos.x < 80) {
-		if (f._townScrollCol > 0) {
-			f._townScrollCol--;
-			shiftRunnersForScroll(-1);
-		}
-		return ZmbEventHandleResult::kConsumed;
-	}
-	if (absPos.x > 560) {
-		if (f._townScrollCol < 5) {
-			f._townScrollCol++;
+	if (30 < absPos.y && absPos.y < 450 && 3 < absPos.x && absPos.x < 637) {
+		if (560 < absPos.x) {
+			_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX), Audio::Mixer::kSFXSoundType);
+			if (5 < ++f._townScrollCol)
+				f._townScrollCol = 0;
+			advanceLayerFrameState(f._townScrollCol);
 			shiftRunnersForScroll(1);
+			return ZmbEventHandleResult::kConsumed;
 		}
+		if (absPos.x < 80) {
+			_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX), Audio::Mixer::kSFXSoundType);
+			if (f._townScrollCol == 0)
+				f._townScrollCol = 5;
+			else
+				--f._townScrollCol;
+			advanceLayerFrameState(f._townScrollCol);
+			shiftRunnersForScroll(0);
+			return ZmbEventHandleResult::kConsumed;
+		}
+	}
+
+	// ZMB Pack Interaction (IDA town_onClickHandler @ 0x458d09)
+	ZmbSnoid *snoid = findSnoidAtPoint(absPos);
+	if (snoid) {
+		if (_hoverCursorShapeIdx != ZmbHotspot::kShapeNone) {
+			_vm->_cursor->setDefaultCursor();
+			_hoverCursorShapeIdx = ZmbHotspot::kShapeNone;
+		}
+		startSnoidDrag(snoid, absPos);
 		return ZmbEventHandleResult::kConsumed;
 	}
 
 	return ZoombiniShelter::onLButtonDown(absPos, relPos);
 }
 
+void ZoombiniShelterTown::endDrag(const Common::Point &dropPos) {
+	ZmbSnoid *snoid = finishSnoidDrag();
+	if (!snoid)
+		return;
+
+	const Common::Point finalPos = snoid->getPointLoc();
+	if (410 <= finalPos.y && finalPos.y <= 475) {
+		// The original stores the release point into the town-runner extension.
+		// ScummVM does not model that extra field yet, so keep the walker at the
+		// dropped position and update the sort anchor to preserve the visible result.
+		snoid->setAnimTargetPos(finalPos);
+		snoid->setAnimState(kSnoidAnimIdle);
+	} else {
+		snoid->setAnimTargetPos(_dragOrigPos);
+		snoid->setAnimState(kSnoidAnimArrive);
+	}
+	(void)dropPos;
+}
+
+ZmbEventHandleResult ZoombiniShelterTown::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
+	if (!isDragging())
+		return ZoombiniShelter::onLButtonUp(absPos, relPos);
+
+	if (_vm->_state->getEnableStickyMouse())
+		return ZmbEventHandleResult::kConsumed;
+
+	endDrag(absPos);
+	return ZmbEventHandleResult::kConsumed;
+}
+
 void ZoombiniShelterTown::showMemorialCard(int16 slotIdx) {
-	// IDA town_renderMemorialCard @ 0x4595C0: registers a TOPMOST SCRB for the
-	// card body with 5 text rows. The card reads gameState.memorialRoute[slot],
-	// memorialYear[slot], memorialMonth[slot], memorialDay[slot],
-	// memorialCardType[slot] (=level tier 1-4), memorialDiffLevel[slot].
-	//
-	// ScummVM doesn't have a pre-built memorial card SCRB; we gate interaction
-	// via `_memorialCardActive` (all other onLButtonDown handlers return
-	// immediately while active). A future iteration can draw the 5-row text
-	// overlay via a direct-draw callback.
 	if (slotIdx < 0 || slotIdx >= 16)
 		return;
+	if (_vm->_state->_f._memorialRoute[slotIdx] == 0)
+		return;
+	if (_memorialCardFeature)
+		unloadScrbFeature(_memorialCardFeature);
+
 	_memorialCardActive = true;
 	_memorialCardSlotIdx = slotIdx;
 
-	// IDA: `scrb_enqueueSoundResource(0, SND_00996_MOVE_LONG_SFX)` plays on
-	// open for audio feedback.
-	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, 996),
+	const uint16 scrbId = kResScrb1003_Overlay + kTownMemorialCardScrbTypeBySlot[slotIdx];
+	ZmbFeature::EventHooks hooks;
+	hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterTown::memorialCard_onPostRender));
+	_memorialCardFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 1000), scrbId, 0,
+		ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
+		hooks);
+
+	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX),
 		Audio::Mixer::kSFXSoundType);
 
 	debugC(1, kZmbDebugPage, "Town: memorial card slot=%d opened", slotIdx);
@@ -869,66 +1003,159 @@ void ZoombiniShelterTown::showMemorialCard(int16 slotIdx) {
 void ZoombiniShelterTown::hideMemorialCard() {
 	if (!_memorialCardActive)
 		return;
+	if (_memorialCardFeature) {
+		unloadScrbFeature(_memorialCardFeature);
+		_memorialCardFeature = nullptr;
+	}
 	_memorialCardActive = false;
 	_memorialCardSlotIdx = -1;
-	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, 997),
-		Audio::Mixer::kSFXSoundType);
 	debugC(1, kZmbDebugPage, "Town: memorial card dismissed");
 }
 
+void ZoombiniShelterTown::memorialCard_onPostRender(ZmbFeature *feature) {
+	if (!_memorialCardActive || feature != _memorialCardFeature)
+		return;
+	if (_memorialCardSlotIdx < 0 || 16 <= _memorialCardSlotIdx)
+		return;
+
+	const ZmbStateFile &stateFile = _vm->_state->_f;
+	const uint8 route = stateFile._memorialRoute[_memorialCardSlotIdx];
+	const uint8 level = stateFile._memorialLevel[_memorialCardSlotIdx];
+	if (route == 0 || level == 0)
+		return;
+
+	int16 topOffset = 20;
+	uint32 textPalette = 199;
+	uint32 outlinePalette = ZoombiniGraphics::kColor2D_Black;
+	switch (feature->getId()) {
+	case kResScrb1005_MemorialCard:
+		topOffset = 22;
+		textPalette = 199;
+		outlinePalette = ZoombiniGraphics::kColor2D_Black;
+		break;
+	case kResScrb1006_MemorialCard:
+		topOffset = 14;
+		textPalette = 212;
+		outlinePalette = ZoombiniGraphics::kColor2D_Black;
+		break;
+	case kResScrb1007_MemorialCard:
+		topOffset = 14;
+		textPalette = ZoombiniGraphics::kColor2D_Black;
+		outlinePalette = 205;
+		break;
+	default:
+		break;
+	}
+
+	const Common::Rect cardRect = feature->getClickRect();
+	if (cardRect.isEmpty())
+		return;
+
+	const uint32 honorKey = static_cast<uint32>(ZoombiniText::kMemorialHonorMonument) + kTownMemorialCardTextTypeBySlot[_memorialCardSlotIdx];
+	const uint32 routeLevelKey = static_cast<uint32>(ZoombiniText::kMemorialRoute1Level1) + (((route - 1) * 4 + (level - 1)) & 0x0F);
+	const uint32 levelKey = static_cast<uint32>(ZoombiniText::kLevel1) + MIN<uint8>(level - 1, 3);
+	const uint8 monthIdx = MIN<uint8>(stateFile._memorialMonth[_memorialCardSlotIdx], 11);
+
+	Common::U32String dateText = _vm->_text->getLocalizedString(static_cast<uint32>(ZoombiniText::kMemorialJanuary) + monthIdx);
+	dateText += Common::U32String::format(" %u", stateFile._memorialDay[_memorialCardSlotIdx]);
+	if (_vm->getLanguage() == Common::KO_KOR)
+		dateText += Common::U32String(U"\xC77C");
+	dateText += Common::U32String::format(", %u", stateFile._memorialYear[_memorialCardSlotIdx]);
+
+	const Common::U32String rowText[5] = {
+		_vm->_text->getLocalizedString(honorKey),
+		_vm->_text->getLocalizedString(routeLevelKey),
+		_vm->_text->getLocalizedString(ZoombiniText::kMemorialWhenLevel),
+		_vm->_text->getLocalizedString(levelKey),
+		dateText
+	};
+	const ZoombiniFontUsage rowFont[5] = {
+		ZoombiniFontUsage::kFontText,
+		ZoombiniFontUsage::kFontTitle,
+		ZoombiniFontUsage::kFontText,
+		ZoombiniFontUsage::kFontTitle,
+		ZoombiniFontUsage::kFontText
+	};
+
+	ZoombiniGraphics::TextConf textConf;
+	textConf._outlineEffect = true;
+	textConf._textPalette = textPalette;
+	textConf._outlinePalette = outlinePalette;
+	textConf._hAlign = Graphics::kTextAlignCenter;
+	textConf._vAlign = Graphics::kTextAlignCenter;
+
+	for (uint16 rowIdx = 0; rowIdx < 5; rowIdx++) {
+		Common::Rect textRect(cardRect.left,
+			cardRect.top + topOffset + kTownMemorialCardRowTopY[rowIdx],
+			cardRect.right,
+			cardRect.top + topOffset + kTownMemorialCardRowBottomY[rowIdx]);
+		textConf._fontUsage = rowFont[rowIdx];
+		_vm->_gfx->drawText(ZoombiniGraphics::kShapeScreen, rowText[rowIdx], textRect, textConf);
+	}
+}
+
 int16 ZoombiniShelterTown::hitTestMemorialHotspots(const Common::Point &pos) const {
-	// IDA click_hitTestMemorialHotspots @ 0x458FF4: tests 16 hotspot rects
-	// placed along the statue's pedestal. Default layout uses a 4×4 grid on
-	// the statue's base at ~(280, 160)-(400, 280) with 30×30 cells.
-	//
-	// The slot must have `_memorialRoute[i]` non-zero (card was earned) to be
-	// hit-test eligible. _memorialRoute stores 1-4 for leg A/B/C/D; 0 = empty.
+	// IDA click_hitTestMemorialHotspots @ 0x458FF4: tests the rects built by
+	// town_preRenderMemorialMarkers for the currently visible SCRB 1001 frame.
 	const ZmbStateFile &f = _vm->_state->_f;
-	for (int16 i = 0; i < 16; i++) {
-		if (f._memorialRoute[i] == 0)
+	for (uint16 markerIdx = 0; markerIdx < _memorialHotspotCount && markerIdx < 16; markerIdx++) {
+		const int16 slotIdx = _memorialSlotMapping[markerIdx];
+		if (slotIdx < 0 || 16 <= slotIdx)
 			continue;
-		if (_memorialHotspots[i].isEmpty())
+		if (f._memorialRoute[slotIdx] == 0)
 			continue;
-		if (_memorialHotspots[i].contains(pos))
-			return i;
+		if (_memorialHotspots[markerIdx].isEmpty())
+			continue;
+		if (_memorialHotspots[markerIdx].contains(pos))
+			return slotIdx;
 	}
 	return -1;
 }
 
-void ZoombiniShelterTown::shiftRunnersForScroll(int16 steps) {
-	// IDA town_shiftRunnersForScroll: every snoid (TYPE_SNOID or
-	// TYPE_TOWN_ENTITY) gets its X shifted by -320 * steps. The town world is
-	// 6 columns of 320px each; scrolling N columns moves the camera right
-	// (== shifting all runners left).
-	const int16 deltaX = -320 * steps;
+void ZoombiniShelterTown::shiftRunnersForScroll(int16 phaseIdx) {
+	// IDA town_shiftRunnersForScroll: every TOWN_ENTITY runner shifts by one
+	// 320px column and wraps across the 1920px town width.
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
 		ZmbSnoid *s = *it;
 		if (!s)
 			continue;
+		if (!s->hasFlag(ZmbFeature::FLAG_00000002_TYPE_TOWN_ENTITY))
+			continue;
+
 		Common::Point p = s->getPointLoc();
-		s->setPointLoc(Common::Point(p.x + deltaX, p.y));
+		Common::Point sortAnchor = s->getAnimTargetPos();
+		int16 newX;
+		if (phaseIdx != 0) {
+			newX = p.x - 320;
+			if (newX < -320)
+				newX += 1920;
+			sortAnchor.x -= 320;
+			if (sortAnchor.x < -320)
+				sortAnchor.x += 1920;
+		} else {
+			newX = p.x + 320;
+			if (1599 < newX)
+				newX -= 1920;
+			sortAnchor.x += 320;
+			if (1599 < sortAnchor.x)
+				sortAnchor.x -= 1920;
+		}
+
+		s->setPointLoc(Common::Point(newX, p.y));
+		s->setAnimTargetPos(sortAnchor);
 	}
 }
 
 void ZoombiniShelterTown::advanceLayerFrameState(uint16 scrollCol) {
-	// IDA town_advanceLayerFrameState: bumps the building/parallax overlay
-	// runners' wGroupFrameIdx0098 by `scrollCol * frameStep` so that on
-	// reload the parallax layers display the column the player saved on.
-	// Each scroll column step corresponds to 1 animation frame on the
-	// background overlays (1000/1002/1003/1001).
+	// IDA town_advanceLayerFrameState seeks the four overlay runners to the
+	// hotspot group matching the current town scroll column.
 	for (int16 i = 0; i < 4; i++) {
 		ZmbFeature *layer = _overlayFeatures[i];
 		if (!layer)
 			continue;
-		// Advance _lastFrameIdx by scrollCol; clamp to frame max.
-		// Without exposed setters we approximate via deactivate/reactivate
-		// which the framework will pick up on the next render tick.
-		(void)layer;
+		layer->setLastFrameIdx(scrollCol);
+		layer->setNeedsRedraw(true);
 	}
-	// scrollCol > 0 is a no-op until per-frame scroll-state is wired into
-	// ZmbFeature; tracked here as future engine work. The shift above is
-	// the user-visible portion of the original behavior.
-	(void)scrollCol;
 }
 
 } // End of namespace Mohawk

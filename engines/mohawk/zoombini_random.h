@@ -61,27 +61,19 @@ public:
 	}
 
 	/**
-	 * Generate a random unsigned integer in the interval [0, max].
+	 * Generate a random signed integer in the interval [0, max].
 	 * @param max	The upper bound
 	 * @return	A random number in the interval [0, max].
 	 */
-	uint16 getRandomNumber(uint16 max);
+	int16 getRandomNumber(int16 max);
 
 	/**
-	 * Generate a random unsigned integer in the interval [min, max].
+	 * Generate a random signed integer in the interval [min, max].
 	 * @param min	The lower bound.
 	 * @param max	The upper bound.
 	 * @return	A random number in the interval [min, max].
 	 */
-	uint16 getRandomNumber(uint16 min, uint16 max);
-
-	/**
-	 * Generates a random signed integer in the interval [min, max].
-	 * @param min	the lower bound
-	 * @param max	the upper bound
-	 * @return	a random number in the interval [min, max]
-	 */
-	int16 getRandomNumberSigned(int16 min, int16 max);
+	int16 getRandomNumber(int16 min, int16 max);
 
 	/**
 	 * Pick a non-repeating random index from a pool of size poolSize.

@@ -598,6 +598,9 @@ void ZoombiniTransitionXfer::loadFeatures() {
 	_envOneShotScrbId = 0;
 	_envOneShotAvailable = false;
 	_xfer5EventScrbId = 0;
+	_xfer5DisplayedTownCount = static_cast<int16>(_vm->_state->_f._zmbStoredTownCount);
+	_xfer5ForegroundFeatures[0] = nullptr;
+	_xfer5ForegroundFeatures[1] = nullptr;
 	for (int i = 0; i < 4; i++)
 		_envScrbIds[i] = 0;
 	for (int i = 0; i < 2; i++)
@@ -633,7 +636,11 @@ void ZoombiniTransitionXfer::loadFeatures() {
 		// XFER_5 (IDA LABEL_295): 6108 (animated far bg), 6105 (static), 6104 (static)
 		// appear BEHIND the snoids; 6100-6103, 6106-6107 appear in front (loaded below).
 		loadScrbFeature(xferShapes, _xferShapesId + 8, 6, kEnvScrbFlags);                         // 6108 animated
-		loadScrbFeature(xferShapes, _xferShapesId + 5, 0, ZmbFeature::FLAG_00000000_TYPE_SHAPES); // 6105
+		ZmbFeature::EventHooks townCountHooks;
+		townCountHooks.setPostRenderFunc(
+			reinterpret_cast<ZmbFeature::OnPostRenderFunc>(
+				&ZoombiniTransitionXfer::xfer5TownCount_onPostRender));
+		loadScrbFeature(xferShapes, _xferShapesId + 5, 0, ZmbFeature::FLAG_00000000_TYPE_SHAPES, townCountHooks); // 6105
 		loadScrbFeature(xferShapes, _xferShapesId + 4, 0, ZmbFeature::FLAG_00000000_TYPE_SHAPES); // 6104
 
 		// IDA: word_4B97E6 = runner for 6108 (activated when completionCounter > 4).
@@ -779,21 +786,24 @@ void ZoombiniTransitionXfer::loadFeatures() {
 										   ZmbFeature::FLAG_01000000_DEFER_RENDER;
 		ZmbFeature *fg6106 = loadScrbFeature(xferShapes, _xferShapesId + 6, 6, kEnvScrbFlagsNoLoop);
 		ZmbFeature *fg6107 = loadScrbFeature(xferShapes, _xferShapesId + 7, 6, kEnvScrbFlagsNoLoop);
+		_xfer5ForegroundFeatures[0] = fg6106;
+		_xfer5ForegroundFeatures[1] = fg6107;
 
-		// IDA xfer_initAndRunTransition @ 0x46741B-0x46743A: 6106/6107 are
+		// IDA xfer_initAndRunTransition @ 0x46741B-0x46743A: 6107/6106 are
 		// activated via scrb_initRunnerWithScript right after init, before the
 		// hover loop starts. Without this they sit inert (DEFER_ANIM) and the
 		// XFER_5 foreground animation never plays.
-		if (fg6106) {
-			fg6106->initValues();
-			fg6106->activateAnimate();
-			fg6106->activateRender();
-		}
 		if (fg6107) {
 			fg6107->initValues();
 			fg6107->activateAnimate();
 			fg6107->activateRender();
 		}
+		if (fg6106) {
+			fg6106->initValues();
+			fg6106->activateAnimate();
+			fg6106->activateRender();
+		}
+		addExternalDirtyRect(Common::Rect(0, 0, 640, 480));
 	} else if (isMidRoute) {
 		// shapes[1] and shapes[2] are static overlapping edges above the walker overlay.
 		loadScrbFeature(xferShapes, _xferShapesId + 1, 0, ZmbFeature::FLAG_00000000_TYPE_SHAPES);
@@ -875,6 +885,14 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 	if (isClosed())
 		return;
 
+	if (_xferView == XFER_ROUTE5_TO_TOWN) {
+		for (int featureIdx = 0; featureIdx < 2; featureIdx++) {
+			ZmbFeature *feature = _xfer5ForegroundFeatures[featureIdx];
+			if (feature && !feature->hasAnimEndCallbackFired())
+				addExternalDirtyRect(Common::Rect(0, 0, 640, 480));
+		}
+	}
+
 	// -----------------------------------------------------------------------
 	// ALL views: timer-based auto-close (300 frames) + wait for sound to finish.
 	// IDA: puzzleXfer_onHover_4674EA — getElapsedFrameTime_460872() > 0x12C
@@ -946,9 +964,8 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 						uint16 scrsResId = _scrsResIdBase + snoid->_trait._foot;
 						Common::SeekableReadStream *scrsStream =
 							_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsResId));
-						if (scrsStream) {
+						if (scrsStream)
 							snoid->startScrsPlayback(scrsStream, true /* hideOnComplete */, true /* rejectState */);
-						}
 					}
 					_scrsTriggerIdx++;
 				}
@@ -975,9 +992,8 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 					uint16 scrsResId = _scrsResIdBase + snoid->_trait._foot;
 					Common::SeekableReadStream *scrsStream =
 						_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsResId));
-					if (scrsStream) {
-						snoid->startScrsPlayback(scrsStream, true /* hideOnComplete */, true /* rejectState */);
-					}
+					if (scrsStream)
+						snoid->startScrsPlayback(scrsStream, true /* hideOnComplete */, false /* rejectState */);
 				}
 				_scrsTriggerIdx++;
 			}
@@ -1016,6 +1032,29 @@ void ZoombiniTransitionXfer::activateEnvScrb(uint16 scrbId) {
 	feature->initValues();
 	feature->activateAnimate();
 	feature->activateRender();
+	const Common::Rect &dirtyRect = feature->getZSortRect();
+	addExternalDirtyRect(dirtyRect.isEmpty() ? Common::Rect(0, 0, 640, 480) : dirtyRect);
+}
+
+void ZoombiniTransitionXfer::xfer5TownCount_onPostRender(ZmbFeature *feature) {
+	Common::Rect textRect = feature->getClickRect();
+	if (textRect.isEmpty())
+		return;
+
+	textRect.left += 16;
+	textRect.top += 8;
+
+	Common::U32String text = _vm->_text->getLocalizedString(ZoombiniText::kXferVillePopulation);
+	text += Common::U32String::format(" %d", _xfer5DisplayedTownCount);
+
+	ZoombiniGraphics::TextConf tc;
+	tc._outlineEffect = true;
+	tc._textPalette = 0xD1;
+	tc._outlinePalette = 0x70;
+	tc._hAlign = Graphics::kTextAlignLeft;
+	tc._vAlign = Graphics::kTextAlignStart;
+
+	_vm->_gfx->drawText(ZoombiniGraphics::kShapeScreen, text, textRect, tc);
 }
 
 // ---------------------------------------------------------------------------
@@ -1050,6 +1089,7 @@ void ZoombiniTransitionXfer::onFeatureAnimEvent(ZmbFeature *feature, int16 event
 		// IDA: ++town_displayedZmbCount; initFeatureRunnerWithScrb(0, 0, 0, word_4B9802).
 		// ---------------------------------------------------------------
 		if (eventCode == 50) {
+			++_xfer5DisplayedTownCount;
 			if (_xfer5EventScrbId != 0)
 				activateEnvScrb(_xfer5EventScrbId);
 		}

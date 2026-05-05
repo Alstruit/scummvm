@@ -1190,7 +1190,7 @@ void ZoombiniPuzzleFerry::endDrag(const Common::Point &mousePos) {
 
 			// IDA: Check if success threshold met for good reaction
 			if (_seatedCount + 1 == _totalZmbCount || _consecutiveSuccesses == _successThreshold) {
-				_successThreshold += _vm->_rnd->getRandomNumberSigned(3, 5);
+				_successThreshold += _vm->_rnd->getRandomNumber(3, 5);
 
 				if (_hasReactedOnce) {
 					uint16 idx = _vm->_rnd->getNonRepeatRandom(2, _goodReactionRandomState);
@@ -1241,7 +1241,7 @@ void ZoombiniPuzzleFerry::endDrag(const Common::Point &mousePos) {
 
 			// Select rejection reaction SCRB
 			// IDA: if (nextRand(5,3) == word_4AB192) → 1815 (harsh), else random from bad pool
-			if (_vm->_rnd->getRandomNumberSigned(3, 5) == _consecutiveFailures) {
+			if (_vm->_rnd->getRandomNumber(3, 5) == _consecutiveFailures) {
 				_pendingFrogmanScrb = 1815;
 				_consecutiveFailures = 5; // prevent further harsh rejects
 			} else {

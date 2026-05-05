@@ -52,32 +52,36 @@ uint16 ZoombiniRandom::generateNewSeed() {
 	return Common::RandomSource::generateNewSeed();
 }
 
-uint16 ZoombiniRandom::getRandomNumber(uint16 max) {
+int16 ZoombiniRandom::getRandomNumber(int16 max) {
+	if (max < 0) {
+		warning("ZoombiniRandom::getRandomNumber: max(%d) is smaller than min(0), swapping", max);
+		return getRandomNumber(max, 0);
+	}
+
 	if (_useOriginal) {
 		_randSeed = 214013u * _randSeed + 2531011u;
-		return static_cast<uint16>(_randSeed) % (max + 1);
+		return static_cast<int16>(static_cast<uint16>(_randSeed) % (max + 1));
 	}
-	return static_cast<uint16>(_scummRnd.getRandomNumber(max));
+	return static_cast<int16>(_scummRnd.getRandomNumber(max));
 }
 
-uint16 ZoombiniRandom::getRandomNumber(uint16 min, uint16 max) {
+int16 ZoombiniRandom::getRandomNumber(int16 min, int16 max) {
 	if (max < min) {
-		warning("ZoombiniRandom::getRandomNumber: max(%u) is smaller than min(%u), swapping", max, min);
-		uint16 tmp = max;
-		max = min;
-		min = tmp;
-	}
-	return getRandomNumber(max - min) + min;
-}
-
-int16 ZoombiniRandom::getRandomNumberSigned(int16 min, int16 max) {
-	if (max < min) {
-		warning("ZoombiniRandom::getRandomNumberSigned: max(%d) is smaller than min(%d), swapping", max, min);
+		warning("ZoombiniRandom::getRandomNumber: max(%d) is smaller than min(%d), swapping", max, min);
 		int16 tmp = max;
 		max = min;
 		min = tmp;
 	}
-	return getRandomNumber(max - min) + min;
+
+	uint32 span = static_cast<uint32>(static_cast<int32>(max) - static_cast<int32>(min));
+	uint16 offset;
+	if (_useOriginal) {
+		_randSeed = 214013u * _randSeed + 2531011u;
+		offset = static_cast<uint16>(static_cast<uint16>(_randSeed) % (span + 1));
+	} else {
+		offset = static_cast<uint16>(_scummRnd.getRandomNumber(span));
+	}
+	return static_cast<int16>(static_cast<int32>(min) + offset);
 }
 
 uint16 ZoombiniRandom::getNonRepeatRandom(uint16 poolSize, uint32 &bitmask) {
