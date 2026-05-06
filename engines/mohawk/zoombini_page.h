@@ -111,27 +111,27 @@ private:
 	Common::Array<T *> _items;
 };
 
-constexpr const char *ZMB_MHK_ZOOMBINI = "ZOOMBINI.MHK";
-constexpr const char *ZMB_MHK_MIDIMPC = "MIDIMPC.MHK"; // Broderbund 1.x releases only
-constexpr const char *ZMB_MHK_MUSIC = "MUSIC.MHK";     // The Learning Company 2.0 release only
-constexpr const char *ZMB_MHK_XFER = "XFER.MHK";
-constexpr const char *ZMB_MHK_RODMAP = "RODMAP.MHK";
-constexpr const char *ZMB_MHK_PICKER = "PICKER.MHK";
-constexpr const char *ZMB_MHK_TOWN = "TOWN.MHK";
-constexpr const char *ZMB_MHK_BASECAMP = "BASECAMP.MHK";
-constexpr const char *ZMB_MHK_BCTWO = "BCTWO.MHK";
-constexpr const char *ZMB_MHK_BRIDGE = "BRIDGE.MHK";
-constexpr const char *ZMB_MHK_TUNNELS = "TUNNELS.MHK";
-constexpr const char *ZMB_MHK_PIZZA = "PIZZA.MHK";
-constexpr const char *ZMB_MHK_FERRY = "FERRY.MHK";
-constexpr const char *ZMB_MHK_LILLY = "LILLY.MHK";
-constexpr const char *ZMB_MHK_SLIDES = "SLIDES.MHK";
-constexpr const char *ZMB_MHK_FLEENS = "FLEENS.MHK";
-constexpr const char *ZMB_MHK_HOTEL = "HOTEL.MHK";
-constexpr const char *ZMB_MHK_NET = "NET.MHK";
-constexpr const char *ZMB_MHK_CAVES = "CAVES.MHK";
-constexpr const char *ZMB_MHK_SMOKE = "SMOKE.MHK";
-constexpr const char *ZMB_MHK_MAZE2 = "MAZE2.MHK";
+constexpr const char *ZMB_MHK_ZOOMBINI = "DATA/ZOOMBINI.MHK";
+constexpr const char *ZMB_MHK_MIDIMPC = "DATA/MIDIMPC.MHK"; // Broderbund 1.x releases only
+constexpr const char *ZMB_MHK_MUSIC = "DATA/MUSIC.MHK";     // The Learning Company 2.0 release only
+constexpr const char *ZMB_MHK_XFER = "DATA/XFER.MHK";
+constexpr const char *ZMB_MHK_RODMAP = "DATA/RODMAP.MHK";
+constexpr const char *ZMB_MHK_PICKER = "DATA/PICKER.MHK";
+constexpr const char *ZMB_MHK_TOWN = "DATA/TOWN.MHK";
+constexpr const char *ZMB_MHK_BASECAMP = "DATA/BASECAMP.MHK";
+constexpr const char *ZMB_MHK_BCTWO = "DATA/BCTWO.MHK";
+constexpr const char *ZMB_MHK_BRIDGE = "DATA/BRIDGE.MHK";
+constexpr const char *ZMB_MHK_TUNNELS = "DATA/TUNNELS.MHK";
+constexpr const char *ZMB_MHK_PIZZA = "DATA/PIZZA.MHK";
+constexpr const char *ZMB_MHK_FERRY = "DATA/FERRY.MHK";
+constexpr const char *ZMB_MHK_LILLY = "DATA/LILLY.MHK";
+constexpr const char *ZMB_MHK_SLIDES = "DATA/SLIDES.MHK";
+constexpr const char *ZMB_MHK_FLEENS = "DATA/FLEENS.MHK";
+constexpr const char *ZMB_MHK_HOTEL = "DATA/HOTEL.MHK";
+constexpr const char *ZMB_MHK_NET = "DATA/NET.MHK";
+constexpr const char *ZMB_MHK_CAVES = "DATA/CAVES.MHK";
+constexpr const char *ZMB_MHK_SMOKE = "DATA/SMOKE.MHK";
+constexpr const char *ZMB_MHK_MAZE2 = "DATA/MAZE2.MHK";
 
 class MohawkEngine_Zoombini;
 class MohawkSurface;

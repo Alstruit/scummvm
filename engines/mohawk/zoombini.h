@@ -132,6 +132,7 @@ public:
 	void delayRunningFrames(uint32 ms);
 
 	MohawkArchive *loadSystemArchive();
+	void initSearchPaths();
 	/**
 	 * Load next interactive/transition page from the page queue.
 	 */
@@ -142,6 +143,7 @@ public:
 	void clearPageArchives();
 
 	ZoombiniPage *getActivePage() const { return _activePage; }
+	ZoombiniPage *getCurrentPage() const;
 	void setNextPage(ZoombiniPageType type);
 
 	/**

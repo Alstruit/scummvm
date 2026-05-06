@@ -66,6 +66,7 @@ public:
 	// [*] Screen captures
 	void createScreen(Graphics::Surface &screen);
 	void captureScreen(ScreenKind srcScreenKind, Graphics::Surface *destScreen);
+	void copyToScreen(ScreenKind destScreenKind, const Graphics::Surface &srcScreen);
 	void captureComposedScreen(ScreenKind destScreenKind);
 	void captureComposedScreen(Graphics::Surface *destScreen);
 
@@ -106,6 +107,8 @@ public:
 	void setRenderClipRects(const Common::Array<Common::Rect> &rects);
 	void addRenderClipRect(const Common::Rect &rect);
 	void clearRenderClipRect();
+	void beginDirtyRectTracking(bool expandRenderClip);
+	Common::Rect endDirtyRectTracking();
 
 	// [*] Resource Management Extensions
 	MohawkSurface *findImage(ZmbResource imgResource);
@@ -528,6 +531,7 @@ private:
 	 */
 	Common::Point getTextLinesBounds(const Graphics::Font *font, bool outlineEffect, const Common::Array<Common::U32String> &lines);
 	void drawTextLines(ScreenKind screenKind, const Graphics::Font *font, const Common::Array<Common::U32String> &lines, const Common::Rect &destRect, uint32 palette, Graphics::TextAlign hAlign, uint32 fillBackgroundColor = kTransparentKey);
+	void recordDirtyRect(Graphics::Surface *screen, const Common::Rect &rect);
 
 	MohawkEngine_Zoombini *_vm;
 	MohawkBitmap *_bmpDecoder;
@@ -547,6 +551,10 @@ private:
 	Common::Array<Common::Rect> _renderClipRects;
 	Common::Rect _renderClipBounds;  // bounding box for quick early-out
 	bool _hasRenderClipRect = false;
+	Common::Rect _trackedDirtyBounds;
+	bool _isDirtyRectTracking = false;
+	bool _hasTrackedDirtyBounds = false;
+	bool _expandTrackedDirtyClip = false;
 
 	// An image cache that stores ZOOMBINI.MHK images
 	Common::HashMap<uint16, MohawkSurface *> _sysImageCache;

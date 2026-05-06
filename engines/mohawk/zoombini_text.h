@@ -158,6 +158,8 @@ public:
 		kOptionsStickyMouse,
 		kOptionsTransitions,
 		kOptionsCredits,
+		kOptionsHelpAudio, // TLC-only English text key.
+		kOptionsTouchSense, // TLC-only English text key; ScummVM does not implement TouchSense.
 		// DIALOG: MsgBox
 		kDialogTitleSave = 500,
 		kDialogTitleSaveAs,
@@ -175,7 +177,8 @@ public:
 		kDialogBodyCannotCreateNewInPractice,
 		kDialogBodyNewGame,
 		kDialogBodyReallyQuit,
-		kDialogBodySaveBeforeQuit,	
+		kDialogBodySaveBeforeQuit,
+		kDialogBodyRemoveGame, // TLC-only English text key.
 		kDialogButtonNewGame = 600,
 		kDialogButtonReplaceTitle,
 		kDialogButtonLoseThem,
@@ -208,6 +211,10 @@ public:
 		kNotiBoxTransitionsOff,
 		kNotiBoxAutoStickeyOn,
 		kNotiBoxAutoStickeyOff,
+		kNotiBoxHelpAudioOn, // TLC-only English text key.
+		kNotiBoxHelpAudioOff, // TLC-only English text key.
+		kNotiBoxTouchSenseOn, // TLC-only English text key; ScummVM does not implement TouchSense.
+		kNotiBoxTouchSenseOff, // TLC-only English text key; ScummVM does not implement TouchSense.
 	};
 
 	enum FontKind : uint32 {
@@ -276,7 +283,11 @@ private:
 
 	void initPageKeyMap();
 	void initEnglishStrings();
+	void initEnglishTlcStrings();
+	bool initOriginalExecutableStrings(const Common::HashMap<uint32, Common::U32String> &builtInStrings);
+	void applyOriginalExecutableStringPatches(const Common::HashMap<uint32, Common::U32String> &builtInStrings, const Key *patchKeys, uint patchKeyCount);
 	void getEnglishCredits(Common::Array<CreditParagraph> &paragraphs) const;
+	void getEnglishTlcCredits(Common::Array<CreditParagraph> &paragraphs) const;
 	void initKoreanStrings();
 	void getKoreanCredits(Common::Array<CreditParagraph> &paragraphs) const;
 

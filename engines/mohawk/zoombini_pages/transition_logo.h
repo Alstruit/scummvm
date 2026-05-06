@@ -45,6 +45,9 @@ public:
 	void onEveryFrame() override;
 	void onAnimFrame() override;
 
+	static constexpr const char *VIDEO_PATH_CDTOONS = "DATA/LOGO025.MOV";
+	static constexpr const char *VIDEO_PATH_BINK = "DATA/LOGO025.BIK";
+
 protected:
 	VideoEntryPtr _cdtoonsVideo = nullptr;
 #ifdef USE_BINK

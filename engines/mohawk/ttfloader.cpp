@@ -42,7 +42,7 @@ TTFLoader::TTFLoader(const Common::String &fileName, const Common::String &faceN
 }
 
 TTFLoader::TTFLoader(const Common::String &fileName, const Common::String &faceName, const Common::String &srcInst, bool bold, int32 faceIndex) :
-	_filePath(Common::Path(fileName, Common::Path::kNoSeparator)),
+	_filePath(Common::Path(fileName)),
 	_faceName(faceName), _bold(bold), _faceIndex(faceIndex), _srcInst(srcInst) {
 }
 
@@ -123,7 +123,7 @@ ISCabTTFLoader::ISCabTTFLoader(const Common::String &iscabFile, const Common::St
 }
 
 ISCabTTFLoader::ISCabTTFLoader(const Common::String &iscabFile, const Common::String &fileName, const Common::String &faceName, const Common::String &srcInst, bool bold, int32 faceIndex) : 
-	_iscabPath(Common::Path(iscabFile, Common::Path::kNoSeparator)),
+	_iscabPath(Common::Path(iscabFile)),
 	FileTTFLoader(fileName, faceName, srcInst, bold, faceIndex),
 	_inPath(Common::Path(fileName, Common::Path::kNoSeparator)) {
 }
@@ -166,7 +166,7 @@ ISZTTFLoader::ISZTTFLoader(const Common::String &iszFile, const Common::String &
 }
 
 ISZTTFLoader::ISZTTFLoader(const Common::String &iszFile, const Common::String &fileName, const Common::String &faceName, const Common::String &srcInst, bool bold, int32 faceIndex) : 
-	_iszPath(Common::Path(iszFile, Common::Path::kNoSeparator)),
+	_iszPath(Common::Path(iszFile)),
 	FileTTFLoader(fileName, faceName, srcInst, bold, faceIndex),
 	_inPath(Common::Path(fileName, Common::Path::kNoSeparator)) {
 }

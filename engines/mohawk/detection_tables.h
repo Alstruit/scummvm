@@ -768,7 +768,7 @@ static const MohawkGameDescription gameDescriptions[] = {
 		{
 			"zoombini",
 			"v1.1",
-			AD_ENTRY1("ZOOMBINI.MHK", "98b758fec55104c096cfd129048be9a6"),
+			AD_ENTRY2s("ZOOMBINI.MHK", "98b758fec55104c096cfd129048be9a6", 23714779, "is3:ZBARC32.Z:Zoombi32.exe", "A:7df825a53a92fddcdd858021a716ed27", 642592),
 			Common::EN_ANY,
 			Common::kPlatformWindows,
 			ADGF_UNSTABLE,
@@ -801,7 +801,7 @@ static const MohawkGameDescription gameDescriptions[] = {
 		{
 			"zoombini",
 			"v1.11",
-			AD_ENTRY1("ZOOMBINI.MHK", "1f243bf988a37f3a701005d587c8f77b"),
+			AD_ENTRY2s("ZOOMBINI.MHK", "1f243bf988a37f3a701005d587c8f77b", 23991375, "Zoombi32.exe", "982cc9c63a4199a9f26acbcbc0743a4d", 647168),
 			Common::KO_KOR,
 			Common::kPlatformWindows,
 			ADGF_UNSTABLE,
@@ -818,7 +818,7 @@ static const MohawkGameDescription gameDescriptions[] = {
 		{
 			"zoombini",
 			"v2.0",
-			AD_ENTRY1("ZOOMBINI.MHK", "506b1122ffa740e2566cf0b583d24478"),
+			AD_ENTRY2s("ZOOMBINI.MHK", "506b1122ffa740e2566cf0b583d24478", 23722200, "Zoombinis Logical Journey.exe", "057bc49a7960a6aac7057d44b2f4c160", 614400),
 			Common::EN_ANY,
 			Common::kPlatformWindows,
 			ADGF_UNSTABLE,

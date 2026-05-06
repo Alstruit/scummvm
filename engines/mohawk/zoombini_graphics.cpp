@@ -34,6 +34,7 @@
 #include "mohawk/resource.h"
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
+#include "mohawk/zoombini_page.h"
 #include "mohawk/zoombini_scripts.h"
 #include "mohawk/zoombini_text.h"
 #include "zoombini_graphics.h"
@@ -89,6 +90,13 @@ void ZoombiniGraphics::captureScreen(ScreenKind srcScreenKind, Graphics::Surface
 
 	Graphics::Surface *srcScreen = _vm->_gfx->getScreen(srcScreenKind);
 	destScreen->copyFrom(*srcScreen);
+	recordDirtyRect(destScreen, destScreen->getRect());
+}
+
+void ZoombiniGraphics::copyToScreen(ScreenKind destScreenKind, const Graphics::Surface &srcScreen) {
+	Graphics::Surface *destScreen = _vm->_gfx->getScreen(destScreenKind);
+	destScreen->copyFrom(srcScreen);
+	recordDirtyRect(destScreen, destScreen->getRect());
 }
 
 void ZoombiniGraphics::captureComposedScreen(ScreenKind destScreenKind) {
@@ -97,6 +105,7 @@ void ZoombiniGraphics::captureComposedScreen(ScreenKind destScreenKind) {
 	Graphics::Surface *systemScreen = _vm->_system->lockScreen();
 	destScreen->copyFrom(*systemScreen);
 	_vm->_system->unlockScreen();
+	recordDirtyRect(destScreen, destScreen->getRect());
 }
 
 void ZoombiniGraphics::captureComposedScreen(Graphics::Surface *destScreen) {
@@ -105,6 +114,7 @@ void ZoombiniGraphics::captureComposedScreen(Graphics::Surface *destScreen) {
 	Graphics::Surface *systemScreen = _vm->_system->lockScreen();
 	destScreen->copyFrom(*systemScreen);
 	_vm->_system->unlockScreen();
+	recordDirtyRect(destScreen, destScreen->getRect());
 }
 
 // [*] Screen updates
@@ -133,6 +143,7 @@ void ZoombiniGraphics::copyBackToShapeScreen() {
 	// (pScreenPort_4A79A8) → blitter port (pPortToBlitter_4B9D9C) before shape
 	// rendering. Shapes are then drawn directly on top of the background.
 	_shapeScreen->copyRectToSurface(*_backScreen, 0, 0, _screenRect);
+	recordDirtyRect(_shapeScreen, _screenRect);
 }
 
 void ZoombiniGraphics::copyBackToShapeScreen(const Common::Rect &clipRect) {
@@ -144,6 +155,7 @@ void ZoombiniGraphics::copyBackToShapeScreen(const Common::Rect &clipRect) {
 	if (rect.isEmpty())
 		return;
 	_shapeScreen->copyRectToSurface(*_backScreen, rect.left, rect.top, rect);
+	recordDirtyRect(_shapeScreen, rect);
 }
 
 void ZoombiniGraphics::setRenderClipRects(const Common::Array<Common::Rect> &rects) {
@@ -178,10 +190,57 @@ void ZoombiniGraphics::clearRenderClipRect() {
 	_hasRenderClipRect = false;
 }
 
+void ZoombiniGraphics::beginDirtyRectTracking(bool expandRenderClip) {
+	_isDirtyRectTracking = true;
+	_hasTrackedDirtyBounds = false;
+	_expandTrackedDirtyClip = expandRenderClip;
+	_trackedDirtyBounds = Common::Rect();
+}
+
+Common::Rect ZoombiniGraphics::endDirtyRectTracking() {
+	_isDirtyRectTracking = false;
+	_expandTrackedDirtyClip = false;
+	return _hasTrackedDirtyBounds ? _trackedDirtyBounds : Common::Rect();
+}
+
+void ZoombiniGraphics::recordDirtyRect(Graphics::Surface *screen, const Common::Rect &rect) {
+	if (!screen || rect.isEmpty())
+		return;
+
+	bool isShapeScreen = screen == _shapeScreen;
+	bool isBackScreen = screen == _backScreen;
+	if (!isShapeScreen && !isBackScreen)
+		return;
+
+	Common::Rect clipped = rect;
+	clipped.clip(screen->w, screen->h);
+	if (clipped.isEmpty())
+		return;
+
+	if (_isDirtyRectTracking) {
+		if (_hasTrackedDirtyBounds) {
+			_trackedDirtyBounds.extend(clipped);
+		} else {
+			_trackedDirtyBounds = clipped;
+			_hasTrackedDirtyBounds = true;
+		}
+
+		if (_expandTrackedDirtyClip && isShapeScreen)
+			addRenderClipRect(clipped);
+	}
+
+	if (isShapeScreen)
+		_isScreenDirty = true;
+
+	if (isBackScreen && _vm->getCurrentPage())
+		_vm->getCurrentPage()->scheduleForceRedraw();
+}
+
 void ZoombiniGraphics::clearScreen(ScreenKind screenKind) {
 	uint32 blackColor = kTransparentKey;
 	Graphics::Surface *screen = _vm->_gfx->getScreen(screenKind);
 	screen->fillRect(_screenRect, blackColor);
+	recordDirtyRect(screen, _screenRect);
 }
 
 void ZoombiniGraphics::reinitGraphics(bool trueColor) {
@@ -404,6 +463,7 @@ Common::Rect ZoombiniGraphics::drawImageSectionToScreen(Graphics::Surface *scree
 	Common::Rect logicalRect(clipDstRect.left, clipDstRect.top,
 							 clipDstRect.left + clipSrcRect.width(),
 							 clipDstRect.top + clipSrcRect.height());
+	recordDirtyRect(screen, logicalRect);
 
 	// IDA: port_selectActiveRegion (0x48F40C) — confine drawing to dirty region.
 	// The original engine uses GDI clip regions (union of rectangles) set on the
@@ -433,7 +493,6 @@ Common::Rect ZoombiniGraphics::drawImageSectionToScreen(Graphics::Surface *scree
 				screen->fillRect(subDst, kTransparentKey);
 			screen->copyRectToSurfaceWithKey(*srcSurface, subDst.left, subDst.top, subSrc, kTransparentKey);
 		}
-		_isScreenDirty = true;
 		return logicalRect;
 	}
 
@@ -441,18 +500,23 @@ Common::Rect ZoombiniGraphics::drawImageSectionToScreen(Graphics::Surface *scree
 		screen->fillRect(clipDstRect, kTransparentKey);
 
 	screen->copyRectToSurfaceWithKey(*srcSurface, clipDstRect.left, clipDstRect.top, clipSrcRect, kTransparentKey);
-	_isScreenDirty = true;
 
 	return logicalRect;
 }
 
 void ZoombiniGraphics::drawLine(ScreenKind screenKind, const Common::Point &start, const Common::Point &end, uint32 color) {
 	Graphics::Surface *screen = getScreen(screenKind);
+	Common::Rect dirtyRect(MIN(start.x, end.x), MIN(start.y, end.y),
+	                       MAX(start.x, end.x) + 1, MAX(start.y, end.y) + 1);
+	recordDirtyRect(screen, dirtyRect);
 	screen->drawLine(start.x, start.y, end.x, end.y, color);
 }
 
 void ZoombiniGraphics::drawThickLine(ScreenKind screenKind, const Common::Point &start, const Common::Point &end, int penX, int penY, uint32 color) {
 	Graphics::Surface *screen = getScreen(screenKind);
+	Common::Rect dirtyRect(MIN(start.x, end.x) - penX, MIN(start.y, end.y) - penY,
+	                       MAX(start.x, end.x) + penX + 1, MAX(start.y, end.y) + penY + 1);
+	recordDirtyRect(screen, dirtyRect);
 	screen->drawThickLine(start.x, start.y, end.x, end.y, penX, penY, color);
 }
 
@@ -509,6 +573,7 @@ void ZoombiniGraphics::fillArea(Graphics::Surface *screen, ZmbResource imgResour
 }
 
 void ZoombiniGraphics::fillArea(Graphics::Surface *screen, const Common::Rect &rect, uint32 color) {
+	recordDirtyRect(screen, rect);
 	if (_hasRenderClipRect) {
 		for (const Common::Rect &dirtyRect : _renderClipRects) {
 			Common::Rect clipped = rect;
@@ -523,7 +588,7 @@ void ZoombiniGraphics::fillArea(Graphics::Surface *screen, const Common::Rect &r
 }
 
 void ZoombiniGraphics::fillArea(Graphics::Surface *screen, uint32 color) {
-	screen->fillRect(screen->getRect(), color);
+	fillArea(screen, screen->getRect(), color);
 }
 
 void ZoombiniGraphics::drawText(ScreenKind screenKind, uint32 textKey, const Common::Rect &destRect) {
@@ -605,12 +670,13 @@ void ZoombiniGraphics::drawText(ScreenKind screenKind, const Common::U32String &
 			outlineRect.top += yDelta;
 			outlineRect.bottom += yDelta;
 
+			recordDirtyRect(getScreen(screenKind), outlineRect);
 			drawTextLines(screenKind, font, lines, outlineRect, tc._outlinePalette, tc._hAlign, fillBackgroundPalette);
 		}
 	}
 
+	recordDirtyRect(getScreen(screenKind), drawRect);
 	drawTextLines(screenKind, font, lines, drawRect, tc._textPalette, tc._hAlign, fillBackgroundPalette);
-	_isScreenDirty = true;
 }
 
 Common::Point ZoombiniGraphics::getTextBounds(const Common::U32String &text, int16 targetWidth, const TextConf &tc) {

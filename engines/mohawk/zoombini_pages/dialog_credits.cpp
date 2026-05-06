@@ -26,11 +26,10 @@
 
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_graphics.h"
+#include "mohawk/zoombini_pages/dialog_credits.h"
 #include "mohawk/zoombini_random.h"
 #include "mohawk/zoombini_sound.h"
 #include "mohawk/zoombini_state.h"
-#include "mohawk/zoombini_pages/dialog_credits.h"
-#include "dialog_credits.h"
 
 namespace Mohawk {
 
@@ -66,13 +65,12 @@ void ZoombiniDialogCredits::loadFeatures() {
 	// Load Virtual Feature - drawLines
 	ZmbFeature::EventHooks hooksDrawLines;
 	hooksDrawLines.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogCredits::drawLines_render));
-loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
+	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
 					ZmbFeature::FLAG_00001000_TOPMOST,
 					hooksDrawLines);
 
 	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound20104_TownBGM), Audio::Mixer::SoundType::kMusicSoundType, true);
 }
-
 
 ZmbEventHandleResult ZoombiniDialogCredits::creditScreen_onMouseLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
 	close();

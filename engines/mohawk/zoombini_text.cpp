@@ -23,6 +23,11 @@
 #include "graphics/fonts/ttf.h"
 #include "gui/message.h"
 
+#include "common/compression/installshieldv3_archive.h"
+#include "common/config-manager.h"
+#include "common/file.h"
+#include "common/textconsole.h"
+
 #include "mohawk/resource.h"
 #include "mohawk/ttfloader.h"
 #include "mohawk/zoombini.h"
@@ -33,6 +38,477 @@
 
 namespace Mohawk {
 
+namespace {
+
+struct ExeTextEntry {
+	ZoombiniText::Key key;
+	uint32 offset;
+	uint16 length;
+};
+
+struct ExeTextSource {
+	const char *fileName;
+	const char *archiveName;
+	const char *archiveMemberName;
+	Common::CodePage codePage;
+	const ExeTextEntry *entries;
+	uint entryCount;
+	const ZoombiniText::Key *patchKeys;
+	uint patchKeyCount;
+};
+
+static const ZoombiniText::Key kEnglishExeTextPatchKeys[] = {
+	ZoombiniText::kRoute1,
+	ZoombiniText::kRoute3,
+	ZoombiniText::kRoute4
+};
+
+static const ExeTextEntry kEnglish11ExeTextEntries[] = {
+	{ ZoombiniText::kTown, 0x8AD89, 13 },
+	{ ZoombiniText::kPicker, 0x8ACA4, 13 },
+	{ ZoombiniText::kBridge, 0x8ACB2, 15 },
+	{ ZoombiniText::kTunnels, 0x8ACC2, 16 },
+	{ ZoombiniText::kPizza, 0x8ACD3, 10 },
+	{ ZoombiniText::kBasecamp1, 0x8ACDE, 12 },
+	{ ZoombiniText::kFerry, 0x8ACEB, 25 },
+	{ ZoombiniText::kLilly, 0x8AD05, 22 },
+	{ ZoombiniText::kSlides, 0x8AD1C, 10 },
+	{ ZoombiniText::kFleens, 0x8AD27, 7 },
+	{ ZoombiniText::kHotel, 0x8AD2F, 14 },
+	{ ZoombiniText::kNet, 0x8AD3E, 12 },
+	{ ZoombiniText::kBasecamp2, 0x8AD4B, 10 },
+	{ ZoombiniText::kCaves, 0x8AD56, 15 },
+	{ ZoombiniText::kSmoke, 0x8AD66, 14 },
+	{ ZoombiniText::kMaze, 0x8AD76, 18 },
+	{ ZoombiniText::kNewGame, 0x8B9FC, 8 },
+	{ ZoombiniText::kPracticeMode, 0x8ADCB, 13 },
+	{ ZoombiniText::kContinueJourney, 0x8AEF3, 16 },
+	{ ZoombiniText::kPracticeTitle, 0x8AEE5, 13 },
+	{ ZoombiniText::kPracticeDesc1, 0x8ADD9, 18 },
+	{ ZoombiniText::kPracticeDesc2, 0x8ADEC, 17 },
+	{ ZoombiniText::kPracticeDesc3, 0x8ADFE, 16 },
+	{ ZoombiniText::kPracticeDesc4, 0x8AE0F, 12 },
+	{ ZoombiniText::kTerrainKey, 0x8AF04, 11 },
+	{ ZoombiniText::kChooseLevel, 0x8AF10, 14 },
+	{ ZoombiniText::kLevel1, 0x8AF1F, 11 },
+	{ ZoombiniText::kLevel2, 0x8AF2B, 11 },
+	{ ZoombiniText::kLevel3, 0x8AF37, 9 },
+	{ ZoombiniText::kLevel4, 0x8AF41, 15 },
+	{ ZoombiniText::kRoute1, 0x8AF51, 31 },
+	{ ZoombiniText::kRoute2, 0x8AF71, 11 },
+	{ ZoombiniText::kRoute3, 0x8AF7D, 17 },
+	{ ZoombiniText::kRoute4, 0x8AF8F, 20 },
+	{ ZoombiniText::kXferVillePopulation, 0x8AFA4, 24 },
+	{ ZoombiniText::kMemorialJanuary, 0x8AFBE, 7 },
+	{ ZoombiniText::kMemorialFebruary, 0x8AFC6, 8 },
+	{ ZoombiniText::kMemorialMarch, 0x8AFCF, 5 },
+	{ ZoombiniText::kMemorialApril, 0x8AFD5, 5 },
+	{ ZoombiniText::kMemorialMay, 0x8AFDB, 3 },
+	{ ZoombiniText::kMemorialJune, 0x8AFDF, 4 },
+	{ ZoombiniText::kMemorialJuly, 0x8AFE4, 4 },
+	{ ZoombiniText::kMemorialAugust, 0x8AFE9, 6 },
+	{ ZoombiniText::kMemorialSeptember, 0x8AFF0, 9 },
+	{ ZoombiniText::kMemorialOctober, 0x8AFFA, 7 },
+	{ ZoombiniText::kMemorialNovember, 0x8B002, 8 },
+	{ ZoombiniText::kMemorialDecember, 0x8B00B, 8 },
+	{ ZoombiniText::kMemorialWhenLevel, 0x8B014, 18 },
+	{ ZoombiniText::kMemorialHonorMonument, 0x8B027, 50 },
+	{ ZoombiniText::kMemorialHonorWindmill, 0x8B05A, 53 },
+	{ ZoombiniText::kMemorialHonorObservatory, 0x8B090, 44 },
+	{ ZoombiniText::kMemorialHonorBowlingAlley, 0x8B0BD, 44 },
+	{ ZoombiniText::kMemorialHonorGeneralStore, 0x8B0EA, 53 },
+	{ ZoombiniText::kMemorialHonorSwimmingPool, 0x8B120, 45 },
+	{ ZoombiniText::kMemorialHonorPlayground, 0x8B14E, 55 },
+	{ ZoombiniText::kMemorialHonorBandShell, 0x8B186, 53 },
+	{ ZoombiniText::kMemorialHonorSchool, 0x8B1BC, 43 },
+	{ ZoombiniText::kMemorialHonorLibrary, 0x8B1E8, 51 },
+	{ ZoombiniText::kMemorialHonorFire, 0x8B21C, 40 },
+	{ ZoombiniText::kMemorialHonorOpera, 0x8B245, 52 },
+	{ ZoombiniText::kMemorialHonorCityHall, 0x8B27A, 44 },
+	{ ZoombiniText::kMemorialHonorClockTower, 0x8B2A7, 55 },
+	{ ZoombiniText::kMemorialHonorMuseum, 0x8B2DF, 54 },
+	{ ZoombiniText::kMemorialHonorCourt, 0x8B316, 54 },
+	{ ZoombiniText::kMemorialRoute1Level1, 0x8B34D, 100 },
+	{ ZoombiniText::kMemorialRoute1Level2, 0x8B3B2, 106 },
+	{ ZoombiniText::kMemorialRoute1Level3, 0x8B41D, 102 },
+	{ ZoombiniText::kMemorialRoute1Level4, 0x8B484, 113 },
+	{ ZoombiniText::kMemorialRoute2Level1, 0x8B4F6, 66 },
+	{ ZoombiniText::kMemorialRoute2Level2, 0x8B539, 81 },
+	{ ZoombiniText::kMemorialRoute2Level3, 0x8B58B, 92 },
+	{ ZoombiniText::kMemorialRoute2Level4, 0x8B4F6, 66 },
+	{ ZoombiniText::kMemorialRoute3Level1, 0x8B62B, 106 },
+	{ ZoombiniText::kMemorialRoute3Level2, 0x8B696, 93 },
+	{ ZoombiniText::kMemorialRoute3Level3, 0x8B6F4, 94 },
+	{ ZoombiniText::kMemorialRoute3Level4, 0x8B753, 98 },
+	{ ZoombiniText::kMemorialRoute4Level1, 0x8B7B6, 103 },
+	{ ZoombiniText::kMemorialRoute4Level2, 0x8B81E, 110 },
+	{ ZoombiniText::kMemorialRoute4Level3, 0x8B88D, 91 },
+	{ ZoombiniText::kMemorialRoute4Level4, 0x8B8E9, 134 },
+	{ ZoombiniText::kDialogBodyGoMapWillLost, 0x8B970, 64 },
+	{ ZoombiniText::kDialogButtonLoseThem, 0x8B9B1, 9 },
+	{ ZoombiniText::kDialogButtonKeepThem, 0x8B9BB, 9 },
+	{ ZoombiniText::kDialogButtonOkay, 0x8B9C5, 2 },
+	{ ZoombiniText::kDialogButtonCancel, 0x8B9C8, 6 },
+	{ ZoombiniText::kDialogButtonYes, 0x8BB76, 3 },
+	{ ZoombiniText::kDialogButtonNo, 0x8BBDB, 2 },
+	{ ZoombiniText::kDialogButtonQuit, 0x8BA34, 4 },
+	{ ZoombiniText::kDialogButtonLoad, 0x8B9CF, 4 },
+	{ ZoombiniText::kDialogButtonSave, 0x8B9D4, 4 },
+	{ ZoombiniText::kOptionsTitle, 0x8B9D9, 7 },
+	{ ZoombiniText::kOptionsLegendOn, 0x8B9E1, 4 },
+	{ ZoombiniText::kOptionsLegendOff, 0x8B9E6, 5 },
+	{ ZoombiniText::kOptionsNewGame, 0x8B9FC, 17 },
+	{ ZoombiniText::kOptionsLoadGame, 0x8BA0E, 18 },
+	{ ZoombiniText::kOptionsSaveGame, 0x8BA21, 18 },
+	{ ZoombiniText::kOptionsQuit, 0x8BA34, 13 },
+	{ ZoombiniText::kOptionsToggle, 0x8B9EC, 15 },
+	{ ZoombiniText::kOptionsSound, 0x8BA42, 26 },
+	{ ZoombiniText::kOptionsMusic, 0x8BA5D, 25 },
+	{ ZoombiniText::kOptionsStickyMouse, 0x8BA77, 21 },
+	{ ZoombiniText::kOptionsTransitions, 0x8BA8D, 20 },
+	{ ZoombiniText::kOptionsCredits, 0x8BB56, 7 },
+	{ ZoombiniText::kDialogBodyNoSavedGames, 0x8BAA2, 14 },
+	{ ZoombiniText::kDialogBodyCreateAndSaveNewGame, 0x8BAB4, 56 },
+	{ ZoombiniText::kDialogButtonNewGame, 0x8B9FC, 8 },
+	{ ZoombiniText::kDialogButtonReplaceTitle, 0x8BAF6, 7 },
+	{ ZoombiniText::kDialogTitleSave, 0x8BAFE, 11 },
+	{ ZoombiniText::kDialogTitleSaveAs, 0x8BB0A, 13 },
+	{ ZoombiniText::kDialogTitleLoad, 0x8BB18, 11 },
+	{ ZoombiniText::kDialogBodyReplaceGame, 0x8BB24, 48 },
+	{ ZoombiniText::kDialogBodySaveCurrentGame, 0x8BB5E, 23 },
+	{ ZoombiniText::kDialogBodySaveDirtyGame, 0x8BCFD, 60 },
+	{ ZoombiniText::kDialogBodyCannotSaveInPractice, 0x8BBDE, 42 },
+	{ ZoombiniText::kDialogBodyCreateNewGame, 0x8BC09, 42 },
+	{ ZoombiniText::kDialogBodyCannotSaveMoreGame, 0x8BC34, 70 },
+	{ ZoombiniText::kDialogBodyCannotLoadInPractice, 0x8BC7B, 42 },
+	{ ZoombiniText::kDialogBodyCannotCreateNewInPractice, 0x8BCA6, 48 },
+	{ ZoombiniText::kDialogBodyNewGame, 0x8B9FC, 8 },
+	{ ZoombiniText::kDialogBodyReallyQuit, 0x8BCE0, 28 },
+	{ ZoombiniText::kDialogBodySaveBeforeQuit, 0x8BB7F, 87 },
+	{ ZoombiniText::kDialogHelpTitle, 0x8BD3A, 4 },
+	{ ZoombiniText::kDialogButtonPrev, 0x8BD3F, 8 },
+	{ ZoombiniText::kDialogButtonNext, 0x8BD48, 4 },
+	{ ZoombiniText::kDialogHelpLevel, 0x8636C, 5 },
+	{ ZoombiniText::kNotiBoxMusicOn, 0x8C77B, 8 },
+	{ ZoombiniText::kNotiBoxMusicOff, 0x8C784, 9 },
+	{ ZoombiniText::kNotiBoxSoundOn, 0x8C78E, 8 },
+	{ ZoombiniText::kNotiBoxSoundOff, 0x8C797, 9 },
+	{ ZoombiniText::kNotiBoxLessAction, 0x8C7A1, 11 },
+	{ ZoombiniText::kNotiBoxMoreAction, 0x8C7AD, 11 },
+	{ ZoombiniText::kNotiBoxHideCursor, 0x8C7B9, 11 },
+	{ ZoombiniText::kNotiBoxShowCursor, 0x8C7C5, 11 },
+	{ ZoombiniText::kNotiBoxStickeyMouse, 0x8C7D1, 12 },
+	{ ZoombiniText::kNotiBoxNonStickeyMouse, 0x8C7DE, 16 },
+	{ ZoombiniText::kNotiBoxTransitionsOn, 0x8C7EF, 14 },
+	{ ZoombiniText::kNotiBoxTransitionsOff, 0x8C7FE, 15 },
+	{ ZoombiniText::kNotiBoxAutoStickeyOn, 0x8C80E, 14 },
+	{ ZoombiniText::kNotiBoxAutoStickeyOff, 0x8C81D, 15 },
+};
+
+static const ExeTextEntry kEnglish20ExeTextEntries[] = {
+	{ ZoombiniText::kTown, 0x92680, 13 },
+	{ ZoombiniText::kPicker, 0x928C4, 13 },
+	{ ZoombiniText::kBridge, 0x92264, 15 },
+	{ ZoombiniText::kTunnels, 0x92283, 16 },
+	{ ZoombiniText::kPizza, 0x92894, 10 },
+	{ ZoombiniText::kBasecamp1, 0x92884, 12 },
+	{ ZoombiniText::kFerry, 0x92868, 25 },
+	{ ZoombiniText::kLilly, 0x92850, 22 },
+	{ ZoombiniText::kSlides, 0x92844, 10 },
+	{ ZoombiniText::kFleens, 0x9283C, 7 },
+	{ ZoombiniText::kHotel, 0x91F72, 14 },
+	{ ZoombiniText::kNet, 0x91ED6, 12 },
+	{ ZoombiniText::kBasecamp2, 0x92810, 10 },
+	{ ZoombiniText::kCaves, 0x92800, 15 },
+	{ ZoombiniText::kSmoke, 0x91DEE, 14 },
+	{ ZoombiniText::kMaze, 0x91E75, 18 },
+	{ ZoombiniText::kNewGame, 0x919F0, 8 },
+	{ ZoombiniText::kPracticeMode, 0x927BC, 13 },
+	{ ZoombiniText::kContinueJourney, 0x9274C, 16 },
+	{ ZoombiniText::kPracticeTitle, 0x92760, 13 },
+	{ ZoombiniText::kPracticeDesc1, 0x927A8, 18 },
+	{ ZoombiniText::kPracticeDesc2, 0x92794, 17 },
+	{ ZoombiniText::kPracticeDesc3, 0x92780, 16 },
+	{ ZoombiniText::kPracticeDesc4, 0x92770, 12 },
+	{ ZoombiniText::kTerrainKey, 0x92740, 11 },
+	{ ZoombiniText::kChooseLevel, 0x92730, 14 },
+	{ ZoombiniText::kLevel1, 0x92724, 11 },
+	{ ZoombiniText::kLevel2, 0x92718, 11 },
+	{ ZoombiniText::kLevel3, 0x92702, 9 },
+	{ ZoombiniText::kLevel4, 0x926FC, 15 },
+	{ ZoombiniText::kRoute1, 0x926DC, 31 },
+	{ ZoombiniText::kRoute2, 0x926D0, 11 },
+	{ ZoombiniText::kRoute3, 0x926BC, 17 },
+	{ ZoombiniText::kRoute4, 0x926A4, 20 },
+	{ ZoombiniText::kXferVillePopulation, 0x92680, 24 },
+	{ ZoombiniText::kMemorialJanuary, 0x92678, 7 },
+	{ ZoombiniText::kMemorialFebruary, 0x9266C, 8 },
+	{ ZoombiniText::kMemorialMarch, 0x92664, 5 },
+	{ ZoombiniText::kMemorialApril, 0x9265C, 5 },
+	{ ZoombiniText::kMemorialMay, 0x92658, 3 },
+	{ ZoombiniText::kMemorialJune, 0x92650, 4 },
+	{ ZoombiniText::kMemorialJuly, 0x92648, 4 },
+	{ ZoombiniText::kMemorialAugust, 0x92640, 6 },
+	{ ZoombiniText::kMemorialSeptember, 0x92634, 9 },
+	{ ZoombiniText::kMemorialOctober, 0x9262C, 7 },
+	{ ZoombiniText::kMemorialNovember, 0x92620, 8 },
+	{ ZoombiniText::kMemorialDecember, 0x92614, 8 },
+	{ ZoombiniText::kMemorialWhenLevel, 0x92600, 18 },
+	{ ZoombiniText::kMemorialHonorMonument, 0x925CC, 50 },
+	{ ZoombiniText::kMemorialHonorWindmill, 0x92594, 53 },
+	{ ZoombiniText::kMemorialHonorObservatory, 0x92564, 44 },
+	{ ZoombiniText::kMemorialHonorBowlingAlley, 0x92534, 44 },
+	{ ZoombiniText::kMemorialHonorGeneralStore, 0x924FC, 53 },
+	{ ZoombiniText::kMemorialHonorSwimmingPool, 0x924CC, 45 },
+	{ ZoombiniText::kMemorialHonorPlayground, 0x92494, 55 },
+	{ ZoombiniText::kMemorialHonorBandShell, 0x9245C, 53 },
+	{ ZoombiniText::kMemorialHonorSchool, 0x92430, 43 },
+	{ ZoombiniText::kMemorialHonorLibrary, 0x923FC, 51 },
+	{ ZoombiniText::kMemorialHonorFire, 0x923D0, 40 },
+	{ ZoombiniText::kMemorialHonorOpera, 0x92398, 52 },
+	{ ZoombiniText::kMemorialHonorCityHall, 0x92368, 44 },
+	{ ZoombiniText::kMemorialHonorClockTower, 0x92330, 55 },
+	{ ZoombiniText::kMemorialHonorMuseum, 0x922F8, 54 },
+	{ ZoombiniText::kMemorialHonorCourt, 0x922C0, 54 },
+	{ ZoombiniText::kMemorialRoute1Level1, 0x92258, 100 },
+	{ ZoombiniText::kMemorialRoute1Level2, 0x921EC, 106 },
+	{ ZoombiniText::kMemorialRoute1Level3, 0x92184, 102 },
+	{ ZoombiniText::kMemorialRoute1Level4, 0x92110, 113 },
+	{ ZoombiniText::kMemorialRoute2Level1, 0x920CC, 66 },
+	{ ZoombiniText::kMemorialRoute2Level2, 0x92078, 81 },
+	{ ZoombiniText::kMemorialRoute2Level3, 0x92018, 92 },
+	{ ZoombiniText::kMemorialRoute2Level4, 0x920CC, 66 },
+	{ ZoombiniText::kMemorialRoute3Level1, 0x91FAC, 106 },
+	{ ZoombiniText::kMemorialRoute3Level2, 0x91F4C, 93 },
+	{ ZoombiniText::kMemorialRoute3Level3, 0x91EEC, 94 },
+	{ ZoombiniText::kMemorialRoute3Level4, 0x91E88, 98 },
+	{ ZoombiniText::kMemorialRoute4Level1, 0x91E20, 103 },
+	{ ZoombiniText::kMemorialRoute4Level2, 0x91DB0, 110 },
+	{ ZoombiniText::kMemorialRoute4Level3, 0x91D54, 91 },
+	{ ZoombiniText::kMemorialRoute4Level4, 0x91CCC, 134 },
+	{ ZoombiniText::kDialogBodyGoMapWillLost, 0x91C88, 64 },
+	{ ZoombiniText::kDialogButtonLoseThem, 0x91C7C, 9 },
+	{ ZoombiniText::kDialogButtonKeepThem, 0x91C70, 9 },
+	{ ZoombiniText::kDialogButtonOkay, 0x91C6C, 2 },
+	{ ZoombiniText::kDialogButtonCancel, 0x91C64, 6 },
+	{ ZoombiniText::kDialogButtonYes, 0x91A8C, 3 },
+	{ ZoombiniText::kDialogButtonNo, 0x91A28, 2 },
+	{ ZoombiniText::kDialogButtonQuit, 0x9191E, 4 },
+	{ ZoombiniText::kDialogButtonLoad, 0x91AE4, 4 },
+	{ ZoombiniText::kDialogButtonSave, 0x91AF0, 4 },
+	{ ZoombiniText::kOptionsTitle, 0x91C40, 7 },
+	{ ZoombiniText::kOptionsLegendOn, 0x91C38, 4 },
+	{ ZoombiniText::kOptionsLegendOff, 0x91C30, 5 },
+	{ ZoombiniText::kOptionsNewGame, 0x91C0C, 17 },
+	{ ZoombiniText::kOptionsLoadGame, 0x91BF8, 18 },
+	{ ZoombiniText::kOptionsSaveGame, 0x91BE4, 18 },
+	{ ZoombiniText::kOptionsQuit, 0x91BD4, 13 },
+	{ ZoombiniText::kOptionsToggle, 0x91C20, 15 },
+	{ ZoombiniText::kOptionsSound, 0x91BB8, 26 },
+	{ ZoombiniText::kOptionsMusic, 0x91B9C, 25 },
+	{ ZoombiniText::kOptionsStickyMouse, 0x91B84, 21 },
+	{ ZoombiniText::kOptionsTransitions, 0x91B6C, 20 },
+	{ ZoombiniText::kOptionsCredits, 0x91AA8, 7 },
+	{ ZoombiniText::kDialogBodyNoSavedGames, 0x91B5C, 14 },
+	{ ZoombiniText::kDialogBodyCreateAndSaveNewGame, 0x91B20, 56 },
+	{ ZoombiniText::kDialogButtonNewGame, 0x919F0, 8 },
+	{ ZoombiniText::kDialogButtonReplaceTitle, 0x91B0C, 7 },
+	{ ZoombiniText::kDialogTitleSave, 0x91B00, 11 },
+	{ ZoombiniText::kDialogTitleSaveAs, 0x91AF0, 13 },
+	{ ZoombiniText::kDialogTitleLoad, 0x91AE4, 11 },
+	{ ZoombiniText::kDialogBodyReplaceGame, 0x91AB0, 48 },
+	{ ZoombiniText::kDialogBodySaveCurrentGame, 0x91A90, 23 },
+	{ ZoombiniText::kDialogBodySaveDirtyGame, 0x918C8, 60 },
+	{ ZoombiniText::kDialogBodyCannotSaveInPractice, 0x919FC, 42 },
+	{ ZoombiniText::kDialogBodyCreateNewGame, 0x919D0, 42 },
+	{ ZoombiniText::kDialogBodyCannotSaveMoreGame, 0x91988, 70 },
+	{ ZoombiniText::kDialogBodyCannotLoadInPractice, 0x9195C, 42 },
+	{ ZoombiniText::kDialogBodyCannotCreateNewInPractice, 0x91928, 48 },
+	{ ZoombiniText::kDialogBodyNewGame, 0x919F0, 8 },
+	{ ZoombiniText::kDialogBodyReallyQuit, 0x91908, 28 },
+	{ ZoombiniText::kDialogBodySaveBeforeQuit, 0x91A2C, 87 },
+	{ ZoombiniText::kDialogHelpTitle, 0x91874, 4 },
+	{ ZoombiniText::kDialogButtonPrev, 0x918B4, 8 },
+	{ ZoombiniText::kDialogHelpLevel, 0x8B9D0, 5 },
+	{ ZoombiniText::kNotiBoxMusicOn, 0x907B4, 8 },
+	{ ZoombiniText::kNotiBoxMusicOff, 0x907A8, 9 },
+	{ ZoombiniText::kNotiBoxSoundOn, 0x9079C, 8 },
+	{ ZoombiniText::kNotiBoxSoundOff, 0x90790, 9 },
+	{ ZoombiniText::kNotiBoxLessAction, 0x90784, 11 },
+	{ ZoombiniText::kNotiBoxMoreAction, 0x90778, 11 },
+	{ ZoombiniText::kNotiBoxHideCursor, 0x9076C, 11 },
+	{ ZoombiniText::kNotiBoxShowCursor, 0x90760, 11 },
+	{ ZoombiniText::kNotiBoxStickeyMouse, 0x90740, 12 },
+	{ ZoombiniText::kNotiBoxNonStickeyMouse, 0x9073C, 16 },
+	{ ZoombiniText::kNotiBoxTransitionsOn, 0x9072C, 14 },
+	{ ZoombiniText::kNotiBoxTransitionsOff, 0x9071C, 15 },
+	{ ZoombiniText::kNotiBoxAutoStickeyOn, 0x9070C, 14 },
+	{ ZoombiniText::kNotiBoxAutoStickeyOff, 0x906FC, 15 },
+	{ ZoombiniText::kOptionsTitle, 0x91C40, 17 },
+	{ ZoombiniText::kOptionsHelpAudio, 0x91874, 19 },
+	{ ZoombiniText::kOptionsTouchSense, 0x91888, 30 },
+	{ ZoombiniText::kDialogHelpTitle, 0x918C0, 4 },
+	{ ZoombiniText::kDialogButtonOkay, 0x918A8, 2 },
+	{ ZoombiniText::kDialogButtonNext, 0x918AC, 4 },
+	{ ZoombiniText::kDialogBodyRemoveGame, 0x91848, 42 },
+	{ ZoombiniText::kNotiBoxHelpAudioOn, 0x906CC, 13 },
+	{ ZoombiniText::kNotiBoxHelpAudioOff, 0x906BC, 14 },
+	{ ZoombiniText::kNotiBoxTouchSenseOn, 0x906EC, 14 },
+	{ ZoombiniText::kNotiBoxTouchSenseOff, 0x906DC, 15 },
+};
+
+static const ExeTextEntry kKorean11ExeTextEntries[] = {
+	{ ZoombiniText::kPicker, 0x8B8EC, 9 },
+	{ ZoombiniText::kBridge, 0x8B8F6, 13 },
+	{ ZoombiniText::kCaves, 0x8B97D, 9 },
+	{ ZoombiniText::kPizza, 0x8B915, 9 },
+	{ ZoombiniText::kBasecamp1, 0x8B91F, 13 },
+	{ ZoombiniText::kFerry, 0x8B92D, 9 },
+	{ ZoombiniText::kLilly, 0x8B937, 11 },
+	{ ZoombiniText::kSlides, 0x8B943, 9 },
+	{ ZoombiniText::kFleens, 0x8B94D, 11 },
+	{ ZoombiniText::kHotel, 0x8B959, 9 },
+	{ ZoombiniText::kNet, 0x8B963, 11 },
+	{ ZoombiniText::kBasecamp2, 0x8B96F, 13 },
+	{ ZoombiniText::kTunnels, 0x8B904, 16 },
+	{ ZoombiniText::kSmoke, 0x8B987, 9 },
+	{ ZoombiniText::kMaze, 0x8B991, 11 },
+	{ ZoombiniText::kTown, 0x8B99D, 11 },
+	{ ZoombiniText::kNewGame, 0x8A866, 7 },
+	{ ZoombiniText::kPracticeMode, 0x8BAFD, 11 },
+	{ ZoombiniText::kContinueJourney, 0x8BB09, 14 },
+	{ ZoombiniText::kPracticeTitle, 0x8B9DB, 9 },
+	{ ZoombiniText::kPracticeDesc1, 0x8B9E5, 15 },
+	{ ZoombiniText::kPracticeDesc2, 0x8B9F5, 16 },
+	{ ZoombiniText::kPracticeDesc3, 0x8BA06, 18 },
+	{ ZoombiniText::kPracticeDesc4, 0x8BA19, 17 },
+	{ ZoombiniText::kTerrainKey, 0x8BB18, 11 },
+	{ ZoombiniText::kChooseLevel, 0x8BB24, 11 },
+	{ ZoombiniText::kLevel1, 0x8BB30, 5 },
+	{ ZoombiniText::kLevel2, 0x8BB36, 5 },
+	{ ZoombiniText::kLevel3, 0x8BB3C, 5 },
+	{ ZoombiniText::kLevel4, 0x8BB42, 5 },
+	{ ZoombiniText::kRoute1, 0x8BB48, 11 },
+	{ ZoombiniText::kRoute2, 0x8BB54, 11 },
+	{ ZoombiniText::kRoute3, 0x8BB60, 16 },
+	{ ZoombiniText::kRoute4, 0x8BB71, 11 },
+	{ ZoombiniText::kXferVillePopulation, 0x8BB7D, 17 },
+	{ ZoombiniText::kMemorialJanuary, 0x8BB8F, 3 },
+	{ ZoombiniText::kMemorialFebruary, 0x8BB93, 3 },
+	{ ZoombiniText::kMemorialMarch, 0x8BB97, 3 },
+	{ ZoombiniText::kMemorialApril, 0x8BB9B, 3 },
+	{ ZoombiniText::kMemorialMay, 0x8BB9F, 3 },
+	{ ZoombiniText::kMemorialJune, 0x8BBA3, 3 },
+	{ ZoombiniText::kMemorialJuly, 0x8BBA7, 3 },
+	{ ZoombiniText::kMemorialAugust, 0x8BBAB, 3 },
+	{ ZoombiniText::kMemorialSeptember, 0x8BBAF, 3 },
+	{ ZoombiniText::kMemorialOctober, 0x8BBB3, 4 },
+	{ ZoombiniText::kMemorialNovember, 0x8BBB8, 4 },
+	{ ZoombiniText::kMemorialDecember, 0x8BBBD, 4 },
+	{ ZoombiniText::kMemorialWhenLevel, 0x8BBC2, 26 },
+	{ ZoombiniText::kMemorialHonorMonument, 0x8BBDD, 53 },
+	{ ZoombiniText::kMemorialHonorWindmill, 0x8BC13, 51 },
+	{ ZoombiniText::kMemorialHonorObservatory, 0x8BC47, 53 },
+	{ ZoombiniText::kMemorialHonorBowlingAlley, 0x8BC7D, 53 },
+	{ ZoombiniText::kMemorialHonorGeneralStore, 0x8BCB3, 51 },
+	{ ZoombiniText::kMemorialHonorSwimmingPool, 0x8BCE7, 53 },
+	{ ZoombiniText::kMemorialHonorPlayground, 0x8BD1D, 53 },
+	{ ZoombiniText::kMemorialHonorBandShell, 0x8BD53, 53 },
+	{ ZoombiniText::kMemorialHonorSchool, 0x8BD89, 51 },
+	{ ZoombiniText::kMemorialHonorLibrary, 0x8BDBD, 53 },
+	{ ZoombiniText::kMemorialHonorFire, 0x8BDF3, 53 },
+	{ ZoombiniText::kMemorialHonorOpera, 0x8BE29, 60 },
+	{ ZoombiniText::kMemorialHonorCityHall, 0x8BE66, 51 },
+	{ ZoombiniText::kMemorialHonorClockTower, 0x8BE9A, 53 },
+	{ ZoombiniText::kMemorialHonorMuseum, 0x8BED0, 53 },
+	{ ZoombiniText::kMemorialHonorCourt, 0x8BF06, 51 },
+	{ ZoombiniText::kMemorialRoute1Level1, 0x8BF3A, 109 },
+	{ ZoombiniText::kMemorialRoute1Level2, 0x8BFA8, 109 },
+	{ ZoombiniText::kMemorialRoute1Level3, 0x8C016, 124 },
+	{ ZoombiniText::kMemorialRoute1Level4, 0x8C093, 109 },
+	{ ZoombiniText::kMemorialRoute2Level1, 0x8C22C, 91 },
+	{ ZoombiniText::kMemorialRoute2Level2, 0x8C15C, 88 },
+	{ ZoombiniText::kMemorialRoute2Level3, 0x8C1B5, 118 },
+	{ ZoombiniText::kMemorialRoute2Level4, 0x8C22C, 91 },
+	{ ZoombiniText::kMemorialRoute3Level1, 0x8C288, 138 },
+	{ ZoombiniText::kMemorialRoute3Level2, 0x8C313, 118 },
+	{ ZoombiniText::kMemorialRoute3Level3, 0x8C38A, 100 },
+	{ ZoombiniText::kMemorialRoute3Level4, 0x8C3EF, 107 },
+	{ ZoombiniText::kMemorialRoute4Level1, 0x8C45B, 103 },
+	{ ZoombiniText::kMemorialRoute4Level2, 0x8C4C3, 118 },
+	{ ZoombiniText::kMemorialRoute4Level3, 0x8C53A, 117 },
+	{ ZoombiniText::kMemorialRoute4Level4, 0x8C5B0, 116 },
+	{ ZoombiniText::kDialogBodyGoMapWillLost, 0x8C625, 52 },
+	{ ZoombiniText::kDialogButtonLoseThem, 0x8C65A, 9 },
+	{ ZoombiniText::kDialogButtonKeepThem, 0x8C664, 10 },
+	{ ZoombiniText::kDialogButtonOkay, 0x8C66F, 4 },
+	{ ZoombiniText::kDialogButtonCancel, 0x8C674, 4 },
+	{ ZoombiniText::kDialogButtonYes, 0x8C82C, 2 },
+	{ ZoombiniText::kDialogButtonNo, 0x8C82F, 6 },
+	{ ZoombiniText::kDialogButtonQuit, 0x8C82F, 6 },
+	{ ZoombiniText::kDialogButtonLoad, 0x8C679, 8 },
+	{ ZoombiniText::kDialogButtonSave, 0x8C682, 8 },
+	{ ZoombiniText::kOptionsTitle, 0x8C68B, 4 },
+	{ ZoombiniText::kOptionsLegendOn, 0x8C690, 4 },
+	{ ZoombiniText::kOptionsLegendOff, 0x8C695, 4 },
+	{ ZoombiniText::kOptionsToggle, 0x8C69A, 7 },
+	{ ZoombiniText::kOptionsNewGame, 0x8C6A2, 18 },
+	{ ZoombiniText::kOptionsLoadGame, 0x8C6B5, 17 },
+	{ ZoombiniText::kOptionsSaveGame, 0x8C6C7, 17 },
+	{ ZoombiniText::kOptionsQuit, 0x8C6D9, 15 },
+	{ ZoombiniText::kOptionsSound, 0x8C6E9, 18 },
+	{ ZoombiniText::kOptionsMusic, 0x8C6FC, 18 },
+	{ ZoombiniText::kOptionsStickyMouse, 0x8C70F, 22 },
+	{ ZoombiniText::kOptionsTransitions, 0x8C726, 18 },
+	{ ZoombiniText::kOptionsCredits, 0x8C803, 10 },
+	{ ZoombiniText::kDialogBodyNoSavedGames, 0x8C739, 23 },
+	{ ZoombiniText::kDialogBodyCreateAndSaveNewGame, 0x8C756, 58 },
+	{ ZoombiniText::kDialogButtonNewGame, 0x8C791, 11 },
+	{ ZoombiniText::kDialogButtonReplaceTitle, 0x8C79D, 8 },
+	{ ZoombiniText::kDialogTitleSave, 0x8C682, 8 },
+	{ ZoombiniText::kDialogTitleSaveAs, 0x8C7AF, 18 },
+	{ ZoombiniText::kDialogTitleLoad, 0x8C679, 8 },
+	{ ZoombiniText::kDialogBodyReplaceGame, 0x8C7CB, 55 },
+	{ ZoombiniText::kDialogBodySaveCurrentGame, 0x8C80E, 29 },
+	{ ZoombiniText::kDialogBodySaveDirtyGame, 0x8C967, 62 },
+	{ ZoombiniText::kDialogBodyCannotSaveInPractice, 0x8C884, 41 },
+	{ ZoombiniText::kDialogBodyCreateNewGame, 0x8C8AE, 25 },
+	{ ZoombiniText::kDialogBodyCannotSaveMoreGame, 0x8C8C8, 35 },
+	{ ZoombiniText::kDialogBodyCannotLoadInPractice, 0x8C8EC, 48 },
+	{ ZoombiniText::kDialogBodyCannotCreateNewInPractice, 0x8C91D, 44 },
+	{ ZoombiniText::kDialogBodyNewGame, 0x8C8AE, 7 },
+	{ ZoombiniText::kDialogBodyReallyQuit, 0x8C952, 20 },
+	{ ZoombiniText::kDialogBodySaveBeforeQuit, 0x8C836, 67 },
+	{ ZoombiniText::kDialogHelpTitle, 0x8C9A6, 6 },
+	{ ZoombiniText::kDialogButtonPrev, 0x8C9AD, 4 },
+	{ ZoombiniText::kDialogButtonNext, 0x8C9B2, 4 },
+	{ ZoombiniText::kDialogHelpLevel, 0x8B9F6, 4 },
+	{ ZoombiniText::kNotiBoxMusicOn, 0x8D4AB, 12 },
+	{ ZoombiniText::kNotiBoxMusicOff, 0x8D4B8, 12 },
+	{ ZoombiniText::kNotiBoxSoundOn, 0x8D4C5, 12 },
+	{ ZoombiniText::kNotiBoxSoundOff, 0x8D4D2, 12 },
+	{ ZoombiniText::kNotiBoxLessAction, 0x8D4DF, 11 },
+	{ ZoombiniText::kNotiBoxMoreAction, 0x8D4EB, 11 },
+	{ ZoombiniText::kNotiBoxHideCursor, 0x8D4F7, 11 },
+	{ ZoombiniText::kNotiBoxShowCursor, 0x8D503, 11 },
+	{ ZoombiniText::kNotiBoxStickeyMouse, 0x8D50F, 13 },
+	{ ZoombiniText::kNotiBoxNonStickeyMouse, 0x8D51D, 11 },
+	{ ZoombiniText::kNotiBoxTransitionsOn, 0x8D529, 11 },
+	{ ZoombiniText::kNotiBoxTransitionsOff, 0x8D535, 11 },
+	{ ZoombiniText::kNotiBoxAutoStickeyOn, 0x8D541, 16 },
+	{ ZoombiniText::kNotiBoxAutoStickeyOff, 0x8D552, 16 },
+};
+
+template<size_t size>
+void addCreditParagraph(Common::Array<ZoombiniText::CreditParagraph> &paragraphs, const char *const (&creditLines)[size], uint32 blankLineCount) {
+	Common::Array<Common::U32String> lines;
+	for (uint i = 0; i < size; i++)
+		lines.push_back(Common::U32String(creditLines[i], Common::kUtf8));
+	paragraphs.push_back(ZoombiniText::CreditParagraph(lines, blankLineCount));
+}
+
+} // End of anonymous namespace.
+
 ZoombiniText::ZoombiniText(MohawkEngine_Zoombini *vm, Common::Language lang) : _vm(vm), _lang(lang) {
 	// Users have to source the required font themselves!
 	Common::String srcInst;
@@ -42,17 +518,20 @@ ZoombiniText::ZoombiniText(MohawkEngine_Zoombini *vm, Common::Language lang) : _
 		// Korean Zoombini string resources are encoded as CP1252
 		_codePage = Common::kWindows1252;
 
-		// English Zoombini used ConerStone font, bundled in installshield cabs or install location.
-		// - 1.1: found in ZBARC16.Z or ZBARC32.Z, or SETUP/data1.cab
-		// - 2.0: found in INSTALL/HD/CORNER.TTF
+		// English Zoombini used CornerStone font, bundled in installshield archives or install location.
+		// - 1.1: found in /ZBARC16.Z, /ZBARC32.Z, or /SETUP/data1.cab
+		// - 2.0: found in /INSTALL/HD/CORNER.TTF
 		if (_vm->isGameVariant(GF_ZMB_TLC))
-			srcInst = "Please provide '/INSTALL/HD/CORNER.TTF' from the installer disk.";	
+			srcInst = "Please provide an ISO root containing '/INSTALL/HD/CORNER.TTF' from the installer disk.";
 		else
-			srcInst = "Please provide one of '/ZBARC32.Z', '/ZBARC16.Z', or '/SETUP/data1.cab' from the installer disk.";
-		_optimalTTFLoaders.push_back(new FileTTFLoader("CORNER.TTF", "CornerStone", srcInst, false));
-		_optimalTTFLoaders.push_back(new ISCabTTFLoader("data1.cab", "CORNER.TTF", "CornerStone", srcInst, false));
-		_optimalTTFLoaders.push_back(new ISZTTFLoader("ZBARC32.Z", "CORNER.TTF", "CornerStone", srcInst, false));
-		_optimalTTFLoaders.push_back(new ISZTTFLoader("ZBARC16.Z", "CORNER.TTF", "CornerStone", srcInst, false));
+			srcInst = "Please provide an ISO root containing one of '/ZBARC32.Z', '/ZBARC16.Z', or '/SETUP/data1.cab' from the installer disk.";
+		if (_vm->isGameVariant(GF_ZMB_TLC)) {
+			_optimalTTFLoaders.push_back(new FileTTFLoader("INSTALL/HD/CORNER.TTF", "CornerStone", srcInst, false));
+		} else {
+			_optimalTTFLoaders.push_back(new ISZTTFLoader("ZBARC32.Z", "CORNER.TTF", "CornerStone", srcInst, false));
+			_optimalTTFLoaders.push_back(new ISZTTFLoader("ZBARC16.Z", "CORNER.TTF", "CornerStone", srcInst, false));
+			_optimalTTFLoaders.push_back(new ISCabTTFLoader("SETUP/data1.cab", "CORNER.TTF", "CornerStone", srcInst, false));
+		}
 		_textFontPoint = 13;
 		_titleFontPoint = 18;
 		_fallbackTTFLoaders.push_back(new ArchiveTTFLoader("LiberationMono-Bold.ttf", "Liberation Mono"));
@@ -60,24 +539,31 @@ ZoombiniText::ZoombiniText(MohawkEngine_Zoombini *vm, Common::Language lang) : _
 
 		// Initialize string maps
 		initEnglishStrings();
+		if (_vm->isGameVariant(GF_ZMB_TLC))
+			initEnglishTlcStrings();
 		break;
 	case Common::KO_KOR: 
 		// Korean Zoombini string resources are encoded as CP949
 		_codePage = Common::kWindows949;
 
-		// Korean Zoombini used GulimChe (굴림체) font, bundled in every Windows starting from 3.1.
-		// To support every Hangul characters, gulim.ttc from Windows 98 or later is recommended.
-		// - 1.11: gulim.ttc from Windows
-		_optimalTTFLoaders.push_back(new FileTTFLoader("gulim.ttc", "GulimChe", true, 1));
+		// Korean Zoombini used GulimChe font. The original ISO does not include gulim.ttc.
+		srcInst = "Please provide gulim.ttc at the ISO root or in '/DATA'.";
+		_optimalTTFLoaders.push_back(new FileTTFLoader("gulim.ttc", "GulimChe", srcInst, true, 1));
+		_optimalTTFLoaders.push_back(new FileTTFLoader("DATA/gulim.ttc", "GulimChe", srcInst, true, 1));
 		_textFontPoint = 12;
 		_titleFontPoint = 18;
-		_fallbackTTFLoaders.push_back(new WinSysTTFLoader("gulim.ttc", "GulimChe", "ScummVM loaded the font from the Windows Font archive, but this is not recommended.", true, 1));
 		_fallbackTTFLoaders.push_back(new FileTTFLoader("D2CodingBold.ttf", "D2Coding", true));
 		_fallbackTTFLoaders.push_back(new ArchiveTTFLoader("NotoSansKR-Bold.otf", "Noto Sans KR Bold"));
 
 		// Initialize string maps
 		initKoreanStrings();
 		break;
+	}
+
+	if (ConfMan.getBool("original_exe_texts")) {
+		const Common::HashMap<uint32, Common::U32String> builtInStrings = _strMap;
+		if (!initOriginalExecutableStrings(builtInStrings))
+			warning("ZoombiniText: failed to load text from the original executable; using built-in strings");
 	}
 
 	// Check if ScummVM can access required fonts, and print warning message box if they are not found.
@@ -96,6 +582,91 @@ ZoombiniText::~ZoombiniText() {
 	for (TTFLoader *loader : _fallbackTTFLoaders)
 		delete loader;
 	_fallbackTTFLoaders.clear();
+}
+
+bool ZoombiniText::initOriginalExecutableStrings(const Common::HashMap<uint32, Common::U32String> &builtInStrings) {
+	static const ExeTextSource english11Sources[] = {
+		{ nullptr, "ZBARC32.Z", "Zoombi32.exe", Common::kWindows1252, kEnglish11ExeTextEntries, ARRAYSIZE(kEnglish11ExeTextEntries), kEnglishExeTextPatchKeys, ARRAYSIZE(kEnglishExeTextPatchKeys) }
+	};
+	static const ExeTextSource english20Sources[] = {
+		{ "INSTALL/HD/Zoombinis Logical Journey.exe", nullptr, nullptr, Common::kWindows1252, kEnglish20ExeTextEntries, ARRAYSIZE(kEnglish20ExeTextEntries), kEnglishExeTextPatchKeys, ARRAYSIZE(kEnglishExeTextPatchKeys) }
+	};
+	static const ExeTextSource korean11Sources[] = {
+		{ "SETUP/data1/data32/Zoombi32.exe", nullptr, nullptr, Common::kWindows949, kKorean11ExeTextEntries, ARRAYSIZE(kKorean11ExeTextEntries), nullptr, 0 }
+	};
+
+	const ExeTextSource *sources = nullptr;
+	uint sourceCount = 0;
+	if (_lang == Common::KO_KOR) {
+		sources = korean11Sources;
+		sourceCount = ARRAYSIZE(korean11Sources);
+	} else if (_vm->isGameVariant(GF_ZMB_TLC)) {
+		sources = english20Sources;
+		sourceCount = ARRAYSIZE(english20Sources);
+	} else {
+		sources = english11Sources;
+		sourceCount = ARRAYSIZE(english11Sources);
+	}
+
+	for (uint sourceIndex = 0; sourceIndex < sourceCount; sourceIndex++) {
+		const ExeTextSource &source = sources[sourceIndex];
+		Common::SeekableReadStream *exeStream = nullptr;
+
+		if (source.fileName) {
+			Common::File *file = new Common::File();
+			if (file->open(Common::Path(source.fileName)))
+				exeStream = file;
+			else
+				delete file;
+		}
+
+		if (!exeStream && source.archiveName) {
+			Common::InstallShieldV3 archive;
+			if (archive.open(Common::Path(source.archiveName)))
+				exeStream = archive.createReadStreamForMember(Common::Path(source.archiveMemberName));
+		}
+
+		if (!exeStream)
+			continue;
+
+		Common::Array<Common::U32String> strings;
+		strings.reserve(source.entryCount);
+		bool loaded = true;
+
+		for (uint entryIndex = 0; entryIndex < source.entryCount; entryIndex++) {
+			const ExeTextEntry &entry = source.entries[entryIndex];
+			Common::Array<char> bytes;
+			bytes.resize(entry.length);
+
+			if (!exeStream->seek(entry.offset) || exeStream->read(bytes.data(), entry.length) != entry.length) {
+				loaded = false;
+				break;
+			}
+
+			strings.push_back(Common::U32String(bytes.data(), entry.length, source.codePage));
+		}
+
+		delete exeStream;
+
+		if (!loaded)
+			continue;
+
+		for (uint entryIndex = 0; entryIndex < source.entryCount; entryIndex++)
+			_strMap[source.entries[entryIndex].key] = strings[entryIndex];
+		applyOriginalExecutableStringPatches(builtInStrings, source.patchKeys, source.patchKeyCount);
+
+		return true;
+	}
+
+	return false;
+}
+
+void ZoombiniText::applyOriginalExecutableStringPatches(const Common::HashMap<uint32, Common::U32String> &builtInStrings, const Key *patchKeys, uint patchKeyCount) {
+	for (uint patchIndex = 0; patchIndex < patchKeyCount; patchIndex++) {
+		auto builtInIt = builtInStrings.find(patchKeys[patchIndex]);
+		if (builtInIt != builtInStrings.end())
+			_strMap[patchKeys[patchIndex]] = builtInIt->_value;
+	}
 }
 
 Common::Array<Common::String> ZoombiniText::tokenizeLines(const Common::String &text) {
@@ -480,7 +1051,10 @@ void ZoombiniText::getLocalizedCredits(Common::Array<CreditParagraph> &paragraph
 	case Common::EN_USA:
 	case Common::EN_GRB:
 	default:
-		getEnglishCredits(paragraphs);
+		if (_vm->isGameVariant(GF_ZMB_TLC))
+			getEnglishTlcCredits(paragraphs);
+		else
+			getEnglishCredits(paragraphs);
 		break;
 	case Common::KO_KOR:
 		getKoreanCredits(paragraphs);
@@ -642,12 +1216,26 @@ void ZoombiniText::initEnglishStrings() {
 	_strMap[kNotiBoxMoreAction] = U"more action";
 	_strMap[kNotiBoxHideCursor] = U"hide cursor";
 	_strMap[kNotiBoxShowCursor] = U"show cursor";
-	_strMap[kNotiBoxStickeyMouse] = U"stickey mouse";
-	_strMap[kNotiBoxNonStickeyMouse] = U"non-stickey mouse";
+	_strMap[kNotiBoxStickeyMouse] = U"sticky mouse";
+	_strMap[kNotiBoxNonStickeyMouse] = U"non-sticky mouse";
 	_strMap[kNotiBoxTransitionsOn] = U"transitions on";
 	_strMap[kNotiBoxTransitionsOff] = U"transitions off";
-	_strMap[kNotiBoxAutoStickeyOn] = U"auto stickey on";
-	_strMap[kNotiBoxAutoStickeyOff] = U"auto stickey off";
+	_strMap[kNotiBoxAutoStickeyOn] = U"auto sticky on";
+	_strMap[kNotiBoxAutoStickeyOff] = U"auto sticky off";
+}
+
+void ZoombiniText::initEnglishTlcStrings() {
+	_strMap[kOptionsTitle] = U"OPTIONS (SHIFT ?)";
+	_strMap[kOptionsHelpAudio] = U"HELP AUDIO (CTRL A)";
+	_strMap[kOptionsTouchSense] = U"IMMERSION TOUCHSENSEª (CTRL K)";
+	_strMap[kDialogHelpTitle] = U"help";
+	_strMap[kDialogButtonOkay] = U"ok";
+	_strMap[kDialogButtonNext] = U"next";
+	_strMap[kDialogBodyRemoveGame] = U"are you sure you want to\rremove this game?";
+	_strMap[kNotiBoxHelpAudioOn] = U"help audio on";
+	_strMap[kNotiBoxHelpAudioOff] = U"help audio off";
+	_strMap[kNotiBoxTouchSenseOn] = U"touch sense on";
+	_strMap[kNotiBoxTouchSenseOff] = U"touch sense off";
 }
 
 void ZoombiniText::getEnglishCredits(Common::Array<CreditParagraph> &paragraphs) const {
@@ -944,6 +1532,88 @@ void ZoombiniText::getEnglishCredits(Common::Array<CreditParagraph> &paragraphs)
 	paragraphs.push_back(CreditParagraph(lines, 14));
 }
 
+void ZoombiniText::getEnglishTlcCredits(Common::Array<CreditParagraph> &paragraphs) const {
+	getEnglishCredits(paragraphs);
+	assert(4 <= paragraphs.size());
+	paragraphs.resize(paragraphs.size() - 4);
+
+	const char *const version2Team[] = { "VERSION 2 TEAM" };
+	addCreditParagraph(paragraphs, version2Team, 3);
+	const char *const programming[] = { "PROGRAMMING", "kari ann imamura", "william gayer", "cuong nguyen", "darrell fetzer" };
+	addCreditParagraph(paragraphs, programming, 1);
+	const char *const educationalDesigner[] = { "EDUCATIONAL DESIGNER", "alexander watson" };
+	addCreditParagraph(paragraphs, educationalDesigner, 1);
+	const char *const qaLead[] = { "QA LEAD", "tracy gibson" };
+	addCreditParagraph(paragraphs, qaLead, 1);
+	const char *const qaTesters[] = { "QA TESTERS", "ericka west", "dean coronado" };
+	addCreditParagraph(paragraphs, qaTesters, 1);
+	const char *const qaSupervisor[] = { "QA SUPERVISOR", "carlos molina" };
+	addCreditParagraph(paragraphs, qaSupervisor, 1);
+	const char *const qaManager[] = { "QA MANAGER", "dan mizuba" };
+	addCreditParagraph(paragraphs, qaManager, 1);
+	const char *const brandProducer[] = { "BRAND PRODUCER", "elizabeth perrault" };
+	addCreditParagraph(paragraphs, brandProducer, 1);
+	const char *const seniorBrandProducer[] = { "SENIOR BRAND PRODUCER", "mary ann duringer" };
+	addCreditParagraph(paragraphs, seniorBrandProducer, 1);
+	const char *const developmentProducer[] = { "DEVELOPMENT PRODUCER", "susan nachand-prestidge" };
+	addCreditParagraph(paragraphs, developmentProducer, 1);
+	const char *const artist[] = { "ARTIST", "gerald broas", "barry prioste", "fred dianda" };
+	addCreditParagraph(paragraphs, artist, 1);
+	const char *const associateBrandManager[] = { "ASSOCIATE BRAND MANAGER", "kathy degan" };
+	addCreditParagraph(paragraphs, associateBrandManager, 1);
+	const char *const seniorBrandManager[] = { "SENIOR BRAND MANAGER", "sara horton" };
+	addCreditParagraph(paragraphs, seniorBrandManager, 1);
+	const char *const designServicesManager[] = { "DESIGN SERVICES MANAGER", "sally mark" };
+	addCreditParagraph(paragraphs, designServicesManager, 1);
+	const char *const editorialManager[] = { "EDITORIAL MANAGER", "gabrielle rennie" };
+	addCreditParagraph(paragraphs, editorialManager, 1);
+	const char *const productionEngineer[] = { "PRODUCTION ENGINEER", "greg kitamura" };
+	addCreditParagraph(paragraphs, productionEngineer, 1);
+	const char *const voiceTalent[] = { "VOICE TALENT", "sara rene martin", "jenny rae" };
+	addCreditParagraph(paragraphs, voiceTalent, 1);
+	const char *const soundDesign[] = { "SOUND DESIGN", "andrew kawamura", "jamie hert" };
+	addCreditParagraph(paragraphs, soundDesign, 1);
+	const char *const touchSenseEngineer[] = { "IMMERSION TOUCHSENSEª ENGINEER", "margie luong" };
+	addCreditParagraph(paragraphs, touchSenseEngineer, 1);
+	const char *const creativeDevelopment[] = { "DIR of CREATIVE DEVELOPMENT", "drayson nowlan" };
+	addCreditParagraph(paragraphs, creativeDevelopment, 1);
+	const char *const vpEngineering[] = { "VP of ENGINEERING", "hugo paz" };
+	addCreditParagraph(paragraphs, vpEngineering, 1);
+	const char *const vpResearchDevelopment[] = { "VP of R&D", "derek miyahara" };
+	addCreditParagraph(paragraphs, vpResearchDevelopment, 1);
+	const char *const generalManager[] = { "SR VP, GENERAL MANAGER", "eric stone" };
+	addCreditParagraph(paragraphs, generalManager, 1);
+	const char *const legalText[] = {
+		"© 2001 TLC Education Properties LLC, and its",
+		"licensors. All rights reserved. Uses Miles",
+		"Sound System. Copyright © 1991-2001 by RAD",
+		"Game Tools, Inc. Uses Bink Video Technology.",
+		"Copyright © 1997-2001 by RAD Game Tools, Inc.",
+		"The Learning Company and Logical Journey of",
+		"the Zoombinis are registered trademarks and",
+		"Zoombinis Logical Journey is a trademark of",
+		"TLC Education Properties LLC. Windows and Win",
+		"are either registered trademarks or trademarks",
+		"of Microsoft Corporation in the United States",
+		"and/or other countries. Macintosh and Mac are",
+		"registered trademarks of Apple Computer, Inc.",
+		"All other trademarks are the property of",
+		"their respective owners.",
+		"",
+		" DirectX is a proprietary tool of Microsoft",
+		"Corporation and its suppliers and may only",
+		"be used in conjunction with Microsoft operating",
+		"system products. All intellectual property",
+		"rights in the DirectX are owned by Microsoft",
+		"Corporation and its suppliers and are protected",
+		"by United States copyright laws and international",
+		"treaty provisions.",
+		"Copyright © 2001 Microsoft Corporation.",
+		"All rights reserved"
+	};
+	addCreditParagraph(paragraphs, legalText, 14);
+}
+
 void ZoombiniText::initKoreanStrings() {
 	_strMap[kPicker] = U"줌비니 섬";
 	_strMap[kBridge] = U"알레르기 절벽";
@@ -965,10 +1635,10 @@ void ZoombiniText::initKoreanStrings() {
 	_strMap[kPracticeMode] = U"연습 해보기";
 	_strMap[kContinueJourney] = U"여행 계속 하기";
 	_strMap[kPracticeTitle] = U"연습 모드";
-	_strMap[kPracticeDesc1] = U"연습을 하려면";
-	_strMap[kPracticeDesc2] = U"단계를 선택하고";
-	_strMap[kPracticeDesc3] = U"지도상에서 원하는";
-	_strMap[kPracticeDesc4] = U"위치를 누르세요";
+	_strMap[kPracticeDesc1] = U" 연습을 하려면:";
+	_strMap[kPracticeDesc2] = U" 단계를 선택하고";
+	_strMap[kPracticeDesc3] = U" 지도상에서 원하는";
+	_strMap[kPracticeDesc4] = U" 위치를 누르세요.";
 	_strMap[kTerrainKey] = U"난이도 구분";
 	_strMap[kChooseLevel] = U"난이도 선택";
 	_strMap[kLevel1] = U"1단계";
@@ -979,7 +1649,7 @@ void ZoombiniText::initKoreanStrings() {
 	_strMap[kRoute2] = U"손에 손잡고";
 	_strMap[kRoute3] = U"어둠의 숲을 지나";
 	_strMap[kRoute4] = U"절망의 산맥";
-	_strMap[kXferVillePopulation] = U"줌비니 동산\n인구";
+	_strMap[kXferVillePopulation] = U"줌비니 동산\r인구 ";
 	_strMap[kMemorialJanuary] = U"1월";
 	_strMap[kMemorialFebruary] = U"2월";
 	_strMap[kMemorialMarch] = U"3월";
@@ -992,7 +1662,7 @@ void ZoombiniText::initKoreanStrings() {
 	_strMap[kMemorialOctober] = U"10월";
 	_strMap[kMemorialNovember] = U"11월";
 	_strMap[kMemorialDecember] = U"12월";
-	_strMap[kMemorialWhenLevel] = U"그들이 여행을 했던 단계는";
+	_strMap[kMemorialWhenLevel] = U"그들이 여행을 했던 단계는 ";
 	_strMap[kMemorialHonorMonument] = U"이 기념비는 아래의 줌비니들을\r기념하기 위해 세워졌다:";
 	_strMap[kMemorialHonorWindmill] = U"이 풍차는 아래의 줌비니들을\r기념하기 위해 세워졌다:";
 	_strMap[kMemorialHonorObservatory] = U"이 관측소는 아래의 줌비니들을\r기념하기 위해 세워졌다:";
@@ -1015,7 +1685,7 @@ void ZoombiniText::initKoreanStrings() {
 	_strMap[kMemorialRoute1Level4] = U"알레르기 절벽을 압도하고,무뚝뚝한\r동굴지기들을 굴복시키며,\r까다로운 피자 먹보들을 \r달래가며\r여행했던 줌비니들";
 	_strMap[kMemorialRoute2Level1] = U"노지기 선장을 잠재우고\r두꺼비 등에 올라타기도 하며,\r소슬 바위를 뛰어 넘은\r용감했던 줌비니들";
 	_strMap[kMemorialRoute2Level2] = U"나룻배를 탈없이 타고,\r두꺼비 연못을\r단숨에 건너,\r서로를 잘 이어가며\r여행을 끝낸 줌비니들";
-	_strMap[kMemorialRoute2Level3] = U"꾀를 잘 써서 통통나루를 건너,\r두꺼비 연못을 \r살금살금 지나,\r소슬 바위 엘리베이터를 타고\r줌비니 동산에 도착한\r줌비니들";
+	_strMap[kMemorialRoute2Level3] = U"꾀를 잘 써서 통통나루를 건너,\r두꺼비 연못을 \r살금살금 지나,\r소슬 바위 엘리베이터를 타고\r줌비니 동산에 도착한\r줌비니들 ";
 	_strMap[kMemorialRoute2Level4] = U"노지기 선장을 잠재우고\r두꺼비 등에 올라타기도 하며,\r소슬 바위를 뛰어 넘은\r용감했던 줌비니들";
 	_strMap[kMemorialRoute3Level1] = U"심술꾸러기 삐딱이들을 떨어뜨리고,\r숲 속의 방에 들러\r달콤한 꿈을 꾸며\r널뛰기 절벽에 이르러\r진흙 대포를 신나게 쏘아대며\r여행을 마친 줌비니들";
 	_strMap[kMemorialRoute3Level2] = U"삐따기들을 혼란에 빠뜨리고,\r숲속의 방에서도\r우물쭈물거리지 않고,\r널뛰기 절벽을\r완벽하게 뛰어 넘어\r동산을 찾은 줌비니들";
@@ -1024,7 +1694,7 @@ void ZoombiniText::initKoreanStrings() {
 	_strMap[kMemorialRoute4Level1] = U"사자 동굴에서도 당황하지 않고,\r수정 거울의 비밀을\r풀어 가며,\r거품의 심연을\r날듯이 건너 온\r줌비니 형제들";
 	_strMap[kMemorialRoute4Level2] = U"사자 동굴에서\r서로를 의지해 가며,\r마법의 거울에서도\r흔들림 없이,\r수레를 타고\r거품에 몸을 싣고\r어려움을 극복한 줌비니들";
 	_strMap[kMemorialRoute4Level3] = U"사자 동굴의 암호를 해독하고,\r수정 거울에서도\r실수를 저지르지 않고,\r거품의 심연을\r요리조리 피해\r이곳에 도착한 줌비니들";
-	_strMap[kMemorialRoute4Level4] = U"기어이 사자의 발톱을 들게 하고,\r마법의 거울을 \r줄지어 빠져 나와,\r거품의 비밀을\r완벽하게 파헤져 버린\r현명한 줌비니들";
+	_strMap[kMemorialRoute4Level4] = U"기어이 사자의 발톱을 들게 하고,\r마법의 거울을 \r줄지어 빠져 나와,\r거품의 비밀을\r완벽하게 파헤져 버린\r현명한 줌비니들 ";
 	_strMap[kDialogBodyGoMapWillLost] = U"지도를 보면, 지금 있는 줌비니들을 잃어버리게 됩니다.";
 	_strMap[kDialogButtonLoseThem] = U"지도 보기";
 	_strMap[kDialogButtonKeepThem] = U"되돌아가기";
@@ -1055,7 +1725,7 @@ void ZoombiniText::initKoreanStrings() {
 	_strMap[kDialogTitleSave] = U"저장하기";
 	_strMap[kDialogTitleSaveAs] = U"다른 이름으로 저장";
 	_strMap[kDialogTitleLoad] = U"불러오기";
-	_strMap[kDialogBodyReplaceGame] = U"이전에 저장된 게임을\r현재 게임으로 대체하시겠습니까?";
+	_strMap[kDialogBodyReplaceGame] = U"이전에 저장된 게임을\r현재 게임으로 대체하시겠습니까?\r\" ";
 	_strMap[kDialogBodySaveCurrentGame] = U"현재 게임을 저장하시겠습니까?";
 	_strMap[kDialogBodySaveDirtyGame] = U"현재 게임이 저장되지 않았습니다.\r현재 게임을 저장하시겠습니까?";
 	_strMap[kDialogBodyCannotSaveInPractice] = U"연습모드에서는 게임을 저장할 수 없습니다.";

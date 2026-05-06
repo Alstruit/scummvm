@@ -1048,7 +1048,7 @@ void ZoombiniTransitionXfer::xfer5TownCount_onPostRender(ZmbFeature *feature) {
 	textRect.top += 8;
 
 	Common::U32String text = _vm->_text->getLocalizedString(ZoombiniText::kXferVillePopulation);
-	text += Common::U32String::format(" %d", _xfer5DisplayedTownCount);
+	text += Common::U32String::format(text.lastChar() == ' ' ? "%d" : " %d", _xfer5DisplayedTownCount);
 
 	ZoombiniGraphics::TextConf tc;
 	tc._outlineEffect = true;

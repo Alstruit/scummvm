@@ -45,12 +45,13 @@ ZoombiniDialog::~ZoombiniDialog() {
 	_vm->_sound->stopSound();
 
 	// Restore captured back screen
-	_vm->_gfx->getBackScreen()->copyFrom(_capturedBackScreen);
+	_vm->_gfx->copyToScreen(ZoombiniGraphics::kBackScreen, _capturedBackScreen);
 }
 
 void ZoombiniDialog::setBackgroundBitmap() {
 	// Capture current composed screen as a background
 	_vm->_gfx->captureComposedScreen(ZoombiniGraphics::kBackScreen);
+	scheduleForceRedraw();
 }
 
 } // End of namespace Mohawk

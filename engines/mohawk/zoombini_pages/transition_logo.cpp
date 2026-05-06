@@ -71,23 +71,23 @@ void ZoombiniTransitionLogo::loadFeatures() {
 
 		_binkDecoder = new Video::BinkDecoder();
 		_binkDecoder->setSoundType(Audio::Mixer::kSFXSoundType);
-		if (_binkDecoder->loadFile("LOGO025.BIK")) {
+		if (_binkDecoder->loadFile(VIDEO_PATH_BINK)) {
 			_binkDecoder->setOutputPixelFormat(_vm->_system->getScreenFormat());
 			_binkDecoder->start();
 		} else {
 			delete _binkDecoder;
 			_binkDecoder = nullptr;
 
-			warning("Failed to load bink video LOGO025.BIK, skip");
+			warning("Failed to load bink video [%s], skip", VIDEO_PATH_BINK);
 			close();
 			return;
 		}
 #endif
 	} else {
 		_vm->_gfx->clearScreens();
-		_cdtoonsVideo = _vm->_video->playMovie("LOGO025.MOV", Audio::Mixer::kSFXSoundType);
+		_cdtoonsVideo = _vm->_video->playMovie(VIDEO_PATH_CDTOONS, Audio::Mixer::kSFXSoundType);
 		if (!_cdtoonsVideo) {
-			warning("Failed to open the CDToons video LOGO025.MOV, skip");
+			warning("Failed to open the CDToons video [%s], skip", VIDEO_PATH_CDTOONS);
 			close();
 			return;
 		}

@@ -41,8 +41,7 @@ ZoombiniDialogDebug::~ZoombiniDialogDebug() {
 }
 
 void ZoombiniDialogDebug::setBackgroundBitmap() {
-	Graphics::Surface *shapeScreen = _vm->_gfx->getShapeScreen();
-	shapeScreen->fillRect(shapeScreen->getRect(), ZoombiniGraphics::kColor0A_White);
+	_vm->_gfx->fillArea(ZoombiniGraphics::kShapeScreen, ZoombiniGraphics::kColor0A_White);
 }
 
 void ZoombiniDialogDebug::loadFeatures() {

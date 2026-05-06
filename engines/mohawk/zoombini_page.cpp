@@ -775,12 +775,10 @@ void ZoombiniPage::renderFeatures() {
 	// from hotspot metadata + REGS shape sizes, and the post-render loop merges it
 	// into dirty BEFORE drawing.  The clip always covers the feature's new area.
 	//
-	// In ScummVM, the new sortRect isn't available until blitShapes runs.  We merge
-	// the OLD sortRect to expand the clip before drawing, then merge the NEW sortRect
-	// after drawing to expand the clip for subsequent higher-Z features.  For
-	// stationary features the old rect == new rect, so this is exact.  For moving
-	// features there may be a one-frame partial lag on the leading edge, which is
-	// acceptable.
+	// In ScummVM, the new sortRect isn't available until drawing runs.  While a
+	// dirty feature renders, ZoombiniGraphics records each shape/text/fill rect
+	// and expands the active clip immediately.  That gives custom render callbacks
+	// (including virtual features) the same dirty coverage as standard SCRB shapes.
 	//
 	// CRITICAL: features MUST draw through the clip.  Clearing the clip would let
 	// dirty features paint outside the dirty region onto the persistent shapeScreen,
@@ -795,7 +793,16 @@ void ZoombiniPage::renderFeatures() {
 			}
 		}
 
-		feature->onPostRender(this);
+		bool featureNeedsRedraw = feature->needsRedraw();
+		_vm->_gfx->beginDirtyRectTracking(featureNeedsRedraw);
+		ZmbRenderResult renderResult = feature->onPostRender(this);
+		Common::Rect drawnRect = _vm->_gfx->endDirtyRectTracking();
+
+		if (featureNeedsRedraw && renderResult == ZmbRenderResult::kRendered && !drawnRect.isEmpty()) {
+			feature->setSortRect(drawnRect);
+			if (!feature->hasClickRect() || feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+				feature->setClickRect(drawnRect);
+		}
 
 		if (feature->needsRedraw()) {
 			// After blitShapes, sortRect holds the NEW logical bounding box.

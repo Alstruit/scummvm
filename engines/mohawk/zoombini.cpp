@@ -92,6 +92,37 @@ bool parsePracticeBootParam(int32 bootParam, ZoombiniPageType &pageType, uint16 
 	return true;
 }
 
+void addSearchDirectoryIfPresent(const Common::FSNode &node, int priority = 0) {
+	if (!node.exists() || !node.isDirectory())
+		return;
+	SearchMan.addDirectory(node.getPath().toString(), node, priority, 1);
+}
+
+bool hasSubDirectoryMatching(const Common::FSNode &root, const Common::String &name) {
+	if (!root.exists() || !root.isDirectory())
+		return false;
+
+	Common::FSList children;
+	if (!root.getChildren(children, Common::FSNode::kListDirectoriesOnly))
+		return false;
+
+	for (const Common::FSNode &child : children) {
+		if (child.getName().equalsIgnoreCase(name))
+			return true;
+	}
+
+	return false;
+}
+
+bool tryAddZoombiniIsoRootSearchPath(const Common::FSNode &root, bool addRootDirectory) {
+	if (!hasSubDirectoryMatching(root, "data"))
+		return false;
+
+	if (addRootDirectory)
+		addSearchDirectoryIfPresent(root);
+	return true;
+}
+
 } // End of anonymous namespace.
 
 MohawkEngine_Zoombini::MohawkEngine_Zoombini(OSystem *syst, const MohawkGameDescription *gamedesc) : MohawkEngine(syst, gamedesc) {
@@ -126,6 +157,7 @@ Common::Error MohawkEngine_Zoombini::run() {
 	}
 
 	setDebugger(new ZoombiniConsole(this));
+	initSearchPaths();
 
 	_language = getLanguage();
 
@@ -361,6 +393,25 @@ void MohawkEngine_Zoombini::delayRunningFrames(uint32 ms) {
 	while (_system->getMillis() < startTime + ms && !mustQuit()) {
 		doFrame();
 	}
+}
+
+void MohawkEngine_Zoombini::initSearchPaths() {
+	Common::FSNode candidate(ConfMan.getPath("path"));
+	for (int depth = 0; depth < 4 && candidate.exists() && candidate.isDirectory(); depth++) {
+		if (tryAddZoombiniIsoRootSearchPath(candidate, depth != 0))
+			break;
+
+		Common::FSNode parent = candidate.getParent();
+		if (parent.getPath().equals(candidate.getPath()))
+			break;
+		candidate = parent;
+	}
+}
+
+ZoombiniPage *MohawkEngine_Zoombini::getCurrentPage() const {
+	if (!_dialogPageStack.empty())
+		return _dialogPageStack.top();
+	return _activePage;
 }
 
 MohawkArchive *MohawkEngine_Zoombini::loadSystemArchive() {

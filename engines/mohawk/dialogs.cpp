@@ -498,6 +498,10 @@ ZoombiniOptionsWidget::ZoombiniOptionsWidget(GuiObject *boss, const Common::Stri
 	_fixHotelMidiBgmCheckbox = new GUI::CheckboxWidget(widgetsBoss(), "ZoombiniEngineOptionsDialog.FixHotelMidiBGM",
 		_("Fix hotel MIDI background music halt (v1.x only)"),
 		_("Prevents hotel MIDI music from stopping when sound effects play (original engine bug). Only affects Broderbund v1.x releases."));
+
+	_originalExeTextsCheckbox = new GUI::CheckboxWidget(widgetsBoss(), "ZoombiniEngineOptionsDialog.OriginalExeTexts",
+		_("Load text from the original executable"),
+		_("Extracts hard-coded UI text from the detected original Zoombinis executable at runtime. This compatibility mode is disabled by default."));
 }
 
 ZoombiniOptionsWidget::~ZoombiniOptionsWidget() {
@@ -511,6 +515,7 @@ void ZoombiniOptionsWidget::defineLayout(GUI::ThemeEval &layouts, const Common::
 			.addWidget("BrightenPalette", "Checkbox")
 			.addWidget("OriginalPRNG", "Checkbox")
 			.addWidget("FixHotelMidiBGM", "Checkbox")
+			.addWidget("OriginalExeTexts", "Checkbox")
 		.closeLayout()
 	.closeDialog();
 }
@@ -520,6 +525,7 @@ void ZoombiniOptionsWidget::load() {
 	_brightenPaletteCheckbox->setState(ConfMan.getBool("brighten_palette", _domain));
 	_originalPrngCheckbox->setState(ConfMan.getBool("original_prng", _domain));
 	_fixHotelMidiBgmCheckbox->setState(ConfMan.getBool("fix_hotel_midi_bgm", _domain));
+	_originalExeTextsCheckbox->setState(ConfMan.getBool("original_exe_texts", _domain));
 }
 
 bool ZoombiniOptionsWidget::save() {
@@ -527,6 +533,7 @@ bool ZoombiniOptionsWidget::save() {
 	ConfMan.setBool("brighten_palette", _brightenPaletteCheckbox->getState(), _domain);
 	ConfMan.setBool("original_prng", _originalPrngCheckbox->getState(), _domain);
 	ConfMan.setBool("fix_hotel_midi_bgm", _fixHotelMidiBgmCheckbox->getState(), _domain);
+	ConfMan.setBool("original_exe_texts", _originalExeTextsCheckbox->getState(), _domain);
 	return true;
 }
 

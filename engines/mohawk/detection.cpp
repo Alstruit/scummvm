@@ -88,7 +88,14 @@ static const char *const directoryGlobs[] = {
 	"all",
 	"assets1",
 	"data",
+	"data1",
+	"data16",
+	"data32",
+	"hd",
+	"install",
 	"program",
+	"setup",
+	"setup32",
 	"95instal",
 	"Rugrats Adventure Game",
 	nullptr
@@ -97,7 +104,7 @@ static const char *const directoryGlobs[] = {
 class MohawkMetaEngineDetection : public AdvancedMetaEngineDetection<Mohawk::MohawkGameDescription> {
 public:
 	MohawkMetaEngineDetection() : AdvancedMetaEngineDetection(Mohawk::gameDescriptions, mohawkGames) {
-		_maxScanDepth = 2;
+		_maxScanDepth = 4;
 		_directoryGlobs = directoryGlobs;
 	}
 
