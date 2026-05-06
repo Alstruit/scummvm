@@ -977,6 +977,9 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 		// IDA: wXferView == 5 branch.
 		// Timer: 40 * rand(3,6) = 120-240 frames between triggers.
 		// 100% snoid triggers (no env SCRB split), using SCRS 6200.
+		// IDA xfer_initAndRunTransition registers 6200-6204 with SCRS pool 1;
+		// snoidScript_initAndPlay maps pool 1 to state 8 (general 5-layer SCRS),
+		// not the state-9/tBMP3100 normal-script renderer.
 		// -------------------------------------------------------------------
 		if (_xferView == XFER_ROUTE5_TO_TOWN && _xferSnoidCount > 0) {
 			_scrsNextTriggerFrame = getCurrentFrameCounter() + 40 * _vm->_rnd->getRandomNumber(3, 6);
@@ -993,7 +996,7 @@ void ZoombiniTransitionXfer::onEveryFrame() {
 					Common::SeekableReadStream *scrsStream =
 						_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsResId));
 					if (scrsStream)
-						snoid->startScrsPlayback(scrsStream, true /* hideOnComplete */, false /* rejectState */);
+						snoid->startScrsPlayback(scrsStream, true /* hideOnComplete */, true /* rejectState */);
 				}
 				_scrsTriggerIdx++;
 			}

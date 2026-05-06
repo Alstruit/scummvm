@@ -941,13 +941,11 @@ void ZoombiniShelterBasecampOne::saveBc1PackState(bool isDeparture) {
 	f._storedChunkBC1._leftmostColumnIdx = static_cast<uint16>(_storageLeftmostColumnIdx);
 }
 
-void ZoombiniShelterBasecampOne::onMapButtonActivated() {
+void ZoombiniShelterBasecampOne::saveStateBeforeMapTransition() {
 	// IDA: bc1_onButtonClick case 3 (map button)
-	// Save snoids back to pack, then swap active → BC1, then transition.
+	// Save snoids back to pack, then swap active to BC1.
 	saveSnoidsToPack();
 	saveBc1PackState(false);
-	_vm->setNextPage(ZoombiniPageType::kRodMap);
-	close();
 }
 
 // ---------------------------------------------------------------------------

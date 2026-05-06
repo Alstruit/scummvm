@@ -95,7 +95,7 @@ protected:
 	void repackSeatPositions();
 
 	void onGoButtonActivated() override;
-	void onMapButtonActivated() override;
+	void saveStateBeforeMapTransition() override;
 
 	/**
 	 * Load Zoombini snoids from the active pack data.

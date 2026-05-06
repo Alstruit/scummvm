@@ -37,11 +37,13 @@ public:
 	void loadFeatures() override;
 
 protected:
+	ZmbEventHandleResult onKeyDown(const Common::KeyState &kbd, bool kbdRepeat) override;
 	void onEveryFrame() override;
 	ZmbEventHandleResult onMouseMove(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbSnoid *findSnoidAtPoint(const Common::Point &pos) override;
+	void saveStateBeforeMapTransition() override;
 
 	// --- Memorial card overlay system (IDA town_renderMemorialCard @ 0x4595C0) ---
 
@@ -87,6 +89,8 @@ protected:
 	 * Without this, mid-scroll save/load shows the layers at frame 0.
 	 */
 	void advanceLayerFrameState(uint16 scrollCol);
+	void scrollTownLeft();
+	void scrollTownRight();
 
 	enum PageResourceId : uint16 {
 		kResBackground1200 = 1200,

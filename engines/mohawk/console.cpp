@@ -2112,7 +2112,9 @@ bool ZoombiniConsole::Cmd_GoXfer(int argc, const char **argv) {
 	}
 
 	// Generate 16 random snoids as the active pack (same as practice mode)
-	_vm->_state->generateRandomPack();
+	const int16 generatedSnoidCount = _vm->_state->generateRandomPack();
+	const int16 debitedIsleCount = _vm->_state->subtractDebugGeneratedSnoidsFromIsle(generatedSnoidCount);
+	_vm->_state->markDebugStateMutation();
 
 	// Set difficulty level if specified (same as practice mode)
 	if (0 < level)
@@ -2167,7 +2169,7 @@ bool ZoombiniConsole::Cmd_GoXfer(int argc, const char **argv) {
 	if (_vm->getActivePage())
 		_vm->getActivePage()->close();
 
-	debugPrintf("Generated 16 random snoids in active pack\n");
+	debugPrintf("Generated 16 random snoids in active pack (%d new, %d debited from Isle)\n", generatedSnoidCount, debitedIsleCount);
 	debugPrintf("Jumping to xfer with destination (level %u)\n", level);
 	return false; // Close the debugger console
 }
@@ -2239,6 +2241,7 @@ bool ZoombiniConsole::Cmd_GoPractice(int argc, const char **argv) {
 
 	// Generate 16 random snoids as the active pack
 	_vm->_state->generateRandomPack();
+	_vm->_state->markDebugStateMutation();
 
 	// Navigate directly to the puzzle page (skip xfer transition)
 	_vm->setNextPage(targetPage);
@@ -2265,6 +2268,7 @@ bool ZoombiniConsole::Cmd_FinishPuzzle(int argc, const char **argv) {
 	}
 
 	interactive->debugFinishPuzzle();
+	_vm->_state->markDebugStateMutation();
 	debugPrintf("Departure triggered.\n");
 	return true;
 }

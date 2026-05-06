@@ -33,7 +33,8 @@
 
 namespace Mohawk {
 
-ZoombiniDialogMsgBox::ZoombiniDialogMsgBox(MohawkEngine_Zoombini *vm, ZoombiniMsgBoxType type) : ZoombiniDialog(vm, ZoombiniPageType::kDialogMsgBox), _type(type) {
+ZoombiniDialogMsgBox::ZoombiniDialogMsgBox(MohawkEngine_Zoombini *vm, ZoombiniMsgBoxType type) :
+		ZoombiniDialog(vm, ZoombiniPageType::kDialogMsgBox), _type(type), _msgKey(ZoombiniText::kNone) {
 	ZoombiniText::Key yesKey = ZoombiniText::kDialogButtonYes;
 	ZoombiniText::Key noKey = ZoombiniText::kDialogButtonNo;
 
@@ -98,6 +99,15 @@ ZoombiniDialogMsgBox::ZoombiniDialogMsgBox(MohawkEngine_Zoombini *vm, ZoombiniMs
 		break;
 	}
 
+	initButtons(yesKey, noKey);
+}
+
+ZoombiniDialogMsgBox::ZoombiniDialogMsgBox(MohawkEngine_Zoombini *vm, const Common::U32String &message) :
+		ZoombiniDialog(vm, ZoombiniPageType::kDialogMsgBox), _type(ZoombiniMsgBoxType::kNone), _msgKey(ZoombiniText::kNone), _msgText(message) {
+	initButtons(ZoombiniText::kDialogButtonOkay, ZoombiniText::kNone);
+}
+
+void ZoombiniDialogMsgBox::initButtons(ZoombiniText::Key yesKey, ZoombiniText::Key noKey) {
 	ZmbResource soundResId(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX);
 	_longButtonStateMap[kMsgBoxDialogButton_Yes] = ButtonState(yesKey, soundResId, 0, 2, kShape0001_12_LongGreenButtonNormal, kShape0001_13_LongGreenButtonPressed);
 	_longButtonStateMap[kMsgBoxDialogButton_No] = ButtonState(noKey, soundResId, 1, 3, kShape0001_14_LongRedButtonNormal, kShape0001_15_LongRedButtonPressed);
@@ -163,7 +173,10 @@ void ZoombiniDialogMsgBox::longButtons_onPostRender(ZmbFeature *feature) {
 		bodyConf._outlinePalette = ZoombiniGraphics::kColor0E_VeryLightGray;
 		bodyConf._textPalette = ZoombiniGraphics::kBlackKey;
 		bodyConf._wordWrap = true;
-		_vm->_gfx->drawText(screenKind, _msgKey, _msgBoxDialogBodyRect, bodyConf);
+		if (_msgKey == ZoombiniText::kNone)
+			_vm->_gfx->drawText(screenKind, _msgText, _msgBoxDialogBodyRect, bodyConf);
+		else
+			_vm->_gfx->drawText(screenKind, _msgKey, _msgBoxDialogBodyRect, bodyConf);
 	}
 
 	// [Text Render] Yes/No Button Descriptions

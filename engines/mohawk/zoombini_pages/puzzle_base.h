@@ -59,6 +59,10 @@ public:
 	~ZoombiniPuzzle() override;
 
 	virtual Common::String debugGetAnswer() const { return "(no answer available)"; }
+
+protected:
+	bool confirmMapTransition() override;
+	void saveStateBeforeMapTransition() override;
 };
 
 } // End of namespace Mohawk

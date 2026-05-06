@@ -953,7 +953,7 @@ void ZoombiniShelterPicker::onGoButtonActivated() {
 	updatePendingGoTransition();
 }
 
-void ZoombiniShelterPicker::onMapButtonActivated() {
+void ZoombiniShelterPicker::saveStateBeforeMapTransition() {
 	// IDA: picker_cleanup with (wChangeColorPaletteState_4A4462 || puzzle_nextPuzzleId == 1):
 	// Copy active pack → Isle pack (preserve snoids on the picker for when user returns).
 	// Then clear active pack.
@@ -968,9 +968,6 @@ void ZoombiniShelterPicker::onMapButtonActivated() {
 	f._zmbPackActive.copyTo(f._zmbPackIsle);
 	f._wZmbPackIsleVal = f._wZmbPackActiveVal;
 	f._zmbPackActive._wPackZmbCount = 0;
-
-	_vm->setNextPage(ZoombiniPageType::kRodMap);
-	close();
 }
 
 void ZoombiniShelterPicker::randomizeTraitSelection() {

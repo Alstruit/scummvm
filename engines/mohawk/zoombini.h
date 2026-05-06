@@ -222,6 +222,7 @@ public:
 	ZoombiniDialogResult openSaveDialog();
 	ZoombiniDialogResult openLoadDialog(bool newGameMode = false);
 	ZoombiniDialogResult openMsgBoxDialog(ZoombiniMsgBoxType type);
+	ZoombiniDialogResult openMsgBoxDialog(const Common::U32String &message);
 	void openCreditsDialog();
 	void openHelpDialog(ZoombiniPageType forPage);
 	void openDebugDialog(const ZoombiniDebugCommand &cmd);

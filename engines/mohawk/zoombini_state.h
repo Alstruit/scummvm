@@ -572,6 +572,8 @@ public:
 	bool saveRoster();
 	bool loadGame(int slot);
 	bool saveGame(int slot);
+	void markDebugStateMutation();
+	bool isSaveBlockedByDebugCommand() const { return _debugStateMutationBlocksSave; }
 	bool deleteGame(int slot);
 	bool deleteGameAndShiftRoster(int slot);
 
@@ -626,8 +628,10 @@ public:
 	/**
 	 * Generate 16 random snoids in the active pack.
 	 * Used for practice mode and debug jump commands.
+	 * @return Number of active-pack slots that were empty before the debug fill.
 	 */
-	void generateRandomPack();
+	int16 generateRandomPack();
+	int16 subtractDebugGeneratedSnoidsFromIsle(int16 generatedCount);
 
 	ZmbRosterEntry *getActiveSaveRosterEntry();
 	Common::U32String getActiveSaveName();
@@ -713,6 +717,7 @@ private:
 	 * Volatile runtime flag, not stored in save file.
 	 */
 	bool _flagCursorVisible = true;
+	bool _debugStateMutationBlocksSave = false;
 
 	struct HelpSTRL {
 		uint16 _helpResBase = 0;

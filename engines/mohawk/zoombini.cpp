@@ -520,6 +520,16 @@ void MohawkEngine_Zoombini::openOptionsDialog() {
 }
 
 ZoombiniDialogResult MohawkEngine_Zoombini::openSaveDialog() {
+	if (_state->inPracticeMode()) {
+		openMsgBoxDialog(ZoombiniMsgBoxType::kAlertCannotSaveInPractice);
+		return ZoombiniDialogResult::kNo;
+	}
+
+	if (_state->isSaveBlockedByDebugCommand()) {
+		openMsgBoxDialog(Common::U32String("cannot save a game after using debug commands."));
+		return ZoombiniDialogResult::kNo;
+	}
+
 	ZoombiniDialog *dialogPage = new ZoombiniDialogSaveLoad(this, ZoombiniDialogSaveLoad::kSaveMode);
 	return loadModalDialog(dialogPage);
 }
@@ -537,6 +547,11 @@ ZoombiniDialogResult MohawkEngine_Zoombini::openLoadDialog(bool newGameMode) {
 
 ZoombiniDialogResult MohawkEngine_Zoombini::openMsgBoxDialog(ZoombiniMsgBoxType type) {
 	ZoombiniDialog *dialogPage = new ZoombiniDialogMsgBox(this, type);
+	return loadModalDialog(dialogPage);
+}
+
+ZoombiniDialogResult MohawkEngine_Zoombini::openMsgBoxDialog(const Common::U32String &message) {
+	ZoombiniDialog *dialogPage = new ZoombiniDialogMsgBox(this, message);
 	return loadModalDialog(dialogPage);
 }
 

@@ -1013,7 +1013,7 @@ void ZoombiniText::initKoreanStrings() {
 	_strMap[kMemorialRoute1Level2] = U"구름다리를 용감히 건너,\r바위 얼굴 문지기들을\r웃겨 가며,\r피자 파티에서\r깐깐이를 상대해 \r당당히 이겼던 줌비니들";
 	_strMap[kMemorialRoute1Level3] = U"알레르기 절벽을 가볍게 지나,\r동굴지기들의 눈치를 봐가며, \r피자 파티에서 덩구리를 \r잔뜩 먹여 놓고\r여행을 마친\r우리의 줌비니들";
 	_strMap[kMemorialRoute1Level4] = U"알레르기 절벽을 압도하고,무뚝뚝한\r동굴지기들을 굴복시키며,\r까다로운 피자 먹보들을 \r달래가며\r여행했던 줌비니들";
-	_strMap[kMemorialRoute2Level1] = U"노지기 선장을 잠재우고두꺼비 등에 올라타기도 하며,\r소슬 바위를 뛰어 넘은\r용감했던 줌비니들";
+	_strMap[kMemorialRoute2Level1] = U"노지기 선장을 잠재우고\r두꺼비 등에 올라타기도 하며,\r소슬 바위를 뛰어 넘은\r용감했던 줌비니들";
 	_strMap[kMemorialRoute2Level2] = U"나룻배를 탈없이 타고,\r두꺼비 연못을\r단숨에 건너,\r서로를 잘 이어가며\r여행을 끝낸 줌비니들";
 	_strMap[kMemorialRoute2Level3] = U"꾀를 잘 써서 통통나루를 건너,\r두꺼비 연못을 \r살금살금 지나,\r소슬 바위 엘리베이터를 타고\r줌비니 동산에 도착한\r줌비니들";
 	_strMap[kMemorialRoute2Level4] = U"노지기 선장을 잠재우고\r두꺼비 등에 올라타기도 하며,\r소슬 바위를 뛰어 넘은\r용감했던 줌비니들";

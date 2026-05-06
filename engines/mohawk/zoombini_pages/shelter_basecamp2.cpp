@@ -496,12 +496,7 @@ ZmbEventHandleResult ZoombiniShelterBasecampTwo::goButton_onLButtonDown(ZmbFeatu
 	}
 
 	if (_mapButtonRect.contains(absPos)) {
-		// Case 3: Map button — save snoids back to pack, then go to road map.
-		// IDA: bc2_cleanupOnExit map path (skipOccupied=0, skipUnoccupied=0)
-		saveSnoidsToPack();
-		saveBc2PackState(false);
-		_vm->setNextPage(ZoombiniPageType::kRodMap);
-		close();
+		onMapButtonActivated();
 		return ZmbEventHandleResult::kConsumed;
 	}
 
@@ -1026,6 +1021,12 @@ void ZoombiniShelterBasecampTwo::executeDeparture() {
 	_vm->_xferSrcPage = ZMB_SI_BASECAMP2_13;
 	_vm->setNextPage(ZoombiniPageType::kXfer);
 	close();
+}
+
+void ZoombiniShelterBasecampTwo::saveStateBeforeMapTransition() {
+	// IDA: bc2_cleanupOnExit map path (skipOccupied=0, skipUnoccupied=0)
+	saveSnoidsToPack();
+	saveBc2PackState(false);
 }
 
 void ZoombiniShelterBasecampTwo::renderButtons(bool blit, int group, bool pressed, int singleButton) {

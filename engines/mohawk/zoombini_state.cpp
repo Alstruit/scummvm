@@ -36,6 +36,45 @@
 
 namespace Mohawk {
 
+static int16 countOccupiedSnoidsInPack(const ZmbStateActivePack &pack) {
+	int16 occupiedCount = 0;
+	int16 entryLimit = pack._wPackZmbCount;
+	if (entryLimit < 0)
+		entryLimit = 0;
+	if (16 < entryLimit)
+		entryLimit = 16;
+
+	for (int16 entryIdx = 0; entryIdx < entryLimit; entryIdx++) {
+		const ZmbStateActiveEntry &entry = pack._entries[entryIdx];
+		if (entry._bIsOccupied && entry._traits.isComplete())
+			occupiedCount++;
+	}
+	return occupiedCount;
+}
+
+static void compactActivePack(ZmbStateActivePack &pack) {
+	int16 entryLimit = pack._wPackZmbCount;
+	if (entryLimit < 0)
+		entryLimit = 0;
+	if (16 < entryLimit)
+		entryLimit = 16;
+
+	int16 destIdx = 0;
+	for (int16 srcIdx = 0; srcIdx < entryLimit; srcIdx++) {
+		ZmbStateActiveEntry &entry = pack._entries[srcIdx];
+		if (!entry._bIsOccupied || !entry._traits.isComplete())
+			continue;
+
+		if (destIdx != srcIdx)
+			pack._entries[destIdx] = entry;
+		destIdx++;
+	}
+
+	for (int16 entryIdx = destIdx; entryIdx < 16; entryIdx++)
+		pack._entries[entryIdx] = ZmbStateActiveEntry();
+	pack._wPackZmbCount = destIdx;
+}
+
 ZoombiniGameState::ZoombiniGameState(MohawkEngine_Zoombini *vm, Common::SaveFileManager *saveFileMan) : _vm(vm), _saveFileMan(saveFileMan) {
 	// Initialize help string map
 	_helpStrlMap[ZoombiniPageType::kPicker] = HelpSTRL(1300, 0, 3, 1, 1, 1);
@@ -72,10 +111,25 @@ bool ZoombiniGameState::loadGame(int slot) {
 }
 
 bool ZoombiniGameState::saveGame(int slot) {
+	if (inPracticeMode()) {
+		warning("Cannot save Zoombini game while in practice mode");
+		return false;
+	}
+
+	if (_debugStateMutationBlocksSave) {
+		warning("Cannot save Zoombini game after a state-mutating debug command");
+		return false;
+	}
+
 	if (!saveState(slot)) {
 		return false;
 	}
 	return true;
+}
+
+void ZoombiniGameState::markDebugStateMutation() {
+	_debugStateMutationBlocksSave = true;
+	_f._isDirty = true;
 }
 
 bool ZoombiniGameState::deleteGame(int slot) {
@@ -142,6 +196,7 @@ bool ZoombiniGameState::loadState(int slot) {
 	delete loadFile;
 
 	_currentSaveSlot = slot;
+	_debugStateMutationBlocksSave = false;
 	return true;
 }
 
@@ -801,6 +856,7 @@ void ZoombiniGameState::startNewGame() {
 	// Initialize a new game state
 	_f = ZmbStateFile();
 	_f._isDirty = true;
+	_debugStateMutationBlocksSave = false;
 	_currentSaveSlot = kUnsavedNewGame;
 
 	_practiceLevel = 0;
@@ -881,10 +937,11 @@ void ZoombiniGameState::setCursorVisible(bool val) {
 	}
 }
 
-void ZoombiniGameState::generateRandomPack() {
+int16 ZoombiniGameState::generateRandomPack() {
 	// Generate 16 snoids with random traits (1-5 each).
 	// IDA: puzzleRodMap_maybeOnClickPuzzleIcon_42A9D6 — practice mode Zoombini generation.
 	ZmbStateActivePack &pack = _f._zmbPackActive;
+	const int16 previousOccupiedCount = countOccupiedSnoidsInPack(pack);
 	pack._wPackZmbCount = 16;
 	pack._bSkipOccupiedAnim = 0;
 
@@ -897,6 +954,35 @@ void ZoombiniGameState::generateRandomPack() {
 		entry._bIsOccupied = 1;
 		entry._name[0] = 0;
 	}
+
+	return 16 - previousOccupiedCount;
+}
+
+int16 ZoombiniGameState::subtractDebugGeneratedSnoidsFromIsle(int16 generatedCount) {
+	if (generatedCount < 1)
+		return 0;
+
+	ZmbStateActivePack &islePack = _f._zmbPackIsle;
+	const int16 removeLimit = MIN<int16>(generatedCount, countOccupiedSnoidsInPack(islePack));
+	int16 removedCount = 0;
+	int16 entryLimit = islePack._wPackZmbCount;
+	if (entryLimit < 0)
+		entryLimit = 0;
+	if (16 < entryLimit)
+		entryLimit = 16;
+
+	for (int16 entryIdx = entryLimit; 0 < entryIdx && removedCount < removeLimit;) {
+		entryIdx--;
+		ZmbStateActiveEntry &entry = islePack._entries[entryIdx];
+		if (!entry._bIsOccupied || !entry._traits.isComplete())
+			continue;
+
+		entry = ZmbStateActiveEntry();
+		removedCount++;
+	}
+
+	compactActivePack(islePack);
+	return removedCount;
 }
 
 } // End of namespace Mohawk

@@ -40,6 +40,8 @@ public:
 	ZmbEventHandleResult onMouseMove(const Common::Point &absPos, const Common::Point &relPos) override;
 
 protected:
+	void saveStateBeforeMapTransition() override;
+
 	void endDrag(const Common::Point &dropPos);
 	void executeDeparture() override;
 	// [*] Virtual feature callbacks — Storage

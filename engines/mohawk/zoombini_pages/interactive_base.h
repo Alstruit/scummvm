@@ -276,11 +276,12 @@ protected:
 	Audio::SoundHandle _departSfxHandle;
 	bool _hasDepartSfxHandle = false;
 
-	/**
-	 * Called when the Map button is activated. Default implementation navigates to kRodMap.
-	 * Override in derived classes to save page state (e.g. pack data) before transitioning.
-	 */
+	/** Called when the Map button is activated. */
 	virtual void onMapButtonActivated();
+	/** Optional per-page confirmation before transitioning to RodMap. */
+	virtual bool confirmMapTransition();
+	/** Optional per-page save-state cleanup before transitioning to RodMap. */
+	virtual void saveStateBeforeMapTransition();
 
 	// [*] Snoid drag-and-drop infrastructure
 	// IDA: beginDragFeatureRunner_45360F — universal drag handler.

@@ -40,9 +40,9 @@ public:
 	ZmbEventHandleResult onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) override;
 	ZmbEventHandleResult onMouseMove(const Common::Point &absPos, const Common::Point &relPos) override;
 
-	void onMapButtonActivated() override;
-
 protected:
+	void saveStateBeforeMapTransition() override;
+
 	/**
 	 * Save all loaded snoids from _snoidMap back into f._zmbPackActive.
 	 * Two-pass: occupied snoids first, then non-occupied.

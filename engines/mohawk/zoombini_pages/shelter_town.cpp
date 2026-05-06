@@ -36,8 +36,8 @@
 
 namespace Mohawk {
 
-static const Common::Rect kTownHelpButtonRect(600, 365, 639, 402);
 static const Common::Rect kTownMapButtonRect(600, 403, 639, 440);
+static const Common::Rect kTownHelpButtonRect(600, 441, 639, 478);
 
 static const uint8 kTownMemorialCardScrbTypeBySlot[16] = {
 	2, 2, 4, 4, 2, 3, 3, 1, 4, 1, 1, 2, 4, 2, 3, 4
@@ -589,6 +589,15 @@ void ZoombiniShelterTown::transferActivePackToTownStorage() {
 	}
 }
 
+void ZoombiniShelterTown::saveStateBeforeMapTransition() {
+	// IDA town_cleanupOnExit: before shared cleanup, Town clears the active pack
+	// and suppresses both occupied and unoccupied active-pack animations.
+	ZmbStateFile &f = _vm->_state->_f;
+	f._zmbPackActive._wPackZmbCount = 0;
+	f._zmbPackActive._bSkipOccupiedAnim = 1;
+	f._zmbPackActive._bSkipUnoccupiedAnim = 1;
+}
+
 void ZoombiniShelterTown::overlay_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
 	// Filters overlay building shapes by town population density threshold.
 	// Original: town_preRenderFilterByPopulation (0x45945c)
@@ -864,6 +873,36 @@ bool ZoombiniShelterTown::isTownButtonRect(const Common::Point &pos) const {
 	return kTownHelpButtonRect.contains(pos) || kTownMapButtonRect.contains(pos);
 }
 
+ZmbEventHandleResult ZoombiniShelterTown::onKeyDown(const Common::KeyState &kbd, bool kbdRepeat) {
+	if (!kbdRepeat && !kbd.hasFlags(Common::KBD_CTRL) && !_memorialCardActive && !isDragging()) {
+		// This feature is ScummVM-only; not available in original engine.
+		switch (kbd.keycode) {
+		case Common::KEYCODE_LEFT:
+			scrollTownLeft();
+			return ZmbEventHandleResult::kConsumed;
+		case Common::KEYCODE_KP4:
+			if ((kbd.flags & Common::KBD_NUM) == 0) {
+				scrollTownLeft();
+				return ZmbEventHandleResult::kConsumed;
+			}
+			break;
+		case Common::KEYCODE_RIGHT:
+			scrollTownRight();
+			return ZmbEventHandleResult::kConsumed;
+		case Common::KEYCODE_KP6:
+			if ((kbd.flags & Common::KBD_NUM) == 0) {
+				scrollTownRight();
+				return ZmbEventHandleResult::kConsumed;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+
+	return ZoombiniShelter::onKeyDown(kbd, kbdRepeat);
+}
+
 ZmbSnoid *ZoombiniShelterTown::findSnoidAtPoint(const Common::Point &pos) {
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
 		ZmbSnoid *snoid = *it;
@@ -910,24 +949,13 @@ ZmbEventHandleResult ZoombiniShelterTown::onLButtonDown(const Common::Point &abs
 	}
 
 	// Left/right edge scroll
-	ZmbStateFile &f = _vm->_state->_f;
 	if (30 < absPos.y && absPos.y < 450 && 3 < absPos.x && absPos.x < 637) {
 		if (560 < absPos.x) {
-			_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX), Audio::Mixer::kSFXSoundType);
-			if (5 < ++f._townScrollCol)
-				f._townScrollCol = 0;
-			advanceLayerFrameState(f._townScrollCol);
-			shiftRunnersForScroll(1);
+			scrollTownRight();
 			return ZmbEventHandleResult::kConsumed;
 		}
 		if (absPos.x < 80) {
-			_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX), Audio::Mixer::kSFXSoundType);
-			if (f._townScrollCol == 0)
-				f._townScrollCol = 5;
-			else
-				--f._townScrollCol;
-			advanceLayerFrameState(f._townScrollCol);
-			shiftRunnersForScroll(0);
+			scrollTownLeft();
 			return ZmbEventHandleResult::kConsumed;
 		}
 	}
@@ -1156,6 +1184,26 @@ void ZoombiniShelterTown::advanceLayerFrameState(uint16 scrollCol) {
 		layer->setLastFrameIdx(scrollCol);
 		layer->setNeedsRedraw(true);
 	}
+}
+
+void ZoombiniShelterTown::scrollTownLeft() {
+	ZmbStateFile &stateFile = _vm->_state->_f;
+	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX), Audio::Mixer::kSFXSoundType);
+	if (stateFile._townScrollCol == 0)
+		stateFile._townScrollCol = 5;
+	else
+		--stateFile._townScrollCol;
+	advanceLayerFrameState(stateFile._townScrollCol);
+	shiftRunnersForScroll(0);
+}
+
+void ZoombiniShelterTown::scrollTownRight() {
+	ZmbStateFile &stateFile = _vm->_state->_f;
+	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX), Audio::Mixer::kSFXSoundType);
+	if (5 < ++stateFile._townScrollCol)
+		stateFile._townScrollCol = 0;
+	advanceLayerFrameState(stateFile._townScrollCol);
+	shiftRunnersForScroll(1);
 }
 
 } // End of namespace Mohawk

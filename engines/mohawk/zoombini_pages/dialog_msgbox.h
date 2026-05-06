@@ -29,6 +29,7 @@ namespace Mohawk {
 class ZoombiniDialogMsgBox : public ZoombiniDialog {
 public:
 	ZoombiniDialogMsgBox(MohawkEngine_Zoombini *vm, ZoombiniMsgBoxType type);
+	ZoombiniDialogMsgBox(MohawkEngine_Zoombini *vm, const Common::U32String &message);
 	~ZoombiniDialogMsgBox() override;
 
 	void loadFeatures() override;
@@ -47,6 +48,7 @@ private:
 	};
 
 	Common::StableMap<uint32, ButtonState> _longButtonStateMap;
+	void initButtons(ZoombiniText::Key yesKey, ZoombiniText::Key noKey);
 
 	const Common::Rect _msgBoxDialogBodyRect = Common::Rect(0x009A, 0x0091, 0x01E7, 0x00DC);
 	const Common::Rect _msgBoxDialogYesRect = Common::Rect(0x0000, 0x0000, 0x0000, 0x0000);
@@ -54,6 +56,7 @@ private:
 
 	ZoombiniMsgBoxType _type;
 	ZoombiniText::Key _msgKey;
+	Common::U32String _msgText;
 };
 
 } // End of namespace Mohawk
