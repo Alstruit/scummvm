@@ -76,6 +76,8 @@ static void compactActivePack(ZmbStateActivePack &pack) {
 }
 
 ZoombiniGameState::ZoombiniGameState(MohawkEngine_Zoombini *vm, Common::SaveFileManager *saveFileMan) : _vm(vm), _saveFileMan(saveFileMan) {
+	initVariantDefaults();
+
 	// Initialize help string map
 	_helpStrlMap[ZoombiniPageType::kPicker] = HelpSTRL(1300, 0, 3, 1, 1, 1);
 	_helpStrlMap[ZoombiniPageType::kBasecamp1] = HelpSTRL(1400, 4, 2, 1, 1, 1);
@@ -531,10 +533,9 @@ void ZmbStateFile::sync(Common::Serializer &s) {
 	s.syncAsByte(_flagCursorVisible);
 	s.syncAsByte(_flagDebug);
 	s.syncAsByte(_flagAutoStickyMouse);
-	s.syncAsByte(_flagTransitionsDisable);
-	s.syncAsByte(_unk000B);
-	s.syncAsByte(_unk000C);
-	s.syncAsByte(_unk000D);
+	s.syncAsByte(_flagTransitionsDisableOrTlcTouchSenseEnable);
+	s.syncAsByte(_flagTlcHelpAudioEnable);
+	s.syncAsUint16LE(_flagTlcTransitionsDisable);
 	s.syncAsByte(_unk000E);
 	s.syncAsByte(_unk000F);
 	s.syncAsByte(_unk0010);
@@ -855,6 +856,7 @@ void ZoombiniGameState::startNewGame() {
 
 	// Initialize a new game state
 	_f = ZmbStateFile();
+	initVariantDefaults();
 	_f._isDirty = true;
 	_debugStateMutationBlocksSave = false;
 	_currentSaveSlot = kUnsavedNewGame;
@@ -866,6 +868,30 @@ void ZoombiniGameState::startNewGame() {
 		nextPageType = ZoombiniPageType::kRodMap;
 	_vm->setNextPage(nextPageType);
 	activePage->close();
+}
+
+void ZoombiniGameState::initVariantDefaults() {
+	if (!_vm->isGameVariant(GF_ZMB_TLC))
+		return;
+
+	_f._flagTransitionsDisableOrTlcTouchSenseEnable = 1;
+	_f._flagTlcHelpAudioEnable = 1;
+	_f._flagTlcTransitionsDisable = 0;
+}
+
+bool ZoombiniGameState::getEnableTransitions() {
+	if (_vm->isGameVariant(GF_ZMB_TLC))
+		return _f._flagTlcTransitionsDisable == 0;
+
+	return _f._flagTransitionsDisableOrTlcTouchSenseEnable == 0;
+}
+
+bool ZoombiniGameState::getEnableTouchSense() {
+	return _vm->isGameVariant(GF_ZMB_TLC) && _f._flagTransitionsDisableOrTlcTouchSenseEnable != 0;
+}
+
+bool ZoombiniGameState::getEnableHelpAudio() {
+	return !_vm->isGameVariant(GF_ZMB_TLC) || _f._flagTlcHelpAudioEnable != 0;
 }
 
 void ZoombiniGameState::setEnableSound(bool val) {
@@ -905,13 +931,44 @@ void ZoombiniGameState::setEnableStickyMouse(bool val) {
 }
 
 void ZoombiniGameState::setEnableTransitions(bool val) {
-	_f._flagTransitionsDisable = val ? 0 : 1;
+	if (_vm->isGameVariant(GF_ZMB_TLC))
+		_f._flagTlcTransitionsDisable = val ? 0 : 1;
+	else
+		_f._flagTransitionsDisableOrTlcTouchSenseEnable = val ? 0 : 1;
 
 	ZoombiniPage *page = _vm->getActivePage();
 	if (page && page->getPageCategory() == ZoombiniPageCategory::kInteractive) {
 		ZoombiniInteractive *interactive = dynamic_cast<ZoombiniInteractive *>(page);
 		if (interactive)
 			interactive->showNotiBoxLong(val ? ZoombiniText::kNotiBoxTransitionsOn : ZoombiniText::kNotiBoxTransitionsOff);
+	}
+}
+
+void ZoombiniGameState::setEnableTouchSense(bool val) {
+	if (!_vm->isGameVariant(GF_ZMB_TLC))
+		return;
+
+	_f._flagTransitionsDisableOrTlcTouchSenseEnable = val ? 1 : 0;
+
+	ZoombiniPage *page = _vm->getActivePage();
+	if (page && page->getPageCategory() == ZoombiniPageCategory::kInteractive) {
+		ZoombiniInteractive *interactive = dynamic_cast<ZoombiniInteractive *>(page);
+		if (interactive)
+			interactive->showNotiBoxLong(val ? ZoombiniText::kNotiBoxTouchSenseOn : ZoombiniText::kNotiBoxTouchSenseOff);
+	}
+}
+
+void ZoombiniGameState::setEnableHelpAudio(bool val) {
+	if (!_vm->isGameVariant(GF_ZMB_TLC))
+		return;
+
+	_f._flagTlcHelpAudioEnable = val ? 1 : 0;
+
+	ZoombiniPage *page = _vm->getActivePage();
+	if (page && page->getPageCategory() == ZoombiniPageCategory::kInteractive) {
+		ZoombiniInteractive *interactive = dynamic_cast<ZoombiniInteractive *>(page);
+		if (interactive)
+			interactive->showNotiBoxLong(val ? ZoombiniText::kNotiBoxHelpAudioOn : ZoombiniText::kNotiBoxHelpAudioOff);
 	}
 }
 

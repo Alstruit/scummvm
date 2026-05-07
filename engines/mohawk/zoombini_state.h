@@ -360,12 +360,17 @@ struct ZmbStateFile { // Size: 44559 (0xAE0F)
 	 */
 	uint8 _flagAutoStickyMouse = 0;
 	/**
-	 * 0x000A: Transition Disable Flag
+	 * 0x000A: v1.x transition disable flag; v2.0/TLC TouchSense enable flag.
 	 */
-	uint8 _flagTransitionsDisable = 0;
-	uint8 _unk000B = 0;
-	uint8 _unk000C = 0;
-	uint8 _unk000D = 0;
+	uint8 _flagTransitionsDisableOrTlcTouchSenseEnable = 0;
+	/**
+	 * 0x000B: v2.0/TLC Help Audio enable flag.
+	 */
+	uint8 _flagTlcHelpAudioEnable = 1;
+	/**
+	 * 0x000C: v2.0/TLC transition disable flag.
+	 */
+	uint16 _flagTlcTransitionsDisable = 0;
 	uint8 _unk000E = 0;
 	uint8 _unk000F = 0;
 	uint8 _unk0010 = 0;
@@ -645,13 +650,17 @@ public:
 	bool getEnableSound() { return _f._flagSfxEnable != 0; }
 	bool getEnableMusic() { return _f._flagBgmEnable != 0; }
 	bool getEnableStickyMouse() { return _f._flagStickyMouseEnable != 0; }
-	bool getEnableTransitions() { return _f._flagTransitionsDisable == 0; }
+	bool getEnableTransitions();
+	bool getEnableTouchSense();
+	bool getEnableHelpAudio();
 	bool isLessActionEnabled() { return _f._lessActionFlag != 0; }
 	bool isCursorVisible() { return _flagCursorVisible; }
 	void setEnableSound(bool val);
 	void setEnableMusic(bool val);
 	void setEnableStickyMouse(bool val);
 	void setEnableTransitions(bool val);
+	void setEnableTouchSense(bool val);
+	void setEnableHelpAudio(bool val);
 	void setLessActionEnabled(bool val);
 	void setCursorVisible(bool val);
 	bool toggleSound() {
@@ -669,6 +678,14 @@ public:
 	bool toggleTransitions() {
 		setEnableTransitions(!getEnableTransitions());
 		return getEnableTransitions();
+	}
+	bool toggleTouchSense() {
+		setEnableTouchSense(!getEnableTouchSense());
+		return getEnableTouchSense();
+	}
+	bool toggleHelpAudio() {
+		setEnableHelpAudio(!getEnableHelpAudio());
+		return getEnableHelpAudio();
 	}
 	bool toggleLessMoreAction() {
 		setLessActionEnabled(!isLessActionEnabled());
@@ -733,6 +750,7 @@ private:
 
 	Common::HashMap<ZoombiniPageType, HelpSTRL> _helpStrlMap;
 
+	void initVariantDefaults();
 	void syncGameState(Common::Serializer &s);
 	static Common::String buildSaveFilename(int slot);
 	static Common::String getRosterFilename();

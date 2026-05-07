@@ -42,6 +42,9 @@ protected:
 	void helpDialog_onPostRender(ZmbFeature *feature);
 	void helpDialog_onPostAnimation(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs);
 	Common::Rect helpDialog_getButtonTextRect(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs, const Common::Rect &buttonRect);
+	const Common::Rect &helpDialog_getTitleRect() const;
+	const Common::Rect &helpDialog_getHeadRect() const;
+	const Common::Rect &helpDialog_getBodyRect() const;
 	ZmbEventHandleResult helpDialog_onMouseLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 	Common::Rect helpDialog_getButtonClickRect(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs, const Common::Rect &buttonRect);
 	ZmbEventHandleResult helpDialog_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);
@@ -55,6 +58,7 @@ protected:
 
 	Common::StableMap<uint32, ButtonState> _helpDialogButtonStateMap;
 	const Common::Rect _helpDialogTitleRect = Common::Rect(0x104, 0x003E, 0x0174, 0x005B);
+	const Common::Rect _helpDialogTlcTitleRect = Common::Rect(0x0104, 0x0035, 0x0174, 0x0052);
 	Common::Rect _helpDialogButtonRects[3] = {
 		Common::Rect(0x009A, 0x013F, 0x00F5, 0x0162),
 		Common::Rect(0x0108, 0x013F, 0x0165, 0x0162),
@@ -65,7 +69,9 @@ protected:
 		Common::Rect(0x010F, 0x013F, 0x0152, 0x0162),
 	};
 	const Common::Rect _helpDialogHeadRect = Common::Rect(0x00AA, 0x0063, 0x01DB, 0x0074);
+	const Common::Rect _helpDialogTlcHeadRect = Common::Rect(0x00AA, 0x005A, 0x01DB, 0x006B);
 	const Common::Rect _helpDialogBodyRect = Common::Rect(0x00AA, 0x0079, 0x01DB, 0x0127);
+	const Common::Rect _helpDialogTlcBodyRect = Common::Rect(0x00AA, 0x0070, 0x01DB, 0x0127);
 };
 
 } // End of namespace Mohawk

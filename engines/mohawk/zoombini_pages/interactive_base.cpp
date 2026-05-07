@@ -80,6 +80,18 @@ ZmbEventHandleResult ZoombiniInteractive::onKeyDown(const Common::KeyState &kbd,
 		case Common::KEYCODE_t: // Transition (CTRL-T)
 			_vm->_state->toggleTransitions();
 			break;
+		case Common::KEYCODE_a: // Help Audio (CTRL-A, TLC only)
+			if (_vm->isGameVariant(GF_ZMB_TLC))
+				_vm->_state->toggleHelpAudio();
+			else
+				result = ZmbEventHandleResult::kPassthrough;
+			break;
+		case Common::KEYCODE_k: // TouchSense (CTRL-K, TLC only)
+			if (_vm->isGameVariant(GF_ZMB_TLC))
+				_vm->_state->toggleTouchSense();
+			else
+				result = ZmbEventHandleResult::kPassthrough;
+			break;
 		case Common::KEYCODE_g: // Less/More Action (CTRL-G)
 			_vm->_state->toggleLessMoreAction();
 			break;
@@ -1258,6 +1270,8 @@ void ZoombiniInteractive::playActiveHelpSound() {
 	// If not set (resource ID = 0), do nothing.
 
 	if (!_activeHelpSoundId.hasId())
+		return;
+	if (!_vm->_state->getEnableHelpAudio())
 		return;
 
 	// Stop any currently playing help voice (if it's the same resource)

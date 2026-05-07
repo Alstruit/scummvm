@@ -40,6 +40,8 @@ protected:
 	void redToggleButtons_onPostRender(ZmbFeature *feature);
 	Common::Rect redButtons_textRect(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs, const Common::Rect &drawnRect);
 	Common::Rect toggleButtons_textRect(ZmbFeature *feature, uint32 bsIdx, ToggleButtonState &bs, const Common::Rect &drawnRect);
+	const Common::Rect &getOptionDialogTitleRect() const;
+	uint16 getOptionDialogTextTop(uint32 bsIdx) const;
 	void redButtons_onButtonAction(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs);
 	void toggleButtons_onButtonAction(ZmbFeature *feature, uint32 bsIdx, ToggleButtonState &bs);
 	ZmbEventHandleResult redToggleButtons_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
@@ -60,8 +62,10 @@ protected:
 		kOptionDialogButton_Music = 5,
 		kOptionDialogButton_StickyMouse = 6,
 		kOptionDialogButton_Transitions = 7,
-		kOptionDialogButton_Okay = 8,
-		kOptionDialogButton_Credits = 9,
+		kOptionDialogButton_TouchSense = 8,
+		kOptionDialogButton_HelpAudio = 9,
+		kOptionDialogButton_Okay = 10,
+		kOptionDialogButton_Credits = 11,
 	};
 
 	Common::StableMap<uint32, ButtonState> _redButtonStateMap;
@@ -69,12 +73,14 @@ protected:
 	Common::StableMap<uint32, ButtonState> _longButtonStateMap;
 
 	const Common::Rect _optionDialogTitleRect = Common::Rect(0x00FA, 0x003A, 0x017C, 0x0050);
+	const Common::Rect _optionDialogTlcTitleRect = Common::Rect(0x00B9, 0x003A, 0x01BD, 0x0050);
 	const Common::Rect _optionDialogToggleRect = Common::Rect(0x00A6, 0x00BE, 0x01D1, 0x00D2);
 	const Common::Rect _optionDialogLegendOnRect = Common::Rect(0x00C5, 0x0140, 0x0104, 0x0159);
 	const Common::Rect _optionDialogLegendOffRect = Common::Rect(0x00C5, 0x0159, 0x0104, 0x016D);
 	const uint16 _optionDialogTextLeft = 0x00C4;
 	const uint16 _optionDialogTextRight = 0x01D6;
 	const uint16 _optionDialogTextTops[8] = {0x0066, 0x007C, 0x0091, 0x00A6, 0x00DD, 0x00F3, 0x0108, 0x011D};
+	const uint16 _optionDialogTlcTextTops[10] = {0x005A, 0x006F, 0x0084, 0x0099, 0x00BE, 0x00D3, 0x00E8, 0x00FD, 0x0112, 0x0127};
 };
 
 } // End of namespace Mohawk

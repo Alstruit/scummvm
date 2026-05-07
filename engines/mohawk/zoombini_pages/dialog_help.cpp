@@ -82,7 +82,7 @@ void ZoombiniDialogHelp::helpDialog_onPostRender(ZmbFeature *feature) {
 		titleConf._outlineEffect = true;
 		titleConf._outlinePalette = 0x0E;
 		titleConf._textPalette = ZoombiniGraphics::kColor2D_Black;
-		_vm->_gfx->drawText(screenKind, ZoombiniText::kDialogHelpTitle, _helpDialogTitleRect, titleConf);
+		_vm->_gfx->drawText(screenKind, ZoombiniText::kDialogHelpTitle, helpDialog_getTitleRect(), titleConf);
 	}
 
 	// [Text Render] Prev/Next/Okay Button Descriptions
@@ -102,12 +102,12 @@ void ZoombiniDialogHelp::helpDialog_onPostRender(ZmbFeature *feature) {
 
 	ZoombiniGraphics::TextConf headConf;
 	headConf._textPalette = 0x23;
-	_vm->_gfx->drawText(screenKind, helpHead, _helpDialogHeadRect, headConf);
+	_vm->_gfx->drawText(screenKind, helpHead, helpDialog_getHeadRect(), headConf);
 
 	// [Text Render] String Body
 	ZoombiniGraphics::TextConf bodyConf;
 	bodyConf._wordWrap = true;
-	_vm->_gfx->drawText(screenKind, _pageHelpBodyStrs[_pageHelpBodyIdx], _helpDialogBodyRect, bodyConf);
+	_vm->_gfx->drawText(screenKind, _pageHelpBodyStrs[_pageHelpBodyIdx], helpDialog_getBodyRect(), bodyConf);
 }
 
 void ZoombiniDialogHelp::helpDialog_onPostAnimation(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs) {
@@ -136,13 +136,27 @@ Common::Rect ZoombiniDialogHelp::helpDialog_getButtonTextRect(ZmbFeature *featur
 	else
 		textRect = _helpDialogButtonRects[bsIdx];
 
-	textRect.top += 3;
-	textRect.bottom += 3;	
+	if (!_vm->isGameVariant(GF_ZMB_TLC)) {
+		textRect.top += 3;
+		textRect.bottom += 3;
+	}
 	if (bs.isAnimating()) {
 		textRect.top += 2;
 		textRect.bottom += 2;
 	}
 	return textRect;
+}
+
+const Common::Rect &ZoombiniDialogHelp::helpDialog_getTitleRect() const {
+	return _vm->isGameVariant(GF_ZMB_TLC) ? _helpDialogTlcTitleRect : _helpDialogTitleRect;
+}
+
+const Common::Rect &ZoombiniDialogHelp::helpDialog_getHeadRect() const {
+	return _vm->isGameVariant(GF_ZMB_TLC) ? _helpDialogTlcHeadRect : _helpDialogHeadRect;
+}
+
+const Common::Rect &ZoombiniDialogHelp::helpDialog_getBodyRect() const {
+	return _vm->isGameVariant(GF_ZMB_TLC) ? _helpDialogTlcBodyRect : _helpDialogBodyRect;
 }
 
 ZmbEventHandleResult ZoombiniDialogHelp::helpDialog_onMouseLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {

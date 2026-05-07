@@ -644,7 +644,7 @@ Common::U32String ZoombiniText::decodeCreditStringBytes(const byte *bytes, uint3
 				extendedByteCount++;
 		}
 
-		// If there are just one extended bytes, then the text is likely Windows-1252 - Ex) 'Ø' of the 'BrØderbund'.
+		// If there are just one extended bytes, then the text is likely Windows-1252 - Ex) 'Ø' (0xD8) of the 'BrØderbund'.
 		// In that case, always decode that string with Windows-1252.
 		if (extendedByteCount <= 1)
 			decodeCodePage = Common::kWindows1252;
