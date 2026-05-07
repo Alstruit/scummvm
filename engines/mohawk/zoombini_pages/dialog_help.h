@@ -37,6 +37,8 @@ protected:
 	ZoombiniPageType _forPageType;
 	Common::Array<Common::U32String> _pageHelpBodyStrs;
 	uint32 _pageHelpBodyIdx = 0;
+	uint16 _helpStrlResId = 0;
+	uint32 _helpSoundQueue = 0;
 
 	void helpDialog_onPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
 	void helpDialog_onPostRender(ZmbFeature *feature);
@@ -48,6 +50,7 @@ protected:
 	ZmbEventHandleResult helpDialog_onMouseLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 	Common::Rect helpDialog_getButtonClickRect(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs, const Common::Rect &buttonRect);
 	ZmbEventHandleResult helpDialog_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);
+	void playHelpVoice();
 
 	// MapRect & MapSave data
 	enum HelpDialogButtonIdx : uint32 {

@@ -66,6 +66,7 @@ public:
 	ZoombiniGameState *_state = nullptr;
 	ZoombiniText *_text = nullptr;
 	MohawkArchive *_sysMhk = nullptr;
+	MohawkArchive *_helpMhk = nullptr;
 
 	/**
 	 * Registration-point offsets for system snoid shapes (tBMP 3000 in ZOOMBINI.MHK).
@@ -132,6 +133,7 @@ public:
 	void delayRunningFrames(uint32 ms);
 
 	MohawkArchive *loadSystemArchive();
+	MohawkArchive *loadHelpArchive();
 	void initSearchPaths();
 	/**
 	 * Load next interactive/transition page from the page queue.

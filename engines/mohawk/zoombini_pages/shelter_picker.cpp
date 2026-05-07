@@ -150,9 +150,6 @@ void ZoombiniShelterPicker::loadFeatures() {
 		}
 	}
 
-	if (!_vm->_state->isLessActionEnabled())
-		f._wPickerCaveBlinkState = 1;
-
 	if (f._currentRoute == 1) {
 		uint16 leavedZmbCount = f._zmbStoredBC1Count + f._zmbStoredBC2Count + f._zmbStoredTownCount;
 		uint16 remaingZmbCount = 625 - leavedZmbCount - _snoidMap.size();
@@ -188,9 +185,6 @@ void ZoombiniShelterPicker::loadFeatures() {
 						ZmbFeature::FLAG_08000000_REGION_TRACK | ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE);
 		_caveArrowRightFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4100_BackObjects), kResScrb4105_CaveArrowRight, 9,
 						ZmbFeature::FLAG_08000000_REGION_TRACK | ZmbFeature::FLAG_00008000_LOOP_ANIM);
-		// IDA picker_init: state was just set to 1, then toggle(1) is called to
-		// apply the initial render flags (both off) without advancing.
-		toggleCaveArrowBlink(true);
 	}
 
 	// Background Objects
@@ -720,56 +714,10 @@ ZmbEventHandleResult ZoombiniShelterPicker::onMouseMove(const Common::Point &abs
 	return result;
 }
 
-void ZoombiniShelterPicker::toggleCaveArrowBlink(bool keepState) {
-	if (!_caveArrowLeftFeature || !_caveArrowRightFeature)
-		return;
-
-	uint16 &state = _vm->_state->_f._wPickerCaveBlinkState;
-	if (!keepState)
-		++state;
-	if (state > 3)
-		state = 0;
-
-	bool leftOn;
-	bool rightOn;
-	switch (state) {
-	case 0:
-		leftOn = true;
-		rightOn = true;
-		break;
-	case 1:
-		leftOn = false;
-		rightOn = false;
-		break;
-	case 2:
-		leftOn = true;
-		rightOn = false;
-		break;
-	default: // 3
-		leftOn = false;
-		rightOn = true;
-		break;
-	}
-
-	if (leftOn)
-		_caveArrowLeftFeature->activateRender();
-	else
-		_caveArrowLeftFeature->deactivateRender();
-
-	if (rightOn)
-		_caveArrowRightFeature->activateRender();
-	else
-		_caveArrowRightFeature->deactivateRender();
-}
-
 void ZoombiniShelterPicker::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) {
-	// IDA: net_handlePickerAnimEvent_439CE0 / picker_onScrbAnimEvent.
-	// Event 23 fires at end-of-cycle on the cave-arrow SCRBs and advances
-	// the blink state. Event 114 sets dlg_wShowZoombiniUpdateMsg, which our
-	// picker doesn't currently model.
-	if (eventCode == 23 && (feature == _caveArrowLeftFeature || feature == _caveArrowRightFeature)) {
-		toggleCaveArrowBlink(false);
-	}
+	// IDA: picker_onKeyInput_42FE30 handles event 23 by refreshing the preview
+	// and event 114 by setting dlg_wShowZoombiniUpdateMsg. Cave SCRB 4104/4105
+	// animate by LOOP_ANIM and do not use this callback to blink.
 }
 
 void ZoombiniShelterPicker::endDrag(const Common::Point &dropPos) {

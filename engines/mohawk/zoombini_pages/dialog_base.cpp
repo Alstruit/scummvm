@@ -42,8 +42,6 @@ ZoombiniDialog::ZoombiniDialog(MohawkEngine_Zoombini *vm, ZoombiniPageType pageT
 }
 
 ZoombiniDialog::~ZoombiniDialog() {
-	_vm->_sound->stopSound();
-
 	// Restore captured back screen
 	_vm->_gfx->copyToScreen(ZoombiniGraphics::kBackScreen, _capturedBackScreen);
 }

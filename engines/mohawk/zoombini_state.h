@@ -253,9 +253,9 @@ struct ZmbTrait {
 struct ZmbStateStoredEntry {
 	ZmbTrait _traits;
 	Common::Rect _rect;
-	byte _name[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	byte _name[10] = {0};
 
-	void sync(Common::Serializer &s);
+	void sync(Common::Serializer &s, bool isTlcLayout);
 	Common::U32String getU32Name(MohawkEngine_Zoombini *vm);
 };
 
@@ -267,7 +267,7 @@ struct ZmbStateStoredChunk {
 	uint16 _storedCount = 0;
 	ZmbStateStoredEntry _entries[625];
 
-	void sync(Common::Serializer &s);
+	void sync(Common::Serializer &s, bool isTlcLayout);
 };
 
 // For Active Packs (the ones you are carrying)
@@ -284,11 +284,9 @@ struct ZmbStateActiveEntry {
 	 */
 	uint16 _posY = 0;
 	uint8 _bIsOccupied = 0;
-	byte _name[10] = {
-		0,
-	};
+	byte _name[10] = {0};
 
-	void sync(Common::Serializer &s);
+	void sync(Common::Serializer &s, bool isTlcLayout);
 	Common::U32String getU32Name(MohawkEngine_Zoombini *vm);
 };
 
@@ -311,13 +309,13 @@ struct ZmbStateActivePack {
 		0,
 	};
 
-	void sync(Common::Serializer &s);
+	void sync(Common::Serializer &s, bool isTlcLayout);
 	void copyTo(ZmbStateActivePack &dest) {
 		memcpy(&dest, this, sizeof(ZmbStateActivePack));
 	}
 };
 
-struct ZmbStateFile { // Size: 44559 (0xAE0F)
+struct ZmbStateFile { // Size: 44559 (0xAE0F) for v1.x, 48440 (0xBD38) for TLC/v2.0
 	//
 	/**
 	 * 0x0000: Magic, always 00 6B in bytes
@@ -406,11 +404,9 @@ struct ZmbStateFile { // Size: 44559 (0xAE0F)
 	 */
 	uint16 _wMudballHighScore = 0;
 	/**
-	 * 0x0026: (Unused?) Picker cave mark blink state (0~3)
-	 * Animation cycle state for the cave-mark arrows on the picker screen.
-	 * Cycles 0→1→2→3→0 each tick. Each value controls which of the two
-	 * runner SCRBs (wFeatureRunnerIdx24 / wFeatureRunnerIdx26) are visible.
-	 * Initialized to 1 in less-action mode (both arrows hidden).
+	 * 0x0026: Unknown picker/rest-page state.
+	 * TLC IDA shows cave-mark SCRB 4104/4105 are self-animated LOOP_ANIM
+	 * runners, not controlled by this field.
 	 */
 	uint16 _wPickerCaveBlinkState = 1;
 
@@ -478,54 +474,60 @@ struct ZmbStateFile { // Size: 44559 (0xAE0F)
 	 * @remarks 3 ~ 18 (3: ISLE, 4: BC1, 5: BC2, 6: TOWN, 18: MAZE)
 	 */
 	ZMB_DI_PAGE _currentPage = ZMB_DI_ISLE_03;
+	/**
+	 * 0x00CE: TLC/v2.0 saved page state. Original IDA stores word_49B0E8 here
+	 * before the first storage grid; v1.x starts the grid at this offset.
+	 */
+	uint16 _tlcSavedPageState = 0;
 	ZoombiniPageType getCurrentPageType() const;
 	void setCurrentPageType(ZoombiniPageType pageType);
 
-	// 0x00CE: Stored Zoombinis on Basecamp 1
+	// v1.x 0x00CE / TLC 0x00D0: Stored Zoombinis on Basecamp 1
 	// 16 its entries (finished game), their head/eye/nose/foot are zeroed
 	// Maybe it directs to its active pack?
 	ZmbStateStoredChunk _storedChunkBC1;
 
-	// 0x3688: Stored Zoombinis on Basecamp 2
+	// v1.x 0x3688 / TLC 0x3B6C: Stored Zoombinis on Basecamp 2
 	// On some of its 16 entries (finished game), their head/eye/nose/foot are zeroed
 	// Maybe it directs to its active pack?
 	ZmbStateStoredChunk _storedChunkBC2;
 
-	// 0x6C42: Stored Zoombinis on Town
+	// v1.x 0x6C42 / TLC 0x7608: Stored Zoombinis on Town
 	ZmbStateStoredChunk _storedChunkTown;
 
-	// 0xA1FC: Active Zoombini Packs
+	// v1.x 0xA1FC / TLC 0xB0A4: Active Zoombini Packs
 	ZmbStateActivePack _zmbPackIsle = {};
 	uint16 _wZmbPackIsleVal = 0;
-	ZmbStateActivePack _zmbPackBC1 = {}; // 0xA462
+	ZmbStateActivePack _zmbPackBC1 = {}; // v1.x 0xA462 / TLC 0xB32A
 	uint16 _wZmbPackBC1Val = 0;
-	ZmbStateActivePack _zmbPackBC2 = {}; // 0xA6C8
+	ZmbStateActivePack _zmbPackBC2 = {}; // v1.x 0xA6C8 / TLC 0xB5B0
 	uint16 _wZmbPackBC2Val = 0;
-	ZmbStateActivePack _zmbPackActive = {}; // 0xA92E
+	ZmbStateActivePack _zmbPackActive = {}; // v1.x 0xA92E / TLC 0xB836
 	uint16 _wZmbPackActiveVal = 0;
 
-	// 0xAB94: Zoombini Twin Status
+	// v1.x 0xAB94 / TLC 0xBABE: Zoombini Twin Status
 	uint8 _twinGenStatus[625] = {
 		0,
 	};
+	uint8 _tlcTwinGenStatusPad = 0;
 
 	/**
-	 * 0xAE05~0xAE0B: Per-route perfect completion counters (4 x int16).
+	 * v1.x 0xAE05 / TLC 0xBD2E: Per-route perfect completion counters (4 x int16).
 	 * IDA: twinGenStatus[2*routeIdx+623] (routes 1-4 → indices 625,627,629,631).
 	 * Incremented each time a route is completed with all snoids surviving
 	 * (perfect streak). When a counter reaches 3, it resets to 0 and the
 	 * corresponding _routeLevels[] entry advances by 1 (max 3).
-	 * Added in v2 save format (44559 bytes); zeroed when loading v1 saves.
+	 * Added in newer save formats; zeroed when loading older shorter saves.
 	 */
 	int16 _routePerfectCounters[4] = {0, 0, 0, 0};
 	/**
-	 * 0xAE0D: Town Develop Level (0~6)
+	 * v1.x 0xAE0D / TLC 0xBD36: Town Develop Level (0~6)
 	 */
 	int16 _townDevelopLevel = 0;
 
-	// 0xAE0F: EOF
+	// v1.x 0xAE0F / TLC 0xBD38: EOF
 
-	void sync(Common::Serializer &s);
+	void sync(Common::Serializer &s, bool isTlcLayout, bool hasCompletionCounters);
 
 	bool _isDirty = false;
 };
@@ -643,7 +645,7 @@ public:
 	int getActiveSaveSlot() { return _currentSaveSlot; }
 	int searchSaveSlotByName(const Common::U32String &saveName);
 	int getAvailableSaveSlot();
-	void readPageHelpStrings(ZoombiniPageType pageType, Common::Array<Common::U32String> &helpStrs);
+	uint16 readPageHelpStrings(ZoombiniPageType pageType, Common::Array<Common::U32String> &helpStrs);
 
 	// Options
 	void startNewGame();
@@ -751,7 +753,7 @@ private:
 	Common::HashMap<ZoombiniPageType, HelpSTRL> _helpStrlMap;
 
 	void initVariantDefaults();
-	void syncGameState(Common::Serializer &s);
+	void syncGameState(Common::Serializer &s, bool isTlcLayout, bool hasCompletionCounters);
 	static Common::String buildSaveFilename(int slot);
 	static Common::String getRosterFilename();
 	bool loadState(int slot);

@@ -113,8 +113,19 @@ bool ZmbResource::hasId() const {
 }
 
 Common::String ZmbResource::toString() const {
-	return Common::String::format("%c%u", _archiveKind == ZmbArchiveKind::kPage ? 'p' : 's', _id);
+	char archiveKind = 'p';
+	switch (_archiveKind) {
+	case ZmbArchiveKind::kPage:
+		archiveKind = 'p';
+		break;
+	case ZmbArchiveKind::kSystem:
+		archiveKind = 's';
+		break;
+	default:
+		archiveKind = '?';
+		break;
+	}
+	return Common::String::format("%c%u", archiveKind, _id);
 }
 
 } // End of namespace Mohawk
-

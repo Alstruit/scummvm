@@ -50,7 +50,7 @@ enum class ZmbArchiveKind: uint16 {
 	 */
 	kPage = 0,
 	/**
-	 * Resources from ZOOMBINI.MHK
+	 * Resources from ZOOMBINI.MHK (and optional non-conflicting TLC HELP.MHK)
 	 */
 	kSystem = 1,
 };

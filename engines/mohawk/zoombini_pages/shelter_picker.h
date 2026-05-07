@@ -74,20 +74,6 @@ protected:
 	void endDrag(const Common::Point &dropPos);
 	void updateCaveMarkHighlight();
 
-	/**
-	 * Advance the 4-state cave-arrow blink cycle and apply render flags.
-	 * IDA: picker_toggleCaveMarkBlink @ 0x43AFF0.
-	 *
-	 * State map (from IDA decompile):
-	 *   0 → both arrows visible
-	 *   1 → both arrows hidden
-	 *   2 → left visible, right hidden
-	 *   3 → left hidden, right visible
-	 *
-	 * @param keepState  If true, do NOT increment the state (initial-render call).
-	 */
-	void toggleCaveArrowBlink(bool keepState);
-
 	void randomizeTraitSelection();
 	bool isZoombiniTraitGeneratable(ZmbTrait trait) const;
 	void generateZoombiniName();
@@ -125,7 +111,7 @@ protected:
 		/**
 		 * Cave-mark arrow SCRBs (left/right). IDA: picker_registerCaveMarkScrbs @ 0x43B2EB
 		 * registers these as wFeatureRunnerIdx24 (4104, z=7) and wFeatureRunnerIdx26
-		 * (4105, z=9). They blink in a 4-state cycle driven by SCRB anim event 23.
+		 * (4105, z=9). Both SCRBs are self-animated through LOOP_ANIM.
 		 */
 		kResScrb4104_CaveArrowLeft = 4104,
 		kResScrb4105_CaveArrowRight = 4105,
@@ -338,11 +324,8 @@ protected:
 	bool _caveMarkHighlighted = false;
 
 	/**
-	 * Cave-mark arrow blinking animation runners. IDA `picker_toggleCaveMarkBlink @ 0x43AFF0`.
-	 * Advanced by SCRB anim event 23 (fired by these features themselves at
-	 * end-of-cycle), so no frame timer is needed — the SCRB animation length
-	 * sets the blink period. `_caveArrowBlinkState` is held in
-	 * `_state->_f._wPickerCaveBlinkState` so it survives suspend/restore.
+	 * Cave-mark background animation runners. IDA registers SCRB 4104/4105
+	 * directly with LOOP_ANIM; they are not driven by picker event 23.
 	 */
 	ZmbFeature *_caveArrowLeftFeature = nullptr;
 	ZmbFeature *_caveArrowRightFeature = nullptr;

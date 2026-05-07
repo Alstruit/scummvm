@@ -38,11 +38,15 @@ ZoombiniDialogHelp::ZoombiniDialogHelp(MohawkEngine_Zoombini *vm, ZoombiniPageTy
 }
 
 ZoombiniDialogHelp::~ZoombiniDialogHelp() {
+	if (_helpSoundQueue != ZoombiniSound::kInvalidSoundQueueHandle)
+		_vm->_sound->deleteSoundQueue(_helpSoundQueue);
 }
 
 void ZoombiniDialogHelp::loadFeatures() {
 	// Load help string
-	_vm->_state->readPageHelpStrings(_forPageType, _pageHelpBodyStrs);
+	_helpStrlResId = _vm->_state->readPageHelpStrings(_forPageType, _pageHelpBodyStrs);
+	if (_vm->isGameVariant(GF_ZMB_TLC))
+		_helpSoundQueue = _vm->_sound->createSoundQueue();
 
 	// Initialize button states
 	ZmbResource soundResId = ZmbResource(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX);
@@ -61,6 +65,8 @@ void ZoombiniDialogHelp::loadFeatures() {
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0001_Dialog), kResScrb0017_DialogHelp, 0,
 		ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
 		hooks0017);
+
+	playHelpVoice();
 }
 
 void ZoombiniDialogHelp::helpDialog_onPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
@@ -111,6 +117,8 @@ void ZoombiniDialogHelp::helpDialog_onPostRender(ZmbFeature *feature) {
 }
 
 void ZoombiniDialogHelp::helpDialog_onPostAnimation(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs) {
+	uint32 previousHelpBodyIdx = _pageHelpBodyIdx;
+
 	switch (bsIdx) {
 	case kHelpDialogButton_Prev:
 		if (0 < _pageHelpBodyIdx)
@@ -127,6 +135,9 @@ void ZoombiniDialogHelp::helpDialog_onPostAnimation(ZmbFeature *feature, uint32 
 		error("Invalid help dialog button event(%u)", bsIdx);
 		break;
 	}
+
+	if (_pageHelpBodyIdx != previousHelpBodyIdx)
+		playHelpVoice();
 }
 
 Common::Rect ZoombiniDialogHelp::helpDialog_getButtonTextRect(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs, const Common::Rect &buttonRect) {
@@ -212,6 +223,29 @@ ZmbEventHandleResult ZoombiniDialogHelp::helpDialog_onKeyDown(ZmbFeature *featur
 		break;
 	}
 	return result;
+}
+
+void ZoombiniDialogHelp::playHelpVoice() {
+	if (!_vm->isGameVariant(GF_ZMB_TLC))
+		return;
+	if (!_vm->_state->getEnableHelpAudio())
+		return;
+	if (_helpSoundQueue == ZoombiniSound::kInvalidSoundQueueHandle)
+		return;
+	if (!_helpStrlResId)
+		return;
+
+	uint32 voiceResId = static_cast<uint32>(_helpStrlResId) + _pageHelpBodyIdx + 20000;
+	if (0xFFFF < voiceResId)
+		return;
+
+	ZmbResource voiceRes(ZmbArchiveKind::kSystem, static_cast<uint16>(voiceResId));
+	if (!_vm->hasResource(ID_SND, voiceRes)) {
+		debugC(kZmbDebugHelp, "Zoombini: TLC help voice SND %u missing from HELP.MHK", static_cast<uint16>(voiceResId));
+		return;
+	}
+
+	_vm->_sound->queueZmbSound(_helpSoundQueue, voiceRes, Audio::Mixer::kSpeechSoundType, false);
 }
 
 } // End of namespace Mohawk

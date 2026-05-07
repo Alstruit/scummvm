@@ -579,6 +579,14 @@ void ZmbFeature::clearDrawRecords() {
 	_drawnRecordMap.clear();
 }
 
+void ZmbFeature::collectDrawRecordRects(Common::Array<Common::Rect> &rects) const {
+	for (auto it = _drawnRecordMap.begin(); it != _drawnRecordMap.end(); it++) {
+		const Common::Rect &rect = it->second->_drawnRect;
+		if (!rect.isEmpty())
+			rects.push_back(rect);
+	}
+}
+
 ZmbDrawRecord *ZmbFeature::findDrawRecordAtPoint(const Common::Point &absPos) {
 	for (auto it = _drawnRecordMap.begin(); it != _drawnRecordMap.end(); it++) {
 		ZmbDrawRecord *record = it->second;

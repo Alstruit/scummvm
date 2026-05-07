@@ -703,6 +703,8 @@ public:
 	ZmbDrawRecord *getDrawRecord(uint16 frame, uint16 hsIdx);
 	void eraseDrawRecord(uint16 frame, uint16 hsIdx);
 	void clearDrawRecords();
+	bool hasDrawRecords() const { return !_drawnRecordMap.empty(); }
+	void collectDrawRecordRects(Common::Array<Common::Rect> &rects) const;
 	ZmbDrawRecord *findDrawRecordAtPoint(const Common::Point& absPos);
 	void findDrawRecordsAtPoint(const Common::Point& absPos, Common::Array<ZmbDrawRecord*> &foundRecords);
 	ZmbDrawRecord *findDrawRecordByHotspotIdx(uint16 hsIdx);
@@ -780,10 +782,12 @@ public:
 	void setRegistrationIndex(uint32 idx) { _registrationIndex = idx; }
 
 	/**
-	 * Get the rect used for Z-sorting. IDA uses clickRect (set once from first render).
-	 * Falls back to sortRect if clickRect hasn't been set yet (first frame).
+	 * Get the rect used for Z-sorting and dirty invalidation. The original
+	 * recomputes clickRect from current visual shapes each pre-render. ScummVM
+	 * keeps manual click zones in _clickRect, so _sortRect carries the current
+	 * visual bounds and falls back to _clickRect before the first draw.
 	 */
-	const Common::Rect &getZSortRect() const { return _hasClickRect ? _clickRect : _sortRect; }
+	const Common::Rect &getZSortRect() const { return !_sortRect.isEmpty() ? _sortRect : _clickRect; }
 
 	/**
 	 * Set the SCRB ID to chain to at end-of-animation-cycle (CHAIN_SCRIPT).
@@ -955,8 +959,8 @@ private:
 	/**
 	 * IDA: chGetDrawnRect.  Set during preRenderFeature() when the feature's
 	 * animation advances (timing gate passes).  Cleared after the render loop
-	 * in renderFeatures().  When set, the feature's clickRect is merged into
-	 * the dirty region and its shapes are redrawn.
+	 * in renderFeatures().  When set, the feature's visual coverage is merged
+	 * into the dirty region and its shapes are redrawn.
 	 */
 	bool _needsRedraw = false;
 	/**

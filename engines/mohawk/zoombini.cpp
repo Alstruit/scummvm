@@ -134,6 +134,7 @@ MohawkEngine_Zoombini::MohawkEngine_Zoombini(OSystem *syst, const MohawkGameDesc
 	DebugMan.addDebugChannel(kZmbDebugResource, "Resource", "Track Resource Parsing");
 	DebugMan.addDebugChannel(kZmbDebugAnimation, "Animation", "Track Animation State");
 	DebugMan.addDebugChannel(kZmbDebugRender, "Render", "Track Rendering");
+	DebugMan.addDebugChannel(kZmbDebugHelp, "Help", "Track Help Dialog State");
 }
 
 MohawkEngine_Zoombini::~MohawkEngine_Zoombini() {
@@ -142,6 +143,7 @@ MohawkEngine_Zoombini::~MohawkEngine_Zoombini() {
 
 	delete _activePage;
 	delete _sysMhk;
+	delete _helpMhk;
 	delete _snoidShapeRegs;
 	delete _smallSnoidShapeRegs;
 	delete _snoidScriptShapeRegs;
@@ -181,6 +183,8 @@ Common::Error MohawkEngine_Zoombini::run() {
 
 	// Load ZOOMBINI.MHK
 	_sysMhk = loadSystemArchive();
+	if (isGameVariant(GF_ZMB_TLC))
+		_helpMhk = loadHelpArchive();
 
 	// Load global registration-point offsets for snoid body-part shapes.
 	// IDA: dword_4B731C (X) and dword_4B7320 (Y) loaded from REGS 100+101 in ZOOMBINI.MHK.
@@ -433,6 +437,17 @@ MohawkArchive *MohawkEngine_Zoombini::loadSystemArchive() {
 	return mhkArchive;
 }
 
+MohawkArchive *MohawkEngine_Zoombini::loadHelpArchive() {
+	MohawkArchive *mhkArchive = new MohawkArchive();
+	if (!mhkArchive->openFile(Common::Path(ZMB_MHK_HELP))) {
+		delete mhkArchive;
+		warning("Zoombini: cannot open TLC help voice archive '%s'", ZMB_MHK_HELP);
+		return nullptr;
+	}
+
+	return mhkArchive;
+}
+
 void MohawkEngine_Zoombini::loadNextPage() {
 	if (_quitEventState == kQuitEventRunning) {
 		_quitEventState = kQuitEventDone;
@@ -632,9 +647,8 @@ void MohawkEngine_Zoombini::openDebugDialog(const ZoombiniDebugCommand &cmd) {
 }
 
 ZoombiniDialogResult MohawkEngine_Zoombini::loadModalDialog(ZoombiniDialog *dialogPage) {
-	if (_dialogPageStack.empty())
-		_mixer->pauseAll(true);
-
+	// Original dialogs only add modal SCRB runners. They do not pause or stop
+	// page audio, so Town ambient music keeps playing underneath help/options.
 	dialogPage->open();
 	dialogPage->setBackgroundBitmap();
 	dialogPage->loadFeatures();
@@ -663,7 +677,6 @@ void MohawkEngine_Zoombini::closeActiveDialog() {
 	delete dialogPage;
 
 	if (_dialogPageStack.empty()) {
-		_mixer->pauseAll(false);
 		// IDA gfx_renderFrame (0x45F070): the original resets dirty state
 		// when dialogs close (dlg_wPendingCloseKind).  Force a full redraw
 		// of the underlying page so that any dialog-painted pixels on the
@@ -686,7 +699,7 @@ Common::SeekableReadStream *MohawkEngine_Zoombini::getResource(uint32 tag, uint1
 Common::SeekableReadStream *MohawkEngine_Zoombini::getResource(uint32 tag, ZmbResource res) {
 	// Pre-check existence so the failure message can tell the user WHICH
 	// archive was searched (kPage = current .mhk page archive, kSystem =
-	// ZOOMBINI.MHK). The Mohawk base class `error` on miss only says
+	// ZOOMBINI.MHK plus optional TLC HELP.MHK). The Mohawk base class `error` on miss only says
 	// "Archive does not contain 'XXXX' NNNN!" without naming the archive,
 	// which makes it impossible to tell whether the caller targeted the
 	// wrong archive or the resource is genuinely missing.
@@ -698,10 +711,13 @@ Common::SeekableReadStream *MohawkEngine_Zoombini::getResource(uint32 tag, ZmbRe
 	tagBuf[4] = 0;
 	switch (res._archiveKind) {
 	case ZmbArchiveKind::kSystem:
-		if (!_sysMhk->hasResource(tag, res._id))
-			error("Zoombini: resource '%s' id %u (0x%04x) not found in kSystem (ZOOMBINI.MHK)",
-			      tagBuf, res._id, res._id);
-		return _sysMhk->getResource(tag, res._id);
+		if (_sysMhk->hasResource(tag, res._id))
+			return _sysMhk->getResource(tag, res._id);
+		if (_helpMhk && _helpMhk->hasResource(tag, res._id))
+			return _helpMhk->getResource(tag, res._id);
+		error("Zoombini: resource '%s' id %u (0x%04x) not found in kSystem (ZOOMBINI.MHK/HELP.MHK)",
+		      tagBuf, res._id, res._id);
+		break;
 	case ZmbArchiveKind::kPage:
 		if (!MohawkEngine::hasResource(tag, res._id))
 			error("Zoombini: resource '%s' id %u (0x%04x) not found in kPage (current page archive)",
@@ -717,7 +733,7 @@ Common::SeekableReadStream *MohawkEngine_Zoombini::getResource(uint32 tag, ZmbRe
 bool MohawkEngine_Zoombini::hasResource(uint32 tag, ZmbResource res) {
 	switch (res._archiveKind) {
 	case ZmbArchiveKind::kSystem:
-		return _sysMhk->hasResource(tag, res._id);
+		return _sysMhk->hasResource(tag, res._id) || (_helpMhk && _helpMhk->hasResource(tag, res._id));
 	case ZmbArchiveKind::kPage:
 		return MohawkEngine::hasResource(tag, res._id);
 	default:
@@ -733,6 +749,8 @@ Common::Array<uint16> MohawkEngine_Zoombini::getResourceIDList(ZmbArchiveKind ki
 	switch (kind) {
 	case ZmbArchiveKind::kSystem:
 		ids.push_back(_sysMhk->getResourceIDList(tag));
+		if (_helpMhk)
+			ids.push_back(_helpMhk->getResourceIDList(tag));
 		break;
 	case ZmbArchiveKind::kPage:
 		for (Mohawk::Archive *mhk : _mhk)
@@ -749,7 +767,7 @@ Common::Array<uint16> MohawkEngine_Zoombini::getResourceIDList(ZmbArchiveKind ki
 uint MohawkEngine_Zoombini::getArchiveCount(ZmbArchiveKind kind) const {
 	switch (kind) {
 	case ZmbArchiveKind::kSystem:
-		return 1;
+		return _helpMhk ? 2 : 1;
 	case ZmbArchiveKind::kPage:
 		return _mhk.size();
 	default:
@@ -761,8 +779,8 @@ uint MohawkEngine_Zoombini::getArchiveCount(ZmbArchiveKind kind) const {
 Archive *MohawkEngine_Zoombini::getArchive(ZmbArchiveKind kind, uint archiveIdx) const {
 	switch (kind) {
 	case ZmbArchiveKind::kSystem:
-		assert(archiveIdx == 0);
-		return _sysMhk;
+		assert(archiveIdx < getArchiveCount(kind));
+		return (archiveIdx == 0) ? _sysMhk : _helpMhk;
 	case ZmbArchiveKind::kPage:
 		assert(archiveIdx < _mhk.size());
 		return _mhk[archiveIdx];

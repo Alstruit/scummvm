@@ -114,6 +114,7 @@ private:
 constexpr const char *ZMB_MHK_ZOOMBINI = "DATA/ZOOMBINI.MHK";
 constexpr const char *ZMB_MHK_MIDIMPC = "DATA/MIDIMPC.MHK"; // Broderbund 1.x releases only
 constexpr const char *ZMB_MHK_MUSIC = "DATA/MUSIC.MHK";     // The Learning Company 2.0 release only
+constexpr const char *ZMB_MHK_HELP = "DATA/HELP.MHK";       // The Learning Company 2.0 release only
 constexpr const char *ZMB_MHK_XFER = "DATA/XFER.MHK";
 constexpr const char *ZMB_MHK_RODMAP = "DATA/RODMAP.MHK";
 constexpr const char *ZMB_MHK_PICKER = "DATA/PICKER.MHK";
@@ -209,6 +210,7 @@ public:
 	 * Called in every Zoombini animation frames (60FPS), where game logic tied to animation frames (e.g. ambient sound driver) should be updated and executed.
 	 */
 	virtual void onAnimFrame();
+	void showWarningBox(const Common::U32String &text, uint32 durationSeconds = DEFAULT_WARNING_BOX_SHOW_SECONDS);
 
 	void onFadeIn();
 	void onFadeOut();
@@ -683,9 +685,18 @@ protected:
 	// internally an RMap structure) clipped via GDI clip regions.  We maintain
 	// the individual rects AND their bounding box for quick early-out.
 	Common::Array<Common::Rect> _dirtyRects;
+	Common::Rect _dirtyOverflowRect;
 	Common::Rect _dirtyBounds;
+	bool _hasDirtyOverflowRect = false;
 	bool _hasDirtyBounds = false;
-	void addDirtyRect(const Common::Rect &rect);
+	bool addDirtyRect(const Common::Rect &rect);
+	/**
+	 * Merge the feature's stored visual coverage into the dirty region.
+	 * Before preRender replaces hotspot state, this is the old on-screen
+	 * coverage that must be erased by background restore. After rendering, it
+	 * is the new coverage that must expand the active dirty clip.
+	 */
+	void markFeatureVisualCoverageDirty(ZmbFeature *feature, bool expandRenderClip);
 
 	/**
 	 * IDA: scrb_currentRenderRunnerIdx accumulator.
@@ -703,6 +714,17 @@ protected:
 	void loadREGS(ZmbArchiveKind archiveKind, uint16 imgResource);
 
 	static constexpr uint32 BUTTON_PRESS_ANIMATION_FRAMES = 4;
+	static constexpr uint32 DEFAULT_WARNING_BOX_SHOW_SECONDS = 3;
+	static constexpr uint32 WARNING_BOX_OUTER_COLOR = ZoombiniGraphics::kColor29_Brown;
+	static constexpr uint32 WARNING_BOX_INNER_COLOR = ZoombiniGraphics::kColor27_Red;
+	static constexpr uint32 WARNING_BOX_FILL_COLOR = ZoombiniGraphics::kColor2B_Yellow;
+	static constexpr uint32 WARNING_BOX_TEXT_COLOR = ZoombiniGraphics::kColor2D_Black;
+	const Common::Rect _warningBoxRect = Common::Rect(0x0178, 0x000C, 0x0274, 0x0048);
+	Common::U32String _warningBoxText;
+	uint32 _warningBoxShowUntilFrame = 0;
+	ZmbFeature *_warningBoxFeature = nullptr;
+	bool warningBox_preRender(ZmbFeature *feature);
+	void warningBox_onPostRender(ZmbFeature *feature);
 
 	/**
 	 * AnimateState - Helper for press-animation and toggle-animation handling

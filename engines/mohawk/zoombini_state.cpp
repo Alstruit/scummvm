@@ -36,6 +36,37 @@
 
 namespace Mohawk {
 
+static const int32 kZmbStateFileSizeV1Legacy = 44549;
+static const int32 kZmbStateFileSizeV1 = 44559;
+static const int32 kZmbStateFileSizeTlcLegacy = 48430;
+static const int32 kZmbStateFileSizeTlc = 48440;
+
+static bool getSaveFormatFromSize(int32 size, bool isTlcVariant, bool &isTlcLayout, bool &hasCompletionCounters) {
+	isTlcLayout = false;
+	hasCompletionCounters = false;
+
+	switch (size) {
+	case kZmbStateFileSizeV1Legacy:
+		return true;
+	case kZmbStateFileSizeV1:
+		hasCompletionCounters = true;
+		return true;
+	case kZmbStateFileSizeTlcLegacy:
+		if (!isTlcVariant)
+			return false;
+		isTlcLayout = true;
+		return true;
+	case kZmbStateFileSizeTlc:
+		if (!isTlcVariant)
+			return false;
+		isTlcLayout = true;
+		hasCompletionCounters = true;
+		return true;
+	default:
+		return false;
+	}
+}
+
 static int16 countOccupiedSnoidsInPack(const ZmbStateActivePack &pack) {
 	int16 occupiedCount = 0;
 	int16 entryLimit = pack._wPackZmbCount;
@@ -187,14 +218,16 @@ bool ZoombiniGameState::loadState(int slot) {
 
 	// Check save file size
 	int32 size = loadFile->size();
-	if (size != 44559) {
+	bool isTlcLayout = false;
+	bool hasCompletionCounters = false;
+	if (!getSaveFormatFromSize(size, _vm->isGameVariant(GF_ZMB_TLC), isTlcLayout, hasCompletionCounters)) {
 		warning("Incompatible saved game version");
 		delete loadFile;
 		return false;
 	}
 
 	Common::Serializer s(loadFile, nullptr);
-	syncGameState(s);
+	syncGameState(s, isTlcLayout, hasCompletionCounters);
 	delete loadFile;
 
 	_currentSaveSlot = slot;
@@ -202,8 +235,8 @@ bool ZoombiniGameState::loadState(int slot) {
 	return true;
 }
 
-void ZoombiniGameState::syncGameState(Common::Serializer &s) {
-	_f.sync(s);
+void ZoombiniGameState::syncGameState(Common::Serializer &s, bool isTlcLayout, bool hasCompletionCounters) {
+	_f.sync(s, isTlcLayout, hasCompletionCounters);
 	_f._isDirty = false;
 }
 
@@ -276,7 +309,7 @@ bool ZoombiniGameState::saveState(int slot) {
 	debugC(kZmbDebugSaveLoad, "Saving game to '%s'", filename.c_str());
 
 	Common::Serializer s(nullptr, saveFile);
-	syncGameState(s);
+	syncGameState(s, _vm->isGameVariant(GF_ZMB_TLC), true);
 	saveFile->finalize();
 	delete saveFile;
 
@@ -348,45 +381,51 @@ void ZmbTrait::sync(Common::Serializer &s) {
 	assert(0 <= _foot && _foot <= 5);
 }
 
-void ZmbStateStoredEntry::sync(Common::Serializer &s) {
+void ZmbStateStoredEntry::sync(Common::Serializer &s, bool isTlcLayout) {
 	_traits.sync(s);
 	s.syncAsUint16LE(_rect.bottom);
 	s.syncAsUint16LE(_rect.right);
 	s.syncAsUint16LE(_rect.top);
 	s.syncAsUint16LE(_rect.left);
 	s.syncBytes(_name, ARRAYSIZE(_name));
+	if (isTlcLayout)
+		s.skip(2);
 }
 
 Common::U32String ZmbStateStoredEntry::getU32Name(MohawkEngine_Zoombini *vm) {
 	return vm->_text->toU32String(_name, ARRAYSIZE(_name));
 }
 
-void Mohawk::ZmbStateStoredChunk::sync(Common::Serializer &s) {
+void Mohawk::ZmbStateStoredChunk::sync(Common::Serializer &s, bool isTlcLayout) {
 	s.syncAsUint16LE(_leftmostColumnIdx);
 	s.syncAsUint16LE(_storedCount);
 	for (int i = 0; i < ARRAYSIZE(_entries); i++)
-		_entries[i].sync(s);
+		_entries[i].sync(s, isTlcLayout);
 }
 
-void ZmbStateActiveEntry::sync(Common::Serializer &s) {
+void ZmbStateActiveEntry::sync(Common::Serializer &s, bool isTlcLayout) {
 	_traits.sync(s);
 	s.syncAsUint16LE(_posX);
 	s.syncAsUint16LE(_posY);
 	s.syncAsByte(_bIsOccupied);
 	s.syncBytes(_name, ARRAYSIZE(_name));
+	if (isTlcLayout)
+		s.skip(1);
 }
 
 Common::U32String ZmbStateActiveEntry::getU32Name(MohawkEngine_Zoombini *vm) {
 	return vm->_text->toU32String(_name, ARRAYSIZE(_name));
 }
 
-void ZmbStateActivePack::sync(Common::Serializer &s) {
+void ZmbStateActivePack::sync(Common::Serializer &s, bool isTlcLayout) {
 	s.syncAsSint16LE(_wPackZmbCount);
 	s.syncAsSint16LE(_bSkipOccupiedAnim);
 	s.syncAsSint16LE(_bSkipUnoccupiedAnim);
 	for (int i = 0; i < ARRAYSIZE(_entries); i++)
-		_entries[i].sync(s);
+		_entries[i].sync(s, isTlcLayout);
 	s.syncBytes(_unk0136, ARRAYSIZE(_unk0136));
+	if (isTlcLayout)
+		s.skip(16);
 }
 
 void ZmbRosterFile::sync(Common::Serializer &r) {
@@ -521,7 +560,7 @@ void ZmbStateFile::setCurrentPageType(ZoombiniPageType pageType) {
 	_isDirty |= (lastPage != _currentPage);
 }
 
-void ZmbStateFile::sync(Common::Serializer &s) {
+void ZmbStateFile::sync(Common::Serializer &s, bool isTlcLayout, bool hasCompletionCounters) {
 	// 0x0000: Magic
 	s.syncAsUint16LE(_magic6B00);
 	s.syncAsUint16LE(_autoStickyDelay);
@@ -598,36 +637,46 @@ void ZmbStateFile::sync(Common::Serializer &s) {
 	}
 	s.syncAsUint16LE(_currentRoute);
 	s.syncAsSint16LE(_currentPage);
+	if (isTlcLayout)
+		s.syncAsUint16LE(_tlcSavedPageState);
 
-	// 0x00CE: Stored Zoombinis on Basecamp 1
-	_storedChunkBC1.sync(s);
+	// v1.x 0x00CE / TLC 0x00D0: Stored Zoombinis on Basecamp 1
+	_storedChunkBC1.sync(s, isTlcLayout);
 
-	// 0x3688: Stored Zoombinis on Basecamp 2
-	_storedChunkBC2.sync(s);
+	// v1.x 0x3688 / TLC 0x3B6C: Stored Zoombinis on Basecamp 2
+	_storedChunkBC2.sync(s, isTlcLayout);
 
-	// 0x6C42: Stored Zoombinis on Town
-	_storedChunkTown.sync(s);
+	// v1.x 0x6C42 / TLC 0x7608: Stored Zoombinis on Town
+	_storedChunkTown.sync(s, isTlcLayout);
 
-	// 0xA1FC: Active Zoombini Packs
-	_zmbPackIsle.sync(s);
+	// v1.x 0xA1FC / TLC 0xB0A4: Active Zoombini Packs
+	_zmbPackIsle.sync(s, isTlcLayout);
 	s.syncAsUint16LE(_wZmbPackIsleVal);
-	_zmbPackBC1.sync(s);
+	_zmbPackBC1.sync(s, isTlcLayout);
 	s.syncAsUint16LE(_wZmbPackBC1Val);
-	_zmbPackBC2.sync(s);
+	_zmbPackBC2.sync(s, isTlcLayout);
 	s.syncAsUint16LE(_wZmbPackBC2Val);
-	_zmbPackActive.sync(s);
+	_zmbPackActive.sync(s, isTlcLayout);
 	s.syncAsUint16LE(_wZmbPackActiveVal);
 
-	// 0xAB94: Zoombini Twin Status
+	// v1.x 0xAB94 / TLC 0xBABE: Zoombini Twin Status
 	s.syncBytes(_twinGenStatus, ARRAYSIZE(_twinGenStatus));
+	if (isTlcLayout)
+		s.syncAsByte(_tlcTwinGenStatusPad);
 
-	// 0xAE05: Per-route perfect completion counters (zeroed when loading v1 format / 44549-byte saves)
-	for (int32 i = 0; i < ARRAYSIZE(_routePerfectCounters); i++) {
-		s.syncAsSint16LE(_routePerfectCounters[i]);
+	if (hasCompletionCounters) {
+		// v1.x 0xAE05 / TLC 0xBD2E: Per-route perfect completion counters.
+		for (int32 i = 0; i < ARRAYSIZE(_routePerfectCounters); i++) {
+			s.syncAsSint16LE(_routePerfectCounters[i]);
+		}
+		s.syncAsSint16LE(_townDevelopLevel);
+	} else if (s.isLoading()) {
+		for (int32 i = 0; i < ARRAYSIZE(_routePerfectCounters); i++)
+			_routePerfectCounters[i] = 0;
+		_townDevelopLevel = 0;
 	}
-	s.syncAsSint16LE(_townDevelopLevel);
 
-	// 0xAE0F: EOF
+	// v1.x 0xAE0F / TLC 0xBD38: EOF
 }
 
 ZMB_DIFFICULTY_ID ZoombiniGameState::getDifficultyIdFromPageFlag(uint16 &pageFlag) {
@@ -815,7 +864,7 @@ int ZoombiniGameState::getAvailableSaveSlot() {
 	return -1;
 }
 
-void ZoombiniGameState::readPageHelpStrings(ZoombiniPageType pageType, Common::Array<Common::U32String> &helpStrs) {
+uint16 ZoombiniGameState::readPageHelpStrings(ZoombiniPageType pageType, Common::Array<Common::U32String> &helpStrs) {
 	uint16 level = 0;
 	switch (pageType) {
 	case ZoombiniPageType::kPicker:
@@ -833,12 +882,13 @@ void ZoombiniGameState::readPageHelpStrings(ZoombiniPageType pageType, Common::A
 	Common::HashMap<ZoombiniPageType, HelpSTRL>::iterator it = _helpStrlMap.find(pageType);
 	if (it == _helpStrlMap.end()) {
 		error("Cannot find help strings for pageType(%u)", static_cast<uint16>(pageType));
-		return;
+		return 0;
 	}
 
 	const HelpSTRL &helpStrl = it->_value;
 	uint16 strlResNo = helpStrl._helpResBase + 20 * level;
 	_vm->_text->getStrl(helpStrs, ZmbResource(ZmbArchiveKind::kSystem, strlResNo));
+	return strlResNo;
 }
 
 void ZoombiniGameState::startNewGame() {
@@ -956,6 +1006,9 @@ void ZoombiniGameState::setEnableTouchSense(bool val) {
 		if (interactive)
 			interactive->showNotiBoxLong(val ? ZoombiniText::kNotiBoxTouchSenseOn : ZoombiniText::kNotiBoxTouchSenseOff);
 	}
+
+	if (page)
+		page->showWarningBox(Common::U32String("[WARN] Hardware feedback is not implemented in ScummVM.", Common::kUtf8));
 }
 
 void ZoombiniGameState::setEnableHelpAudio(bool val) {

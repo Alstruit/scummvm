@@ -58,6 +58,53 @@ void ZoombiniPage::onAnimFrame() {
 	checkCloseFeatures();
 }
 
+void ZoombiniPage::showWarningBox(const Common::U32String &text, uint32 durationSeconds) {
+	_warningBoxText = text;
+	_warningBoxShowUntilFrame = _currentFrameCounter + durationSeconds * MohawkEngine_Zoombini::kAnimateFrameRate;
+
+	if (!_warningBoxFeature) {
+		ZmbFeature::EventHooks hooks;
+		hooks.setPreRenderFunc(&ZoombiniPage::warningBox_preRender);
+		hooks.setPostRenderFunc(&ZoombiniPage::warningBox_onPostRender);
+
+		_warningBoxFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, 0), 0, 0,
+			ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
+			hooks);
+		_warningBoxFeature->setSortRect(_warningBoxRect);
+		_warningBoxFeature->setClickRect(_warningBoxRect);
+	}
+
+	addExternalDirtyRect(_warningBoxRect);
+}
+
+bool ZoombiniPage::warningBox_preRender(ZmbFeature *feature) {
+	if (_warningBoxShowUntilFrame <= _currentFrameCounter) {
+		addDirtyRect(_warningBoxRect);
+		feature->scheduleClose();
+		_warningBoxFeature = nullptr;
+		_warningBoxText.clear();
+	}
+
+	return false;
+}
+
+void ZoombiniPage::warningBox_onPostRender(ZmbFeature *feature) {
+	if (_warningBoxText.empty())
+		return;
+
+	const ZoombiniGraphics::ScreenKind screenKind = ZoombiniGraphics::kShapeScreen;
+	_vm->_gfx->fillArea(screenKind, _warningBoxRect, WARNING_BOX_OUTER_COLOR);
+	_vm->_gfx->fillArea(screenKind, Common::Rect(_warningBoxRect.left + 1, _warningBoxRect.top + 1, _warningBoxRect.right - 1, _warningBoxRect.bottom - 1), WARNING_BOX_INNER_COLOR);
+	_vm->_gfx->fillArea(screenKind, Common::Rect(_warningBoxRect.left + 3, _warningBoxRect.top + 3, _warningBoxRect.right - 3, _warningBoxRect.bottom - 3), WARNING_BOX_FILL_COLOR);
+
+	ZoombiniGraphics::TextConf textConf;
+	textConf._textPalette = WARNING_BOX_TEXT_COLOR;
+	textConf._wordWrap = true;
+	textConf._hAlign = Graphics::kTextAlignCenter;
+	textConf._vAlign = Graphics::kTextAlignCenter;
+	_vm->_gfx->drawText(screenKind, _warningBoxText, Common::Rect(_warningBoxRect.left + 8, _warningBoxRect.top + 6, _warningBoxRect.right - 8, _warningBoxRect.bottom - 6), textConf);
+}
+
 bool ZoombiniPage::isClosed() {
 	return _isClosed;
 }
@@ -394,8 +441,9 @@ void ZoombiniPage::categorizeFeature(ZmbFeature *feature, Common::Array<ZmbFeatu
 /**
  * Sort features ascending by (clickRect.bottom, clickRect.left).
  *
- * IDA uses clickRect (set once from first render) for stable Z-ordering.
- * Falls back to sortRect if clickRect hasn't been set yet (first frame).
+ * IDA uses the runner's current visual clickRect for stable Z-ordering.
+ * ScummVM uses getZSortRect(), which maps that current visual rect to
+ * ZmbFeature::_sortRect while preserving manual click zones separately.
  *
  * Features with FLAG_00001000_TOPMOST are moved to the tail after sorting.
  * IDA zsort_insertionSortByDepthAndX (0x4609F7): TOPMOST incoming always
@@ -670,19 +718,71 @@ void ZoombiniPage::buildSortedEventList(Common::Array<ZmbFeature *> &outList) {
 	mergeSortedListInto(outList, entityList);
 }
 
-void ZoombiniPage::addDirtyRect(const Common::Rect &rect) {
+bool ZoombiniPage::addDirtyRect(const Common::Rect &rect) {
+	static const uint32 kMaxDirtyRects = 32;
+
 	if (rect.isEmpty())
-		return;
+		return false;
 	Common::Rect clipped = rect;
 	clipped.clip(Common::Rect(0, 0, 640, 480));
 	if (clipped.isEmpty())
-		return;
-	_dirtyRects.push_back(clipped);
+		return false;
+
+	uint32 idx = 0;
+	while (idx < _dirtyRects.size()) {
+		if (_dirtyRects[idx].intersects(clipped)) {
+			clipped.extend(_dirtyRects[idx]);
+			_dirtyRects.remove_at(idx);
+			idx = 0;
+		} else {
+			idx++;
+		}
+	}
+
+	if (_hasDirtyOverflowRect && _dirtyOverflowRect.intersects(clipped)) {
+		_dirtyOverflowRect.extend(clipped);
+		clipped = _dirtyOverflowRect;
+	} else if (_dirtyRects.size() < kMaxDirtyRects) {
+		_dirtyRects.push_back(clipped);
+	} else {
+		if (_hasDirtyOverflowRect) {
+			_dirtyOverflowRect.extend(clipped);
+		} else {
+			_dirtyOverflowRect = clipped;
+			_hasDirtyOverflowRect = true;
+		}
+		clipped = _dirtyOverflowRect;
+	}
+
 	if (_hasDirtyBounds) {
 		_dirtyBounds.extend(clipped);
 	} else {
 		_dirtyBounds = clipped;
 		_hasDirtyBounds = true;
+	}
+	return true;
+}
+
+void ZoombiniPage::markFeatureVisualCoverageDirty(ZmbFeature *feature, bool expandRenderClip) {
+	bool added = false;
+
+	if (feature->hasFlag(ZmbFeature::FLAG_08000000_REGION_TRACK) && feature->hasDrawRecords()) {
+		Common::Array<Common::Rect> rects;
+		feature->collectDrawRecordRects(rects);
+
+		for (uint32 i = 0; i < rects.size(); i++) {
+			if (addDirtyRect(rects[i])) {
+				added = true;
+				if (expandRenderClip)
+					_vm->_gfx->addRenderClipRect(rects[i]);
+			}
+		}
+	}
+
+	if (!added) {
+		const Common::Rect &rect = feature->getZSortRect();
+		if (addDirtyRect(rect) && expandRenderClip)
+			_vm->_gfx->addRenderClipRect(rect);
 	}
 }
 
@@ -698,32 +798,34 @@ void ZoombiniPage::addExternalDirtyRect(const Common::Rect &rect) {
 }
 
 void ZoombiniPage::renderFeatures() {
-	// IDA gfx_renderFrame (0x45F070) — dirty-rect rendering architecture:
+	// IDA gfx_renderFrame (0x45F070) - dirty-rect rendering architecture:
 	//
 	// The original engine maintains a persistent shapeScreen (composite buffer)
-	// that is NOT cleared each frame.  Only "dirty" regions — areas where features
-	// changed — get background restoration and redraw.  Non-dirty pixels persist
+	// that is NOT cleared each frame.  Only "dirty" regions - areas where features
+	// changed - get background restoration and redraw.  Non-dirty pixels persist
 	// from the previous frame's composite.
 	//
 	// Pipeline:
 	//   1. Merge external dirty accumulator into main dirty region (IDA 0x45F2A3)
-	//   2. PreRender: animation logic + merge OLD clickRects into dirty (IDA 0x45F2C6)
+	//   2. PreRender: animation logic + merge OLD visual coverage into dirty
 	//   3. Z-sort features (IDA 0x45F2F1)
 	//   4. Restore background ONLY in dirty region (IDA 0x45F352)
 	//   5. Set render clip to dirty region rects (IDA 0x45F35B)
-	//   6. For each Z-sorted feature: merge NEW clickRect if dirty, expand clip,
+	//   6. For each Z-sorted feature: merge NEW visual coverage if dirty,
 	//      draw (IDA 0x45F35F)
 	//   7. Release render clip region (IDA 0x45F3D3)
 	//
 	// The original engine uses Windows GDI clip regions (union of rectangles) set
 	// on the port's HDC via port_selectActiveRegion.  Each draw call is automatically
-	// clipped to the precise union of dirty rects — NOT their bounding box.
+	// clipped to the precise union of dirty rects - NOT their bounding box.
 	// We replicate this by maintaining a list of individual dirty rects and clipping
 	// each draw operation to each rect's intersection.
 
 	// Step 1: Reset dirty region (IDA 0x45F443: dirty_resetRgnRBoundingRect)
 	_dirtyRects.clear();
+	_dirtyOverflowRect = Common::Rect();
 	_dirtyBounds = Common::Rect();
+	_hasDirtyOverflowRect = false;
 	_hasDirtyBounds = false;
 
 	// Step 2: Merge external dirty accumulator (IDA 0x45F2A3: dirty_mergeRgnRIntoTarget)
@@ -733,15 +835,15 @@ void ZoombiniPage::renderFeatures() {
 		_hasExternalDirtyBounds = false;
 	}
 
-	// Step 3: Force redraw → entire screen is dirty (initial frame, page change, etc.)
+	// Step 3: Force redraw: entire screen is dirty (initial frame, page change, etc.)
 	if (_forceRedrawPending) {
 		addDirtyRect(Common::Rect(0, 0, 640, 480));
 		_forceRedrawPending = false;
 	}
 
-	// Pass 1: Pre-render all features — animation logic (IDA 0x45F2C6)
-	// Sets _needsRedraw on animating features and merges their OLD clickRects
-	// into the dirty region.
+	// Pass 1: Pre-render all features - animation logic (IDA 0x45F2C6)
+	// Sets _needsRedraw on animating features and merges their OLD visual
+	// coverage into the dirty region.
 	for (ZmbFeature *f : _scrbFeatures)
 		f->onPreRender(this);
 	for (ZmbFeature *f : _subFeatures)
@@ -753,27 +855,31 @@ void ZoombiniPage::renderFeatures() {
 	Common::Array<ZmbFeature *> renderList;
 	buildSortedRenderList(renderList);
 
+	Common::Array<Common::Rect> initialDirtyRects = _dirtyRects;
+	if (_hasDirtyOverflowRect)
+		initialDirtyRects.push_back(_dirtyOverflowRect);
+
 	// Step 4: Restore background in dirty region only (IDA 0x45F352)
-	// In the original, gfx_blitPortToPort copies backScreen → shapeScreen
+	// In the original, gfx_blitPortToPort copies backScreen to shapeScreen
 	// through the port's active clip region (set to the dirty region).
 	// We restore background per individual dirty rect to match.
-	for (const Common::Rect &dirtyRect : _dirtyRects) {
+	for (const Common::Rect &dirtyRect : initialDirtyRects) {
 		if (!dirtyRect.isEmpty())
 			_vm->_gfx->copyBackToShapeScreen(dirtyRect);
 	}
 
-	// IDA 0x45F35B–0x45F35E: port_selectActiveRegion(g_wDirtyRgnId)
+	// IDA 0x45F35B-0x45F35E: port_selectActiveRegion(g_wDirtyRgnId)
 	// Set render clip to the list of dirty rects.  All drawing is confined
-	// to the precise union of these rects — non-dirty features' previous-frame
+	// to the precise union of these rects - non-dirty features' previous-frame
 	// pixels persist on the shape-screen.
 	if (_hasDirtyBounds)
-		_vm->_gfx->setRenderClipRects(_dirtyRects);
+		_vm->_gfx->setRenderClipRects(initialDirtyRects);
 
-	// Pass 2: Post-render — draw shapes in Z-sorted order (IDA 0x45F35F)
+	// Pass 2: Post-render - draw shapes in Z-sorted order (IDA 0x45F35F)
 	//
-	// Original timing: preRender's LABEL_70 (0x4620F5) computes the NEW clickRect
-	// from hotspot metadata + REGS shape sizes, and the post-render loop merges it
-	// into dirty BEFORE drawing.  The clip always covers the feature's new area.
+	// Original timing: preRender computes the NEW visual coverage from hotspot
+	// metadata + REGS shape sizes, and the post-render loop merges it into dirty
+	// BEFORE drawing.  The clip always covers the feature's new area.
 	//
 	// In ScummVM, the new sortRect isn't available until drawing runs.  While a
 	// dirty feature renders, ZoombiniGraphics records each shape/text/fill rect
@@ -785,12 +891,9 @@ void ZoombiniPage::renderFeatures() {
 	// causing dialog remnants and Z-ordering corruption.
 	for (ZmbFeature *feature : renderList) {
 		if (feature->needsRedraw()) {
-			// IDA 0x45F361–0x45F3BC: merge clickRect into dirty, expand clip.
-			const Common::Rect &oldRect = feature->getZSortRect();
-			if (!oldRect.isEmpty()) {
-				addDirtyRect(oldRect);
-				_vm->_gfx->addRenderClipRect(oldRect);
-			}
+			// Re-merge the old visual coverage into the active clip. For
+			// REGION_TRACK runners this uses the previous frame's per-shape RgnR.
+			markFeatureVisualCoverageDirty(feature, true);
 		}
 
 		bool featureNeedsRedraw = feature->needsRedraw();
@@ -805,13 +908,9 @@ void ZoombiniPage::renderFeatures() {
 		}
 
 		if (feature->needsRedraw()) {
-			// After blitShapes, sortRect holds the NEW logical bounding box.
-			// Merge into dirty + expand clip for subsequent higher-Z features.
-			const Common::Rect &newRect = feature->getZSortRect();
-			if (!newRect.isEmpty()) {
-				addDirtyRect(newRect);
-				_vm->_gfx->addRenderClipRect(newRect);
-			}
+			// After rendering, DrawRecords/sortRect hold the NEW visual
+			// coverage. Merge it for subsequent higher-Z features.
+			markFeatureVisualCoverageDirty(feature, true);
 		}
 
 		// IDA 0x45F3CB: chGetDrawnRect = 0
@@ -896,16 +995,13 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 	if (!feature->isFrameTimingReady())
 		return;
 
-	// IDA 0x461BB7–0x461BF3: dirty rect merge (chGetDrawnRect = 1).
-	// Merge the feature's CURRENT (about-to-be-replaced) clickRect into the
-	// dirty region so that the area it occupied is repainted this frame.
+	// IDA 0x461BB7-0x461BF3: dirty rect merge (chGetDrawnRect = 1).
+	// Merge the feature's current, about-to-be-replaced visual coverage into
+	// the dirty region so that the area it occupied is repainted this frame.
 	// FLAG_00004000_NO_DIRTY_MERGE: skip the merge (used by features whose
 	// old and new rects are identical, e.g., in-place animations).
-	if (!feature->hasFlag(ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE)) {
-		const Common::Rect &oldRect = feature->getZSortRect();
-		if (!oldRect.isEmpty())
-			addDirtyRect(oldRect);
-	}
+	if (!feature->hasFlag(ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE))
+		markFeatureVisualCoverageDirty(feature, false);
 	feature->setNeedsRedraw(true);
 
 	if (feature->isAnimateActivated()) {
@@ -1226,7 +1322,8 @@ ZmbRenderResult ZoombiniPage::blitShapes(ZmbFeature *feature) {
 		// Snoids: IDA snoidScript_renderFrame_4562B2 clears pZmb->clickRect to (0,0,0,0) and
 		// rebuilds it via rect_mergeUnion each frame — clickRect always reflects the current
 		// rendered bounding box for z-sorting and hit-testing as the snoid moves.
-		// Non-snoids: IDA runner_preRenderStandard 0x4620F5 sets clickRect once from first frame.
+		// Non-snoids: keep manual ScummVM click zones in _clickRect; _sortRect
+		// is the current visual rect used for dirty invalidation and Z-sort.
 		if (!feature->hasClickRect() || feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
 			feature->setClickRect(sortRect);
 	}
