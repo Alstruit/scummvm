@@ -45,29 +45,50 @@ void ZoombiniDialogCredits::open() {
 	_vm->_midi->pause(true);
 }
 
+void ZoombiniDialogCredits::updateCreditScrollElapsedFrames() {
+	const uint32 frameDelta = _currentFrameCounter - _lastCreditScrollFrameCounter;
+	_lastCreditScrollFrameCounter = _currentFrameCounter;
+
+	_creditScrollElapsedFrames += static_cast<int32>(frameDelta) * _creditScrollFramesPerFrame;
+	if (_creditScrollElapsedFrames < 0)
+		_creditScrollElapsedFrames = 0;
+}
+
+void ZoombiniDialogCredits::drawCreditLine(const Common::U32String &lineText, bool isTitle, int16 topY) {
+	ZoombiniGraphics::TextConf tc;
+	tc._fontUsage = ZoombiniFontUsage::kFontText;
+	tc._hAlign = Graphics::kTextAlignCenter;
+	tc._vAlign = Graphics::kTextAlignCenter;
+	tc._textPalette = isTitle ? kColorCreditsTitle : kColorCreditsLine;
+
+	Common::Rect drawRect = _textRect;
+	drawRect.top = topY;
+	drawRect.bottom = static_cast<int16>(drawRect.top + 16);
+	_vm->_gfx->drawText(ZoombiniGraphics::kShapeScreen, lineText, drawRect, tc);
+}
+
 void ZoombiniDialogCredits::loadFeatures() {
 	_pageStartFrameTime = _vm->_system->getMillis();
 	_pageStartFrameCounter = _pageStartFrameTime / MohawkEngine_Zoombini::kAnimateFrameTimeMs;
+	_lastCreditScrollFrameCounter = _pageStartFrameCounter;
+	_creditScrollElapsedFrames = 0;
+	_creditScrollFramesPerFrame = 1;
 
 	_vm->_text->getLocalizedCredits(_creditParagraphs);
 	_totalCreditLines = 0;
 	for (const ZoombiniText::CreditParagraph &paragraph : _creditParagraphs)
 		_totalCreditLines += paragraph.getTotalLineCount();
 
-	// Load SCRBs
+	// Keep ScummVM's elapsed-frame scroll math instead of the original fixed-tick gate,
+	// but render it from the original single credits runner so the frame shapes stay on top.
 	ZmbFeature::EventHooks hooksBackground;
+	hooksBackground.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogCredits::creditScreen_render));
 	hooksBackground.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniDialogCredits::creditScreen_onMouseLButtonDown));
 	hooksBackground.setKeyDownFunc(reinterpret_cast<ZmbFeature::OnKeyDownFunc>(&ZoombiniDialogCredits::creditScreen_onKeyDown));
+	hooksBackground.setKeyUpFunc(reinterpret_cast<ZmbFeature::OnKeyUpFunc>(&ZoombiniDialogCredits::creditScreen_onKeyUp));
 	loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0020_Credits), kResScrb0020_DialogCredits, 0,
 					ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
 					hooksBackground);
-
-	// Load Virtual Feature - drawLines
-	ZmbFeature::EventHooks hooksDrawLines;
-	hooksDrawLines.setRenderFunc(reinterpret_cast<ZmbFeature::OnRenderFunc>(&ZoombiniDialogCredits::drawLines_render));
-	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
-					ZmbFeature::FLAG_00001000_TOPMOST,
-					hooksDrawLines);
 
 	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound20104_TownBGM), Audio::Mixer::SoundType::kMusicSoundType, true);
 }
@@ -78,14 +99,39 @@ ZmbEventHandleResult ZoombiniDialogCredits::creditScreen_onMouseLButtonDown(ZmbF
 }
 
 ZmbEventHandleResult ZoombiniDialogCredits::creditScreen_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat) {
+	// ScummVM only debug controls: fast forward with `]`, rewind with `[`
+	switch (kbd.keycode) {
+	case Common::KEYCODE_RIGHTBRACKET:
+		_creditScrollFramesPerFrame = 15;
+		return ZmbEventHandleResult::kConsumed;
+	case Common::KEYCODE_LEFTBRACKET:
+		_creditScrollFramesPerFrame = -5;
+		return ZmbEventHandleResult::kConsumed;
+	default:
+		break;
+	}
+
 	close();
 	return ZmbEventHandleResult::kConsumed;
 }
 
-ZmbRenderResult ZoombiniDialogCredits::drawLines_render(ZmbFeature *feature) {
-	ZoombiniGraphics::ScreenKind screenKind = ZoombiniGraphics::kShapeScreen;
+ZmbEventHandleResult ZoombiniDialogCredits::creditScreen_onKeyUp(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat) {
+	if (kbd.keycode == Common::KEYCODE_RIGHTBRACKET || kbd.keycode == Common::KEYCODE_LEFTBRACKET) {
+		_creditScrollFramesPerFrame = 1;
+		return ZmbEventHandleResult::kConsumed;
+	}
 
-	_vm->_gfx->fillArea(screenKind, kColorCreditsBackground);
+	return ZmbEventHandleResult::kPassthrough;
+}
+
+ZmbRenderResult ZoombiniDialogCredits::creditScreen_render(ZmbFeature *feature) {
+	// The credits runner owns the black backdrop; limiting this to _blitRect leaks
+	// captured page pixels in the non-scroll area behind the frame art.
+	_vm->_gfx->fillArea(ZoombiniGraphics::kShapeScreen, kColorCreditsBackground);
+	updateCreditScrollElapsedFrames();
+
+	if (_totalCreditLines == 0)
+		return blitShapes(feature);
 
 	// Original engine draws one credit line per every 16 frames.
 	// - lineIdx = frameCounter / 16
@@ -98,7 +144,7 @@ ZmbRenderResult ZoombiniDialogCredits::drawLines_render(ZmbFeature *feature) {
 	// - y: 451 - 466 (line N), 451-16 ~ 466-16 (line N-1), 451-32 ~ 466-32 (line N-2), ...
 
 	// Find the lines to be drawn
-	uint32 elapsedFrames = _currentFrameCounter - _pageStartFrameCounter;
+	uint32 elapsedFrames = static_cast<uint32>(_creditScrollElapsedFrames);
 	int32 rawStartLineIdx = MAX(0, drawLines_getStartLineIdx(elapsedFrames));
 	int32 rawEndLineIdx = drawLines_getEndLineIdx(elapsedFrames);
 
@@ -124,21 +170,8 @@ ZmbRenderResult ZoombiniDialogCredits::drawLines_render(ZmbFeature *feature) {
 
 				assert(startLineIdx <= lineIdx || lineIdx <= endLineIdx);
 
-				bool isLineTitle = (li == 0);
-				ZoombiniGraphics::TextConf tc;
-				tc._fontUsage = ZoombiniFontUsage::kFontText;
-				tc._hAlign = Graphics::kTextAlignCenter;
-				tc._vAlign = Graphics::kTextAlignCenter;
-				if (isLineTitle) {
-					tc._textPalette = kColorCreditsTitle;
-				} else {
-					tc._textPalette = kColorCreditsLine;
-				}
-
-				Common::Rect drawRect = _textRect;
-				drawRect.top = static_cast<int16>(drawLines_getLinePosY(elapsedFrames, baseLineIdx + lineIdx));
-				drawRect.bottom = static_cast<int16>(drawRect.top + 16);
-				_vm->_gfx->drawText(screenKind, paragraph._lines[li], drawRect, tc);
+				drawCreditLine(paragraph._lines[li], li == 0,
+					static_cast<int16>(drawLines_getLinePosY(elapsedFrames, baseLineIdx + lineIdx)));
 			}
 
 			// Blank lines
@@ -156,7 +189,7 @@ ZmbRenderResult ZoombiniDialogCredits::drawLines_render(ZmbFeature *feature) {
 		break;
 	} while (true);
 
-	return ZmbRenderResult::kRendered;
+	return blitShapes(feature);
 }
 
 int32 ZoombiniDialogCredits::drawLines_getLinePosY(uint32 elapsedFrames, uint32 lineIdx) {

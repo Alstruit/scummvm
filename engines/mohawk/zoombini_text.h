@@ -22,24 +22,56 @@
 #ifndef MOHAWK_ZOOMBINI_TEXT_H
 #define MOHAWK_ZOOMBINI_TEXT_H
 
-#include "common/scummsys.h"
-#include "common/language.h"
-#include "common/str-enc.h"
+#include "common/hash-str.h"
 #include "common/hashmap.h"
+#include "common/language.h"
+#include "common/scummsys.h"
+#include "common/str-enc.h"
 #include "graphics/fontman.h"
 
 #include "mohawk/resource.h"
+
+namespace Common {
+class SeekableReadStream;
+}
 
 namespace Mohawk {
 
 class TTFLoader;
 class MohawkEngine_Zoombini;
+struct ExeTextEntry;
+struct ExeCreditPointerRange;
+struct ExeTextSource;
+
+struct CreditLineAddress {
+	int groupIndex = -1;
+	int inGroupLineIndex = -1;
+
+	CreditLineAddress() {}
+	CreditLineAddress(int sourceGroupIndex, int sourceInGroupLineIndex) : groupIndex(sourceGroupIndex), inGroupLineIndex(sourceInGroupLineIndex) {}
+
+	bool isValid() const {
+		return 0 <= groupIndex && 0 <= inGroupLineIndex;
+	}
+};
+
+struct CreditLineAddressHash : public Common::UnaryFunction<CreditLineAddress, uint> {
+	uint operator()(const CreditLineAddress &key) const {
+		return (Common::Hash<int>()(key.groupIndex) * 1009u) ^ Common::Hash<int>()(key.inGroupLineIndex);
+	}
+};
+
+struct CreditLineAddressEqual : public Common::BinaryFunction<CreditLineAddress, CreditLineAddress, bool> {
+	bool operator()(const CreditLineAddress &left, const CreditLineAddress &right) const {
+		return left.groupIndex == right.groupIndex && left.inGroupLineIndex == right.inGroupLineIndex;
+	}
+};
+
+typedef Common::HashMap<CreditLineAddress, Common::U32String, CreditLineAddressHash, CreditLineAddressEqual> CreditLinePatchMap;
+typedef Common::HashMap<CreditLineAddress, uint32, CreditLineAddressHash, CreditLineAddressEqual> CreditParagraphSplitMap;
 
 /**
- * Localize hard-coded strings of Zoombini
- * 
- * Unfortunately, some of the Zoombini texts are hard-coded in the game code.
- * This class provides localized versions of those strings.
+ * Extract the localized hard-coded strings from the Zoombinis executable, and provide access to them by key.
  */
 class ZoombiniText {
 
@@ -55,6 +87,10 @@ public:
 	 * Tokenize a Common::U32String by CRLF, CR or LF.
 	 */
 	static Common::Array<Common::U32String> tokenizeLines(const Common::U32String &text);
+	static Common::String formatCreditLineKey(const CreditLineAddress &address);
+	static Common::String formatCreditLineKey(uint32 paragraphIndex, uint32 lineIndex);
+	static bool parseCreditLineKey(const Common::String &creditKey, CreditLineAddress &address);
+	static bool parseCreditLineKey(const Common::String &creditKey, uint32 &paragraphIndex, uint32 &lineIndex);
 
 	enum Key : uint32 {
 		kNone = 0,
@@ -158,7 +194,7 @@ public:
 		kOptionsStickyMouse,
 		kOptionsTransitions,
 		kOptionsCredits,
-		kOptionsHelpAudio, // TLC-only English text key.
+		kOptionsHelpAudio,  // TLC-only English text key.
 		kOptionsTouchSense, // TLC-only English text key; ScummVM does not implement TouchSense.
 		// DIALOG: MsgBox
 		kDialogTitleSave = 500,
@@ -211,9 +247,9 @@ public:
 		kNotiBoxTransitionsOff,
 		kNotiBoxAutoStickeyOn,
 		kNotiBoxAutoStickeyOff,
-		kNotiBoxHelpAudioOn, // TLC-only English text key.
-		kNotiBoxHelpAudioOff, // TLC-only English text key.
-		kNotiBoxTouchSenseOn, // TLC-only English text key; ScummVM does not implement TouchSense.
+		kNotiBoxHelpAudioOn,   // TLC-only English text key.
+		kNotiBoxHelpAudioOff,  // TLC-only English text key.
+		kNotiBoxTouchSenseOn,  // TLC-only English text key; ScummVM does not implement TouchSense.
 		kNotiBoxTouchSenseOff, // TLC-only English text key; ScummVM does not implement TouchSense.
 	};
 
@@ -228,11 +264,18 @@ public:
 		Common::Array<Common::U32String> _lines;
 		uint32 _blankLineCount = 1;
 
-		CreditParagraph() { }
-		CreditParagraph(const Common::Array<Common::U32String> &lines, uint32 blankLineCount) :
-			_lines(lines), _blankLineCount(blankLineCount) { }
-		
+		CreditParagraph() {}
+		CreditParagraph(const Common::Array<Common::U32String> &lines, uint32 blankLineCount) : _lines(lines), _blankLineCount(blankLineCount) {}
+
 		uint32 getTotalLineCount() const { return _lines.size() + _blankLineCount; }
+	};
+
+	struct LocalizedString {
+		uint32 _key = 0;
+		Common::U32String _text;
+
+		LocalizedString() {}
+		LocalizedString(uint32 key, const Common::U32String &text) : _key(key), _text(text) {}
 	};
 
 	Common::CodePage getCodePage() { return _codePage; }
@@ -245,7 +288,7 @@ public:
 	Common::U32String toU32String(const byte *buf, int32 len) const;
 	Common::U32String toU32String(const char *str) const;
 	Common::U32String toU32String(const char *str, int32 len) const;
-	Common::U32String toU32String(const Common::String& str) const;
+	Common::U32String toU32String(const Common::String &str) const;
 	Common::String fromU32String(const Common::U32String &ustr) const;
 
 	// [*] STRL resource
@@ -275,17 +318,59 @@ public:
 
 	Common::U32String getPageName(ZoombiniPageType pageType) const;
 	Common::U32String getLocalizedString(uint32 textKey) const;
+	void getLocalizedStrings(Common::Array<LocalizedString> &strings) const;
 	void getLocalizedCredits(Common::Array<CreditParagraph> &paragraphs) const;
 
+	bool patchLocalizedText(const Common::String &textKey, const Common::U32String &text);
+	bool patchLocalizedText(const Common::String &textKey, const char *utf8Text);
+	bool patchLocalizedTexts(const Common::HashMap<Common::String, Common::U32String> &patches);
+	bool patchLocalizedTexts(const Common::HashMap<Common::String, Common::String> &patches);
+	void patchLocalizedString(uint32 textKey, const Common::U32String &text);
+	void patchLocalizedString(uint32 textKey, const char *utf8Text);
+	bool patchCreditLine(uint32 paragraphIndex, uint32 lineIndex, const Common::U32String &text);
+	bool patchCreditLine(uint32 paragraphIndex, uint32 lineIndex, const char *utf8Text);
+	bool patchCreditLine(const Common::String &creditKey, const Common::U32String &text);
+	bool patchCreditLine(const Common::String &creditKey, const char *utf8Text);
+	bool splitCreditParagraph(uint32 paragraphIndex, uint32 lineIndex, uint32 newParagraphBlankLineCount);
+	bool splitCreditParagraph(const Common::String &creditKey, uint32 newParagraphBlankLineCount);
+	bool patchCreditParagraph(uint32 paragraphIndex, const CreditParagraph &paragraph);
+	void patchLocalizedCredits(const Common::Array<CreditParagraph> &paragraphs);
+
 private:
-	MohawkEngine_Zoombini *_vm;	
+	MohawkEngine_Zoombini *_vm;
 	const Graphics::Font *loadFont(const Common::Array<TTFLoader *> &optimalTTFLoaders, const Common::Array<TTFLoader *> &fallbackTTFLoaders, int point, bool showWarnMsgBox, Common::String &cacheName);
 
 	void initPageKeyMap();
+	void initLocalizedCredits();
 	void initEnglishStrings();
 	void initEnglishTlcStrings();
-	bool initOriginalExecutableStrings(const Common::HashMap<uint32, Common::U32String> &builtInStrings);
-	void applyOriginalExecutableStringPatches(const Common::HashMap<uint32, Common::U32String> &builtInStrings, const Key *patchKeys, uint patchKeyCount);
+	bool initOriginalExecutableStrings();
+	void applyOriginalExecutableTextPatches(const Common::HashMap<uint32, Common::U32String> &textPatches);
+	static bool applyOriginalExecutableCreditLinePatches(Common::Array<CreditParagraph> &creditParagraphs, const CreditLinePatchMap &creditLinePatches);
+	static bool applyCreditParagraphSplit(Common::Array<CreditParagraph> &creditParagraphs, const CreditLineAddress &address, uint32 newParagraphBlankLineCount);
+	static bool applyCreditParagraphSplitPatches(Common::Array<CreditParagraph> &creditParagraphs, const CreditParagraphSplitMap &creditParagraphSplits);
+	static bool readExecutableData(Common::SeekableReadStream *exeStream, Common::Array<byte> &data);
+	static int64 getExeTextEntryOffset(const ExeTextSource &source, const ExeTextEntry &entry);
+	static bool findBytes(const Common::Array<byte> &data, const char *needle, uint32 &offset);
+	static Common::U32String decodeCreditStringBytes(const byte *bytes, uint32 length, Common::CodePage codePage);
+	static bool readExecutableStringAt(const Common::Array<byte> &data, uint32 offset, Common::CodePage codePage, Common::U32String &text);
+	static bool isCreditTerminator(const Common::U32String &text);
+	static bool readCreditStringsFromAnchor(const Common::Array<byte> &data, Common::CodePage codePage, const char *anchor, Common::Array<Common::U32String> &creditStrings);
+	static bool readCreditStringsFromPointerTable(const Common::Array<byte> &data, const ExeTextSource &source, Common::Array<Common::U32String> &creditStrings);
+	static bool buildCreditParagraphsFromStrings(const Common::Array<Common::U32String> &creditStrings, Common::Array<CreditParagraph> &creditParagraphs);
+	static bool loadOriginalExecutableCredits(const Common::Array<byte> &data, const ExeTextSource &source, Common::Array<CreditParagraph> &creditParagraphs);
+	static bool parseUnsignedDecimalString(const Common::String &text, uint32 &value);
+	static Common::HashMap<uint32, Common::U32String> buildEnglishExeTextPatches();
+	static CreditLinePatchMap buildEnglishExeCreditLinePatches();
+	static CreditLinePatchMap buildKoreanExeCreditLinePatches();
+	static CreditParagraphSplitMap buildCreditParagraphSplits();
+	template<size_t size>
+	static void addCreditParagraph(Common::Array<CreditParagraph> &paragraphs, const char *const (&creditLines)[size], uint32 blankLineCount) {
+		Common::Array<Common::U32String> lines;
+		for (uint i = 0; i < size; i++)
+			lines.push_back(Common::U32String(creditLines[i], Common::kUtf8));
+		paragraphs.push_back(CreditParagraph(lines, blankLineCount));
+	}
 	void getEnglishCredits(Common::Array<CreditParagraph> &paragraphs) const;
 	void getEnglishTlcCredits(Common::Array<CreditParagraph> &paragraphs) const;
 	void initKoreanStrings();
@@ -307,6 +392,7 @@ private:
 	Common::HashMap<Common::U32String, int16> _nameIndexCache;
 
 	Common::HashMap<uint32, Common::U32String> _strMap;
+	Common::Array<CreditParagraph> _creditParagraphs;
 	Common::HashMap<ZoombiniPageType, Key> _pageKeyMap;
 };
 

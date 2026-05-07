@@ -178,7 +178,6 @@ private:
 	GUI::CheckboxWidget *_brightenPaletteCheckbox;
 	GUI::CheckboxWidget *_originalPrngCheckbox;
 	GUI::CheckboxWidget *_fixHotelMidiBgmCheckbox;
-	GUI::CheckboxWidget *_originalExeTextsCheckbox;
 };
 
 #endif

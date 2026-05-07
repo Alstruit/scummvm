@@ -61,6 +61,7 @@
 #include "mohawk/zoombini_page.h"
 #include "mohawk/zoombini_pages/interactive_base.h"
 #include "mohawk/zoombini_debug.h"
+#include "mohawk/zoombini_text.h"
 #endif
 
 namespace Mohawk {
@@ -943,6 +944,55 @@ bool CSTimeConsole::Cmd_InvItem(int argc, const char **argv) {
 
 #ifdef ENABLE_ZOOMBINI
 
+static Common::String escapeTextDumpField(const Common::U32String &text) {
+	Common::String utf8Text = text.encode(Common::kUtf8);
+	Common::String escaped;
+	for (uint index = 0; index < utf8Text.size(); index++) {
+		switch (utf8Text[index]) {
+		case '\\':
+			escaped += "\\\\";
+			break;
+		case '\r':
+			escaped += "\\r";
+			break;
+		case '\n':
+			escaped += "\\n";
+			break;
+		case '\t':
+			escaped += "\\t";
+			break;
+		default:
+			escaped += utf8Text[index];
+			break;
+		}
+	}
+	return escaped;
+}
+
+static Common::String quoteCsvDumpField(const Common::String &text) {
+	Common::String quoted = "\"";
+	for (uint index = 0; index < text.size(); index++) {
+		if (text[index] == '"')
+			quoted += "\"\"";
+		else
+			quoted += text[index];
+	}
+	quoted += "\"";
+	return quoted;
+}
+
+static Common::String quoteSimpleDumpField(const Common::String &text) {
+	Common::String quoted = "\"";
+	for (uint index = 0; index < text.size(); index++) {
+		if (text[index] == '"')
+			quoted += "\\\"";
+		else
+			quoted += text[index];
+	}
+	quoted += "\"";
+	return quoted;
+}
+
 ZoombiniConsole::ZoombiniConsole(MohawkEngine_Zoombini *vm) : GUI::Debugger(), _vm(vm) {
 	registerCmd("playSound",			WRAP_METHOD(ZoombiniConsole, Cmd_PlaySound));
 	registerCmd("stopSound",			WRAP_METHOD(ZoombiniConsole, Cmd_StopSound));
@@ -971,6 +1021,7 @@ ZoombiniConsole::ZoombiniConsole(MohawkEngine_Zoombini *vm) : GUI::Debugger(), _
 	registerCmd("plotLine",				WRAP_METHOD(ZoombiniConsole, Cmd_PlotLine));
 	registerCmd("plotRect",				WRAP_METHOD(ZoombiniConsole, Cmd_PlotRect));
 	registerCmd("dumpAllResources",		WRAP_METHOD(ZoombiniConsole, Cmd_DumpAllResources));
+	registerCmd("dumpTexts",			WRAP_METHOD(ZoombiniConsole, Cmd_DumpTexts));
 	registerCmd("goXfer",				WRAP_METHOD(ZoombiniConsole, Cmd_GoXfer));
 	registerCmd("goPractice",			WRAP_METHOD(ZoombiniConsole, Cmd_GoPractice));
 	registerCmd("finishPuzzle",			WRAP_METHOD(ZoombiniConsole, Cmd_FinishPuzzle));
@@ -2032,6 +2083,69 @@ bool ZoombiniConsole::Cmd_DumpAllResources(int argc, const char **argv) {
 	}
 
 	debugPrintf("Full dump complete. Total: %u resources exported.\n", totalExported);
+	return true;
+}
+
+bool ZoombiniConsole::Cmd_DumpTexts(int argc, const char **argv) {
+	if (2 < argc) {
+		debugPrintf("Dump runtime Zoombini localized strings and credit lines\n");
+		debugPrintf("Usage: dumpTexts [filename]\n");
+		return true;
+	}
+
+	Common::String filepath = (argc == 2) ? argv[1] : "dumps/ZOOMBINI_texts.txt";
+	bool csv = filepath.hasSuffixIgnoreCase(".csv");
+	bool tsv = filepath.hasSuffixIgnoreCase(".tsv");
+	Common::DumpFile out;
+	if (!out.open(Common::Path(filepath, '/'), true)) {
+		debugPrintf("Failed to open %s for writing\n", filepath.c_str());
+		return true;
+	}
+
+	if (csv)
+		out.writeString("type,key,paragraph,line,blankLines,text\n");
+	else if (tsv)
+		out.writeString("type\tkey\tparagraph\tline\tblankLines\ttext\n");
+
+	Common::Array<ZoombiniText::LocalizedString> strings;
+	_vm->_text->getLocalizedStrings(strings);
+	for (const ZoombiniText::LocalizedString &entry : strings) {
+		Common::String text = escapeTextDumpField(entry._text);
+		if (csv) {
+			out.writeString(Common::String::format("string,%u,,,,%s\n",
+				entry._key, quoteCsvDumpField(text).c_str()));
+		} else if (tsv) {
+			out.writeString(Common::String::format("string\t%u\t\t\t\t%s\n",
+				entry._key, text.c_str()));
+		} else {
+			out.writeString(Common::String::format("[\"%u\"] = %s\n",
+				entry._key, quoteSimpleDumpField(text).c_str()));
+		}
+	}
+
+	Common::Array<ZoombiniText::CreditParagraph> paragraphs;
+	_vm->_text->getLocalizedCredits(paragraphs);
+	for (uint paragraphIndex = 0; paragraphIndex < paragraphs.size(); paragraphIndex++) {
+		const ZoombiniText::CreditParagraph &paragraph = paragraphs[paragraphIndex];
+		for (uint lineIndex = 0; lineIndex < paragraph._lines.size(); lineIndex++) {
+			Common::String text = escapeTextDumpField(paragraph._lines[lineIndex]);
+			Common::String creditKey = ZoombiniText::formatCreditLineKey(paragraphIndex, lineIndex);
+			if (csv) {
+				out.writeString(Common::String::format("credit,%s,%u,%u,%u,%s\n",
+					creditKey.c_str(), paragraphIndex, lineIndex, paragraph._blankLineCount, quoteCsvDumpField(text).c_str()));
+			} else if (tsv) {
+				out.writeString(Common::String::format("credit\t%s\t%u\t%u\t%u\t%s\n",
+					creditKey.c_str(), paragraphIndex, lineIndex, paragraph._blankLineCount, text.c_str()));
+			} else {
+				out.writeString(Common::String::format("[\"%s\"] = %s\n",
+					creditKey.c_str(),
+					quoteSimpleDumpField(text).c_str()));
+			}
+		}
+	}
+
+	out.close();
+	debugPrintf("Dumped %u strings and %u credit paragraphs to %s\n", strings.size(), paragraphs.size(), filepath.c_str());
 	return true;
 }
 

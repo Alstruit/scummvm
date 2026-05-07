@@ -186,6 +186,7 @@ private:
 	bool Cmd_PlotLine(int argc, const char **argv);
 	bool Cmd_PlotRect(int argc, const char **argv);
 	bool Cmd_DumpAllResources(int argc, const char **argv);
+	bool Cmd_DumpTexts(int argc, const char **argv);
 	bool Cmd_GoXfer(int argc, const char **argv);
 	bool Cmd_GoPractice(int argc, const char **argv);
 	bool Cmd_FinishPuzzle(int argc, const char **argv);

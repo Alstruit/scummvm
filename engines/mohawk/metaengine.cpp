@@ -358,7 +358,6 @@ void MohawkMetaEngine::registerDefaultSettings(const Common::String &target) con
 		ConfMan.registerDefault("brighten_palette", false);
 		ConfMan.registerDefault("original_prng", true);
 		ConfMan.registerDefault("fix_hotel_midi_bgm", true);
-		ConfMan.registerDefault("original_exe_texts", true);
 	}
 #endif
 

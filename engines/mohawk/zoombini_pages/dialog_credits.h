@@ -34,12 +34,15 @@ public:
 	void open() override;
 	void loadFeatures() override;
 
-
 protected:
+	void updateCreditScrollElapsedFrames();
+	void drawCreditLine(const Common::U32String &lineText, bool isTitle, int16 topY);
+
 	ZmbEventHandleResult creditScreen_onMouseLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 	ZmbEventHandleResult creditScreen_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);
+	ZmbEventHandleResult creditScreen_onKeyUp(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);
 
-	ZmbRenderResult drawLines_render(ZmbFeature *feature);
+	ZmbRenderResult creditScreen_render(ZmbFeature *feature);
 	/**
 	 * Get the Y position of a line in a given frame
 	 */
@@ -67,6 +70,9 @@ protected:
 
 	Common::Array<ZoombiniText::CreditParagraph> _creditParagraphs;
 	uint32 _totalCreditLines = 0;
+	uint32 _lastCreditScrollFrameCounter = 0;
+	int32 _creditScrollElapsedFrames = 0;
+	int16 _creditScrollFramesPerFrame = 1;
 };
 
 } // End of namespace Mohawk

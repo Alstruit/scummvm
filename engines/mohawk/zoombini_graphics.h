@@ -22,13 +22,13 @@
 #ifndef MOHAWK_ZOOMBINI_GRAPHICS_H
 #define MOHAWK_ZOOMBINI_GRAPHICS_H
 
+#include "common/stack.h"
 #include "graphics/font.h"
 #include "graphics/fontman.h"
 #include "graphics/surface.h"
-#include "common/stack.h"
 
-#include "mohawk/zoombini_resource.h"
 #include "mohawk/graphics.h"
+#include "mohawk/zoombini_resource.h"
 
 namespace Mohawk {
 
@@ -40,7 +40,7 @@ class ZmbDrawRecord;
 
 /**
  * Implements graphics of Zoombinis
- * 
+ *
  * There are two notation to index shape (aka sprite, subimage).
  * (1) subImageId: 0-based index, native to ScummVM mohawk engine bitmap implementation.
  * (2) shapeIdx: 1-based index, native to Mohawk Feature Hotspot.
@@ -167,7 +167,6 @@ public:
 	// [*] tBMP
 	void drawBackground(uint16 image);
 	void drawBackground(ScreenKind screenKind, uint16 image);
-	void drawBackground(Graphics::Surface *screen, uint16 image);
 	void drawImage(ScreenKind screenKind, uint16 image, const Common::Point &destPos);
 	/**
 	 * Draw shape bitmap to screen using 1-based shapeIdx.
@@ -184,32 +183,12 @@ public:
 	/**
 	 * Draw shape bitmap to screen using 1-based shapeIdx.
 	 */
-	Common::Rect drawShape(Graphics::Surface *screen, ZmbResource res, uint16 shapeIdx, const Common::Point &destPos, bool clearBeforeRender = false);
-	/**
-	 * Draw shape bitmap to screen using 1-based shapeIdx.
-	 */
-	Common::Rect drawShape(Graphics::Surface *screen, ZmbResource res, uint16 shapeIdx, const Common::Rect &destRect, bool clearBeforeRender = false);
-	/**
-	 * Draw shape bitmap to screen using a feature hotspot.
-	 */
-	Common::Rect drawShape(Graphics::Surface *screen, ZmbResource res, const ZmbHotspot *hotspot, bool clearBeforeRender = false);
-	/**
-	 * Draw shape bitmap to screen using 0-based subImage id.
-	 */
 	Common::Rect drawSubImage(ScreenKind screenKind, ZmbResource res, uint16 subImage, const Common::Point &destPos, bool clearBeforeRender = false);
 	/**
 	 * Draw shape bitmap to screen using 0-based subImage id.
 	 */
 	Common::Rect drawSubImage(ScreenKind screenKind, ZmbResource res, uint16 subImage, const Common::Rect &destRect, bool clearBeforeRender = false);
-	/**
-	 * Draw shape bitmap to screen using 0-based subImage id.
-	 */
-	Common::Rect drawSubImage(Graphics::Surface *screen, ZmbResource res, uint16 subImage, const Common::Point &destPos, bool clearBeforeRender = false);
-	/**
-	 * Draw shape bitmap to screen using 0-based subImage id.
-	 */
-	Common::Rect drawSubImage(Graphics::Surface *screen, ZmbResource res, uint16 subImage, const Common::Rect &destRect, bool clearBeforeRender = false);
-	Common::Rect drawImageSectionToScreen(Graphics::Surface *screen, MohawkSurface *imgSurface, const Common::Rect &srcRect, const Common::Rect &dstRect, bool clearBeforeRender = false);
+	Common::Rect drawImageSectionToScreen(ScreenKind screenKind, MohawkSurface *imgSurface, const Common::Rect &srcRect, const Common::Rect &dstRect, bool clearBeforeRender = false);
 
 	// [*] DrawLine
 	void drawLine(ScreenKind screenKind, const Common::Point &start, const Common::Point &end, uint32 color);
@@ -219,17 +198,10 @@ public:
 	void clearArea(ScreenKind screenKind, ZmbDrawRecord *record);
 	void clearArea(ScreenKind screenKind, ZmbResource res, const ZmbHotspot *hotspot);
 	void clearArea(ScreenKind screenKind, const Common::Rect &rect);
-	void clearArea(Graphics::Surface *screen, ZmbDrawRecord *record);
-	void clearArea(Graphics::Surface *screen, ZmbResource res, const ZmbHotspot *hotspot);
-	void clearArea(Graphics::Surface *screen, const Common::Rect &rect);
 	void fillArea(ScreenKind screenKind, ZmbDrawRecord *record, uint32 color = kTransparentKey);
 	void fillArea(ScreenKind screenKind, ZmbResource res, const ZmbHotspot *hotspot, uint32 color = kTransparentKey);
 	void fillArea(ScreenKind screenKind, const Common::Rect &rect, uint32 color = kTransparentKey);
 	void fillArea(ScreenKind screenKind, uint32 color = kTransparentKey);
-	void fillArea(Graphics::Surface *screen, ZmbDrawRecord *record, uint32 color = kTransparentKey);
-	void fillArea(Graphics::Surface *screen, ZmbResource res, const ZmbHotspot *hotspot, uint32 color = kTransparentKey);
-	void fillArea(Graphics::Surface *screen, const Common::Rect &rect, uint32 color = kTransparentKey);
-	void fillArea(Graphics::Surface *screen, uint32 color = kTransparentKey);
 
 	// [*] 256color Palette
 	/**
@@ -342,7 +314,7 @@ public:
 		 */
 		kColor1F_VeryDarkGreen = 0x1F,
 		/**
-		 * #005500 
+		 * #005500
 		 */
 		kColor20_DarkGreen = 0x20,
 		/**
@@ -350,7 +322,7 @@ public:
 		 */
 		kColor21_Green = 0x21,
 		/**
-		 * #4ED24B 
+		 * #4ED24B
 		 */
 		kColor22_LimeGreen = 0x22,
 		/**
@@ -395,7 +367,7 @@ public:
 		kColor2C_Gray = 0x2C,
 		/**
 		 * #000000
-		 */		
+		 */
 		kColor2D_Black = 0x2D,
 	};
 
@@ -466,11 +438,11 @@ public:
 		Graphics::TextAlign _vAlign = Graphics::kTextAlignStart;
 	};
 	void drawText(ScreenKind screenKind, uint32 textKey, const Common::Rect &destRect);
-	void drawText(ScreenKind screenKind, uint32 textKey, const Common::Rect &destRect, const TextConf& tc);
+	void drawText(ScreenKind screenKind, uint32 textKey, const Common::Rect &destRect, const TextConf &tc);
 	void drawText(ScreenKind screenKind, const Common::U32String &text, const Common::Rect &destRect);
-	void drawText(ScreenKind screenKind, const Common::U32String &text, const Common::Rect &destRect, const TextConf& tc);
-	Common::Point getTextBounds(const Common::U32String &text, int16 targetWidth, const TextConf& tc);
-	int16 getFontHeight(const TextConf& tc);
+	void drawText(ScreenKind screenKind, const Common::U32String &text, const Common::Rect &destRect, const TextConf &tc);
+	Common::Point getTextBounds(const Common::U32String &text, int16 targetWidth, const TextConf &tc);
+	int16 getFontHeight(const TextConf &tc);
 
 	// [*] Transitions and effects
 	enum FadeType {
@@ -482,10 +454,10 @@ public:
 		FadeType _type;
 		bool _isFading = false;
 		uint32 _startTime; // In milliseconds
-		uint32 _duration; // In milliseconds
+		uint32 _duration;  // In milliseconds
 
 		FadeEffect(FadeType type, uint32 duration)
-			: _type(type), _duration(duration) { }
+			: _type(type), _duration(duration) {}
 	};
 
 	void queueFadeEffect(FadeType type, uint32 duration);
@@ -523,7 +495,7 @@ protected:
 	Common::Array<MohawkSurface *> decodeImages(uint16 id) override;
 	Common::Array<MohawkSurface *> decodeImages(ZmbResource imgResource);
 	MohawkEngine *getVM() override { return reinterpret_cast<MohawkEngine *>(_vm); }
-	
+
 private:
 	Common::Array<Common::U32String> prepareTextLines(const Common::U32String &text, const Graphics::Font *font, bool wordWrap, int16 targetWidth);
 	/**
@@ -531,7 +503,7 @@ private:
 	 */
 	Common::Point getTextLinesBounds(const Graphics::Font *font, bool outlineEffect, const Common::Array<Common::U32String> &lines);
 	void drawTextLines(ScreenKind screenKind, const Graphics::Font *font, const Common::Array<Common::U32String> &lines, const Common::Rect &destRect, uint32 palette, Graphics::TextAlign hAlign, uint32 fillBackgroundColor = kTransparentKey);
-	void recordDirtyRect(Graphics::Surface *screen, const Common::Rect &rect);
+	void recordDirtyRect(ScreenKind screenKind, const Common::Rect &rect);
 
 	MohawkEngine_Zoombini *_vm;
 	MohawkBitmap *_bmpDecoder;
@@ -549,7 +521,7 @@ private:
 	// The original engine uses GDI clip regions (union of rectangles) on the
 	// port's HDC.  We store the individual rects and their bounding box.
 	Common::Array<Common::Rect> _renderClipRects;
-	Common::Rect _renderClipBounds;  // bounding box for quick early-out
+	Common::Rect _renderClipBounds; // bounding box for quick early-out
 	bool _hasRenderClipRect = false;
 	Common::Rect _trackedDirtyBounds;
 	bool _isDirtyRectTracking = false;
@@ -558,7 +530,7 @@ private:
 
 	// An image cache that stores ZOOMBINI.MHK images
 	Common::HashMap<uint16, MohawkSurface *> _sysImageCache;
-	Common::HashMap<uint16, Common::Array<MohawkSurface *> > _sysSubImageCache;
+	Common::HashMap<uint16, Common::Array<MohawkSurface *>> _sysSubImageCache;
 
 	// Fade effects
 	Common::Queue<FadeEffect> _fadeQueue;

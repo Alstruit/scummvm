@@ -92,10 +92,10 @@ bool parsePracticeBootParam(int32 bootParam, ZoombiniPageType &pageType, uint16 
 	return true;
 }
 
-void addSearchDirectoryIfPresent(const Common::FSNode &node, int priority = 0) {
+void addSearchDirectoryIfPresent(const Common::FSNode &node, int priority = 0, int depth = 1) {
 	if (!node.exists() || !node.isDirectory())
 		return;
-	SearchMan.addDirectory(node.getPath().toString(), node, priority, 1);
+	SearchMan.addDirectory(node.getPath().toString(), node, priority, depth);
 }
 
 bool hasSubDirectoryMatching(const Common::FSNode &root, const Common::String &name) {
@@ -114,12 +114,15 @@ bool hasSubDirectoryMatching(const Common::FSNode &root, const Common::String &n
 	return false;
 }
 
-bool tryAddZoombiniIsoRootSearchPath(const Common::FSNode &root, bool addRootDirectory) {
+bool tryAddZoombiniIsoRootSearchPath(const Common::FSNode &root) {
 	if (!hasSubDirectoryMatching(root, "data"))
 		return false;
 
-	if (addRootDirectory)
-		addSearchDirectoryIfPresent(root);
+	addSearchDirectoryIfPresent(root, 0, 4);
+	SearchMan.addSubDirectoryMatching(root, "data", 0, 1);
+	SearchMan.addSubDirectoryMatching(root, "setup/data1/data32", 0, 1);
+	SearchMan.addSubDirectoryMatching(root, "setup/data1/data16", 0, 1);
+	SearchMan.addSubDirectoryMatching(root, "install/hd", 0, 1);
 	return true;
 }
 
@@ -134,6 +137,9 @@ MohawkEngine_Zoombini::MohawkEngine_Zoombini(OSystem *syst, const MohawkGameDesc
 }
 
 MohawkEngine_Zoombini::~MohawkEngine_Zoombini() {
+	while (!_dialogPageStack.empty())
+		delete _dialogPageStack.pop();
+
 	delete _activePage;
 	delete _sysMhk;
 	delete _snoidShapeRegs;
@@ -312,7 +318,7 @@ void MohawkEngine_Zoombini::processEvent(ZoombiniPage *page, const Common::Event
 		page->onQuit();
 		page->close();
 
-		if (page != _activePage) {
+		if (page != _activePage && _activePage) {
 			_activePage->onQuit();
 			_activePage->close();
 		}
@@ -354,6 +360,8 @@ void MohawkEngine_Zoombini::doFrame() {
 
 	// Debugger console is spawned in pollEvent() if requested.
 	processEvents(page);
+	if (mustQuit())
+		return;
 
 	// Page frame update
 	page->onFrame();
@@ -375,6 +383,8 @@ void MohawkEngine_Zoombini::doFrame() {
 	if (!inFade && page->isClosed()) {	
 		if (isDialogOpened) {
 			closeActiveDialog();
+			if (_quitEventState == kQuitEventRunning)
+				_quitEventState = kQuitEventDone;
 		} else {
 			loadNextPage();
 		}
@@ -398,7 +408,7 @@ void MohawkEngine_Zoombini::delayRunningFrames(uint32 ms) {
 void MohawkEngine_Zoombini::initSearchPaths() {
 	Common::FSNode candidate(ConfMan.getPath("path"));
 	for (int depth = 0; depth < 4 && candidate.exists() && candidate.isDirectory(); depth++) {
-		if (tryAddZoombiniIsoRootSearchPath(candidate, depth != 0))
+		if (tryAddZoombiniIsoRootSearchPath(candidate))
 			break;
 
 		Common::FSNode parent = candidate.getParent();
