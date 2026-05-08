@@ -72,6 +72,8 @@ protected:
 		uint16 _hsPressedIdx = ZmbHotspot::kIndexNone;
 		uint16 _shapeNormalId = ZmbHotspot::kShapeNone;
 		uint16 _shapePressedId = ZmbHotspot::kShapeNone;
+		uint16 _shapeHoverId = ZmbHotspot::kShapeNone;
+		bool _isHovered = false;
 
 		ContinuousButtonState() = default;
 		virtual ~ContinuousButtonState() = default;
@@ -79,6 +81,9 @@ protected:
 			: _enabled(true), _hsNormalIdx(hsNormalIdx), _hsPressedIdx(hsPressedIdx), _shapeNormalId(normalShapeId), _shapePressedId(pressedShapeId) {
 		}
 
+		void setHoverState(uint16 hoverShapeId);
+		bool hasHoverState() const;
+		bool setHovered(bool hovered);
 		void press();
 		void release();
 	};
@@ -95,6 +100,9 @@ protected:
 
 	void loadGoMapButtonsFeature(uint16 bitmapResId);
 	void loadHelpButtonFeature();
+	void setTlcButtonHoverIfPresent(ButtonState &buttonState, uint16 hoverShapeId, const ZmbResource &bitmapRes);
+	void configureTlcGoMapButtonHover(uint16 bitmapResId);
+	void updateTlcButtonHover(const Common::Point &absPos);
 
 	void goMapButtons_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
 	void goMapButtons_onPostRender(ZmbFeature *feature);
@@ -123,6 +131,35 @@ protected:
 		kThreeButtons_SecondGo,
 		kThreeButtons_Map,
 		kThreeButtons_Help,
+	};
+
+	enum ThreeButtonBitmapResId {
+		kBasecamp1ButtonBitmapResId = 2100,
+	};
+
+	// Z1-20U/TLC v2.0 release only: hover shapes are yellow-outline variants
+	// absent from the 1.x Broderbund/Korean releases.
+	enum ThreeButtonShapeIdx {
+		kShapeBasecamp1GoRouteUpButtonNormal = 1,
+		kShapeBasecamp1GoRouteUpButtonPressed = 2,
+		kShapeBasecamp1GoRouteDownButtonNormal = 3,
+		kShapeBasecamp1GoRouteDownButtonPressed = 4,
+		kShapeBasecamp1GoRouteUpButtonHover = 17,
+		kShapeBasecamp1GoRouteDownButtonHover = 18,
+		kShapeBasecamp1MapButtonHover = 19,
+
+		kShapeGoButtonNormal = 2,
+		kShapeGoButtonPressed = 3,
+		kShapeMapButtonNormal = 5,
+		kShapeMapButtonPressed = 6,
+		kShapeGoButtonHover = 7,
+		kShapeMapButtonHover = 8,
+		kShapePickerGoButtonNormal = 9,
+		kShapePickerGoButtonPressed = 10,
+		kShapePickerMapButtonNormal = 11,
+		kShapePickerMapButtonPressed = 12,
+		kShapePickerGoButtonHover = 17,
+		kShapePickerMapButtonHover = 18,
 	};
 
 	// [*] Notification Box
@@ -417,6 +454,8 @@ private:
 	Common::StableMap<uint32, ButtonState> _goMapButtonStateMap;
 	Common::StableMap<uint32, ButtonState> _helpButtonStateMap;
 	Common::HashMap<uint32, Common::Rect> _threeButtonRectMap;
+	ZmbFeature *_goMapButtonsFeature = nullptr;
+	ZmbFeature *_helpButtonFeature = nullptr;
 
 	const Common::Rect _notiBoxShortRect = Common::Rect(0x0115, 0x01CA, 0x016C, 0x01DD);
 	const Common::Rect _notiBoxLongRect = Common::Rect(0x0101, 0x01CA, 0x0183, 0x01DD);

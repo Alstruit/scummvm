@@ -89,6 +89,8 @@ protected:
 	 * 1006: PostAnimation of option button
 	 */
 	void optionButton1006_postRender(ZmbFeature *feature);
+	void optionButton1006_renderTlcLabel();
+	void optionButton1006_updateTlcHover(const Common::Point &absPos);
 	/**
 	 * 1006: Clicked on menu button
 	 */
@@ -137,6 +139,8 @@ protected:
 		kResScrbLevelLegend1004 = 1004,
 		kResScrbPageNameHover1005 = 1005,
 		kResScrbMenuButton1006 = 1006,
+		// Z1-20U/TLC v2.0 release only: hover state for SCRB 1006.
+		kResScrbMenuButtonHover1007 = 1007,
 	};
 
 	enum ShapeId : uint16 {
@@ -270,6 +274,7 @@ protected:
 		{ Common::Rect(23, 131, 197, 152) },
 		{ Common::Rect(23, 153, 197, 175) },
 	};
+	const Common::Rect _tlcOptionButtonTextRect = Common::Rect(0x01E8, 0x0018, 0x021E, 0x0024);
 
 	enum RodmapButtonIdx {
 		kRodmapButton_OptionDialog = 0,
@@ -278,6 +283,8 @@ protected:
 	// Option Button SCRB does not have two hotspots, so normal hsId and pressed hsId are equal.
 	ZmbResource soundResId = ZmbResource(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX);
 	ButtonState _optionButtonState = ButtonState(soundResId, 0, 0, kShapeOptionButtonNormal, kShapeOptionButtonPressed);
+	ZmbFeature *_optionButtonFeature = nullptr;
+	bool _optionButtonTlcHovered = false;
 
 	/**
 	 * Map of route keys (17 ~ 32) to its level. 

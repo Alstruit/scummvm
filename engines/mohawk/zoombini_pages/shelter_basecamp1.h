@@ -65,6 +65,7 @@ protected:
 	ZmbEventHandleResult scroll_lButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 	ZmbEventHandleResult scroll_lButtonUp(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 	ZmbEventHandleResult scroll_mouseMove(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
+	bool releaseHeldScrollButton(ZmbFeature *feature);
 
 	ZmbRenderResult virt03_render(ZmbFeature *feature);
 	void virt03_postRender(ZmbFeature *feature);
@@ -240,6 +241,11 @@ protected:
 		kShape2100_ScrollRightFourPressed_14 = 14,
 		kShape2100_GoRouteUpButtonDisabled_15 = 15,
 		kShape2100_GoRouteDownButtonDisabled_16 = 16,
+		// Z1-20U/TLC v2.0 release only: storage scroll hover shapes.
+		kShape2100_ScrollLeftFourHover_20 = 20,
+		kShape2100_ScrollLeftOneHover_21 = 21,
+		kShape2100_ScrollRightOneHover_22 = 22,
+		kShape2100_ScrollRightFourHover_23 = 23,
 
 		kShape9000_ArrowLeftMax_01 = 1,
 		kShape9000_ArrowLeft_02 = 2,

@@ -56,8 +56,13 @@ ZoombiniShelterPicker::ZoombiniShelterPicker(MohawkEngine_Zoombini *vm) : Zoombi
 	ZmbResource diceSoundResId(ZmbArchiveKind::kPage, kResSound1006_PressDiceButton);
 	_pickerButtonStateMap[kPickerButtons_Generate] = ButtonState(generateSoundResId, kHotspotGenerateButtonNormal, kHotspotGenerateButtonPressed, kShape4200_02_GenerateButtonNormal, kShape4200_03_GenerateButtonPressed);
 	_pickerButtonStateMap[kPickerButtons_Generate].setDisabledState(kShape4200_01_GenerateButtonDisabled);
+	// Z1-20U/TLC v2.0 release only: picker buttons gain yellow-outline hover states.
+	if (_vm->isGameVariant(GF_ZMB_TLC))
+		_pickerButtonStateMap[kPickerButtons_Generate].setHoverState(kShape4200_14_GenerateButtonHover);
 	_pickerButtonStateMap[kPickerButtons_Generate]._isPressDisabled = true; // Disabled until all matrix rows have a selection
 	_pickerButtonStateMap[kPickerButtons_Dice] = ButtonState(diceSoundResId, kHotspotDiceButtonNormal, kHotspotDiceButtonPressed, kShape4200_04_DiceButtonNormal, kShape4200_05_DiceButtonPressed);
+	if (_vm->isGameVariant(GF_ZMB_TLC))
+		_pickerButtonStateMap[kPickerButtons_Dice].setHoverState(kShape4200_15_DiceButtonHover);
 	_pickerButtonRectMap[kPickerButtons_Generate] = _generateButtonRect;
 	_pickerButtonRectMap[kPickerButtons_Dice] = _diceButtonRect;
 }
@@ -150,10 +155,14 @@ void ZoombiniShelterPicker::loadFeatures() {
 		}
 	}
 
+	// Z1-20U/TLC v2.0 release only: on first startup with existing saves,
+	// picker_init opens the load dialog before the picker intro voice path.
+	const bool suppressAutoLoadDialogVoice = _vm->isGameVariant(GF_ZMB_TLC) && _mode == kPickerMode_LoadGame;
+
 	if (f._currentRoute == 1) {
 		uint16 leavedZmbCount = f._zmbStoredBC1Count + f._zmbStoredBC2Count + f._zmbStoredTownCount;
 		uint16 remaingZmbCount = 625 - leavedZmbCount - _snoidMap.size();
-		if (0 < remaingZmbCount && _snoidMap.size() < 625) {
+		if (!suppressAutoLoadDialogVoice && 0 < remaingZmbCount && _snoidMap.size() < 625) {
 			uint16 soundRand = _vm->_rnd->getRandomNumber(19);
 			if (soundRand == 0) {
 				_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound20043_PickerAfterVideoVoice), Audio::Mixer::kSFXSoundType);
@@ -164,7 +173,7 @@ void ZoombiniShelterPicker::loadFeatures() {
 	} else {
 		_vm->_state->getDifficultyIdFromPageFlag(f._pageFlagIsle);
 		// IDA: only on first visit this session (chIsFirstVisit_4A71B8 == 1)
-		if (f._zmbGeneratedCount < 625 && _isFirstVisit) {
+		if (!suppressAutoLoadDialogVoice && f._zmbGeneratedCount < 625 && _isFirstVisit) {
 			_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound20042_PickerAfterVideoVoice), Audio::Mixer::kSFXSoundType);
 		}
 	}
@@ -258,7 +267,7 @@ void ZoombiniShelterPicker::loadFeatures() {
 		hotspots.push_back(ZmbHotspot(kHotspotDiceButtonPressed, kShape4200_05_DiceButtonPressed, 0, _diceButtonRect));
 		hotspots.push_back(ZmbHotspot(kHotspotNameBox, kShape4200_13_NameBox, 0, _nameBoxRect));
 
-		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4200_Buttons), 0,
+		_pickerButtonsFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShapes4200_Buttons), 0,
 						hotspots, 0,
 						ZmbFeature::FLAG_04000000_OVERLAY | ZmbFeature::FLAG_00001000_TOPMOST,
 						hooks);
@@ -558,6 +567,11 @@ ZmbEventHandleResult ZoombiniShelterPicker::pickerButtons_onKeyDown(ZmbFeature *
 		feature->getHotspotGroup(0)->getHotspot(kHotspotDiceButtonPressed)._shapeIdx = diceButtonPressedShapeIdx;
 		_pickerButtonStateMap[kPickerButtons_Dice]._shapeNormalIdx = diceButtonNormalShapeIdx;
 		_pickerButtonStateMap[kPickerButtons_Dice]._shapePressedIdx = diceButtonPressedShapeIdx;
+		// Z1-20U/TLC v2.0 release only: Shift uses a distinct dice hover shape.
+		if (_vm->isGameVariant(GF_ZMB_TLC))
+			_pickerButtonStateMap[kPickerButtons_Dice].setHoverState(kShape4200_16_DiceArrowButtonHover);
+		addExternalDirtyRect(feature->getZSortRect());
+		feature->setNeedsRedraw(true);
 	}
 
 	return ZmbEventHandleResult::kPassthrough;
@@ -574,6 +588,11 @@ ZmbEventHandleResult ZoombiniShelterPicker::pickerButtons_onKeyUp(ZmbFeature *fe
 		feature->getHotspotGroup(0)->getHotspot(kHotspotDiceButtonPressed)._shapeIdx = diceButtonPressedShapeIdx;
 		_pickerButtonStateMap[kPickerButtons_Dice]._shapeNormalIdx = diceButtonNormalShapeIdx;
 		_pickerButtonStateMap[kPickerButtons_Dice]._shapePressedIdx = diceButtonPressedShapeIdx;
+		// Z1-20U/TLC v2.0 release only: restore the normal dice hover shape.
+		if (_vm->isGameVariant(GF_ZMB_TLC))
+			_pickerButtonStateMap[kPickerButtons_Dice].setHoverState(kShape4200_15_DiceButtonHover);
+		addExternalDirtyRect(feature->getZSortRect());
+		feature->setNeedsRedraw(true);
 	}
 
 	return ZmbEventHandleResult::kPassthrough;
@@ -709,6 +728,9 @@ void ZoombiniShelterPicker::updateCaveMarkHighlight() {
 }
 
 ZmbEventHandleResult ZoombiniShelterPicker::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
+	// Z1-20U/TLC v2.0 release only: picker-local buttons use hover shapes.
+	if (_vm->isGameVariant(GF_ZMB_TLC))
+		genericButton_updateHoverState(_pickerButtonsFeature, absPos, _pickerButtonStateMap, _pickerButtonRectMap);
 	ZmbEventHandleResult result = ZoombiniInteractive::onMouseMove(absPos, relPos);
 	updateCaveMarkHighlight();
 	return result;

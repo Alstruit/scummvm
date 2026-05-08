@@ -1936,7 +1936,13 @@ void ZoombiniPage::clearNode() {
 void ZoombiniPage::onFadeIn() {
 	if (!_useFadeEffect)
 		return;
+	// Z1-20U/TLC v2.0 release only: normal page enter/leave fades are not used.
+	if (_vm->isGameVariant(GF_ZMB_TLC)) {
+		_vm->_gfx->startMouseCursorEyeAnimation(_currentFrameTime);
+		return;
+	}
 
+	// Z1-11K IDA: initPaletteHolder_46D68F uses 500 ms when wFrameTime is 0.
 	_vm->_gfx->queueFadeEffect(ZoombiniGraphics::kFadeIn, 500);
 	_vm->_gfx->startMouseCursorEyeAnimation(_currentFrameTime);
 }
@@ -1944,7 +1950,11 @@ void ZoombiniPage::onFadeIn() {
 void ZoombiniPage::onFadeOut() {
 	if (!_useFadeEffect)
 		return;
+	// Z1-20U/TLC v2.0 release only: normal page enter/leave fades are not used.
+	if (_vm->isGameVariant(GF_ZMB_TLC))
+		return;
 
+	// Z1-11K IDA: pal_resetColorPalette_461119 uses the same 500 ms default.
 	_vm->_gfx->queueFadeEffect(ZoombiniGraphics::kFadeOut, 500);
 }
 
@@ -1955,11 +1965,15 @@ void ZoombiniPage::genericButton_selectShapes(ZmbFeature *feature, Common::Array
 		if (!bs._drawEnabled)
 			continue;
 
-		if (bs.hasDisabledState() && bs._isPressDisabled)
-			hotspots[bs._hsNormalId]._shapeIdx = bs._shapeDisabledIdx;
-
 		ZmbHotspot &hsNormal = hotspots[bs._hsNormalId];
 		ZmbHotspot &hsPressed = hotspots[bs._hsPressedId];
+
+		if (bs.hasDisabledState() && bs._isPressDisabled)
+			hsNormal._shapeIdx = bs._shapeDisabledIdx;
+		else if (bs.hasHoverState() && bs._isHovered && bs._shapeHoverIdx <= _vm->_gfx->getShapeCount(feature->getResource()))
+			hsNormal._shapeIdx = bs._shapeHoverIdx;
+		else
+			hsNormal._shapeIdx = bs._shapeNormalIdx;
 
 		bool disableNormalHotspot = false;
 		if (bs.isAnimating()) {
@@ -1980,6 +1994,41 @@ void ZoombiniPage::genericButton_selectShapes(ZmbFeature *feature, Common::Array
 			hsPressed._shapeIdx = ZmbHotspot::kShapeNone;
 		}
 	}
+}
+
+void ZoombiniPage::genericButton_updateHoverState(ZmbFeature *feature, const Common::Point &absPos, Common::StableMap<uint32, ButtonState> &buttonStateMap, const Common::HashMap<uint32, Common::Rect> &buttonRectMap) {
+	if (!feature)
+		return;
+
+	bool changed = false;
+	Common::Rect dirtyRect = feature->getZSortRect();
+
+	for (auto it = buttonStateMap.begin(); it != buttonStateMap.end(); it++) {
+		uint32 bsIdx = it->first;
+		ButtonState &bs = it->second;
+		bool hovered = false;
+
+		if (bs._drawEnabled && bs.hasHoverState() && (!bs.hasDisabledState() || !bs._isPressDisabled)) {
+			auto rit = buttonRectMap.find(bsIdx);
+			if (rit != buttonRectMap.end()) {
+				const Common::Rect &buttonRect = rit->_value;
+				hovered = buttonRect.contains(absPos);
+				if (dirtyRect.isEmpty())
+					dirtyRect = buttonRect;
+				else
+					dirtyRect.extend(buttonRect);
+			}
+		}
+
+		changed |= bs.setHovered(hovered);
+	}
+
+	if (!changed)
+		return;
+
+	if (!dirtyRect.isEmpty())
+		addExternalDirtyRect(dirtyRect);
+	feature->setNeedsRedraw(true);
 }
 
 void ZoombiniPage::genericButton_textRender(ZmbFeature *feature, Common::StableMap<uint32, ButtonState> &buttonStateMap, Graphics::TextAlign textAlign, int16 normalDeltaY, int16 pressedDeltaY) {

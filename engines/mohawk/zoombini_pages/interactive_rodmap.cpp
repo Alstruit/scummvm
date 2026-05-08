@@ -95,7 +95,7 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 	hooks1006.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniInteractiveRodMap::optionButton1006_preRenderShape));
 	hooks1006.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniInteractiveRodMap::optionButton1006_postRender));
 	hooks1006.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniInteractiveRodMap::optionButton1006_onLButtonDown));
-	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1000), kResScrbMenuButton1006, 3,
+	_optionButtonFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1000), kResScrbMenuButton1006, 3,
 					ZmbFeature::FLAG_00001000_TOPMOST,
 					hooks1006);
 
@@ -149,6 +149,9 @@ void ZoombiniInteractiveRodMap::loadFeatures() {
 }
 
 ZmbEventHandleResult ZoombiniInteractiveRodMap::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
+	ZoombiniInteractive::onMouseMove(absPos, relPos);
+	optionButton1006_updateTlcHover(absPos);
+
 	uint32 hoveredPageIdx = UINT32_MAX;
 	for (uint32 i = 0; i < ARRAYSIZE(_pageClickRects); i++) {
 		if (!_pageClickRects[i].contains(absPos))
@@ -418,15 +421,46 @@ void ZoombiniInteractiveRodMap::optionButton1006_preRenderShape(ZmbFeature *feat
 }
 
 void ZoombiniInteractiveRodMap::optionButton1006_postRender(ZmbFeature *feature) {
-	// [Post-Animation Events]
 	if (!_optionButtonState._drawEnabled)
 		return;
+
+	optionButton1006_renderTlcLabel();
 
 	if (!_optionButtonState._firePostAnimationEvent)
 		return;
 	_optionButtonState._firePostAnimationEvent = false;
 
 	_vm->openOptionsDialog();
+}
+
+void ZoombiniInteractiveRodMap::optionButton1006_renderTlcLabel() {
+	// Z1-20U/TLC v2.0 release only: the rodmap button has a literal
+	// lowercase "options" label over the bitmap.
+	if (!_vm->isGameVariant(GF_ZMB_TLC))
+		return;
+
+	ZoombiniGraphics::TextConf tc;
+	tc._textPalette = ZoombiniGraphics::kColor2D_Black;
+	tc._hAlign = Graphics::kTextAlignCenter;
+	tc._vAlign = Graphics::kTextAlignCenter;
+	_vm->_gfx->drawText(ZoombiniGraphics::kShapeScreen, Common::U32String("options", Common::kUtf8), _tlcOptionButtonTextRect, tc);
+}
+
+void ZoombiniInteractiveRodMap::optionButton1006_updateTlcHover(const Common::Point &absPos) {
+	// Z1-20U/TLC v2.0 release only: hover reloads SCRB 1007 onto the
+	// existing options-button runner, then restores SCRB 1006 on leave.
+	if (!_vm->isGameVariant(GF_ZMB_TLC) || !_optionButtonFeature)
+		return;
+
+	const bool hovered = _optionButtonFeature->findDrawRecordAtPoint(absPos) != nullptr;
+	if (_optionButtonTlcHovered == hovered)
+		return;
+
+	const Common::Rect dirtyRect = _optionButtonFeature->getZSortRect();
+	_optionButtonTlcHovered = hovered;
+	loadScrbOntoFeature(_optionButtonFeature, hovered ? kResScrbMenuButtonHover1007 : kResScrbMenuButton1006);
+	if (!dirtyRect.isEmpty())
+		addExternalDirtyRect(dirtyRect);
 }
 
 ZmbEventHandleResult ZoombiniInteractiveRodMap::optionButton1006_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {

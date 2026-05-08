@@ -55,6 +55,10 @@ protected:
 	bool goButton_preRender(ZmbFeature *feature);
 	void goButton_postRender(ZmbFeature *feature);
 	ZmbEventHandleResult goButton_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
+	// Z1-20U/TLC v2.0 release only: page-local yellow-outline hover states.
+	bool updateGoMapButtonHover(const Common::Point &absPos);
+	bool updateScrollButtonHover(const Common::Point &absPos);
+	bool releaseHeldScrollButton();
 
 	/**
 	 * Renders one or more BC2 buttons using SHPL 9000 shapes.
@@ -184,10 +188,18 @@ protected:
 		kShape9000_ScrollRMaxNormal_13 = 13,
 		kShape9000_ScrollRMaxPressed_14 = 14,
 		kShape9000_GoDisabled_15 = 15,
+		// Z1-20U/TLC v2.0 release only: page-local hover shapes.
+		kShape9000_GoHover_17 = 17,
+		kShape9000_MapHover_19 = 19,
+		kShape9000_ScrollLMaxHover_20 = 20,
+		kShape9000_ScrollLOneHover_21 = 21,
+		kShape9000_ScrollROneHover_22 = 22,
+		kShape9000_ScrollRMaxHover_23 = 23,
 		// Help/Save button (slot 3): IDA uses shape 24 via the SCRB shape-table path
-		// (gfx_blitBitmapShape, result >= 24 branch).  There are no tBMP 9023/9024 —
-		// 9000-9015 are the only tBMP files.  The help button is rendered by the SCRB
-		// runner automatically; renderButtons() skips slot 3 entirely.
+		// (gfx_blitBitmapShape, result >= 24 branch).  Resources 9000-9022 cover
+		// page-local Go/Map/scroll shapes, but there are no tBMP 9023/9024.
+		// The help button is rendered by the SCRB runner automatically; renderButtons()
+		// skips slot 3 entirely.
 		// These constants are kept for documentation only.
 		kShape9000_HelpNormal_24 = 24,
 		kShape9000_HelpPressed_25 = 25,
@@ -342,6 +354,12 @@ protected:
 	/** Runner index of the virtual storage feature (word_4AACD8). */
 	ZmbFeature *_storageFeature = nullptr;
 
+	/** Virtual runner that renders the Go/Map button group. */
+	ZmbFeature *_goButtonFeature = nullptr;
+
+	/** Virtual runner that renders the storage scroll buttons. */
+	ZmbFeature *_scrollButtonFeature = nullptr;
+
 	/** Runner index of the transport animation SCRB (word_4AAD04). */
 	uint16 _transportAnimRunnerIdx = 0;
 
@@ -390,6 +408,11 @@ protected:
 
 	/** Go-button visible state, synced from _canGoEnabled each preRender (word_4AACE6). */
 	bool _canGoVisible = false;
+
+	/** Z1-20U/TLC v2.0 release only: yellow-outline hover state for page-local buttons. */
+	bool _goButtonHovered = false;
+	bool _mapButtonHovered = false;
+	bool _scrollButtonHovered[4] = {false, false, false, false};
 
 	/** True when the transport button animation has been armed (word_4AACF0). */
 	bool _transportButtonArmed = false;

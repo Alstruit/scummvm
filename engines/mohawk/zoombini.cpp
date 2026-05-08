@@ -319,22 +319,32 @@ void MohawkEngine_Zoombini::processEvent(ZoombiniPage *page, const Common::Event
 		break;
 	case Common::EVENT_QUIT:
 	case Common::EVENT_RETURN_TO_LAUNCHER:
-		page->onQuit();
-		page->close();
-
-		if (page != _activePage && _activePage) {
-			_activePage->onQuit();
-			_activePage->close();
-		}
-
-		if (_quitEventState == kQuitEventNone) {
-			_quitEventState = kQuitEventRunning;
-			_gfx->setMouseCursor(ZoombiniGraphics::kResCursor01_Watch);
-		}
+		beginQuitEvent(page);
 		break;
 	default:
 		break;
 	}
+}
+
+void MohawkEngine_Zoombini::beginQuitEvent(ZoombiniPage *page) {
+	if (_quitEventState != kQuitEventNone)
+		return;
+
+	if (!page)
+		page = getCurrentPage();
+
+	if (page) {
+		page->onQuit();
+		page->close();
+	}
+
+	if (page != _activePage && _activePage) {
+		_activePage->onQuit();
+		_activePage->close();
+	}
+
+	_quitEventState = kQuitEventRunning;
+	_gfx->setMouseCursor(ZoombiniGraphics::kResCursor01_Watch);
 }
 
 void MohawkEngine_Zoombini::doFrame() {
@@ -361,6 +371,12 @@ void MohawkEngine_Zoombini::doFrame() {
 		page = _dialogPageStack.top();
 	else
 		page = _activePage;
+
+	// Engine::quitGame() can be called from page/dialog callbacks after event
+	// polling has already finished for the frame. Enter the same close/fade
+	// state here so a closed page is never treated as a normal page transition.
+	if (shouldQuit() && _quitEventState == kQuitEventNone)
+		beginQuitEvent(page);
 
 	// Debugger console is spawned in pollEvent() if requested.
 	processEvents(page);
@@ -460,6 +476,11 @@ void MohawkEngine_Zoombini::loadNextPage() {
 	}
 	_gfx->clearScreens();
 	_gfx->clearCache();
+
+	if (_pageQueue.empty() && shouldQuit()) {
+		_quitEventState = kQuitEventDone;
+		return;
+	}
 
 	assert(!_pageQueue.empty());
 	ZoombiniPageType nextPageType = _pageQueue.pop();

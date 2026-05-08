@@ -100,9 +100,9 @@ void ZoombiniShelterBasecampTwo::loadFeatures() {
 	{ // [*] Virtual Feature: Scroll-button panel (postRender draws scroll arrows via SHPL 9000)
 		ZmbFeature::EventHooks hooks;
 		hooks.setPostRenderFunc(reinterpret_cast<ZmbFeature::OnPostRenderFunc>(&ZoombiniShelterBasecampTwo::buttons_postRender));
-		loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
-						ZmbFeature::FLAG_00001000_TOPMOST | ZmbFeature::FLAG_00008000_LOOP_ANIM,
-						hooks);
+		_scrollButtonFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, 0), 0, 0,
+											   ZmbFeature::FLAG_00001000_TOPMOST | ZmbFeature::FLAG_00008000_LOOP_ANIM,
+											   hooks);
 	}
 
 	{ // [*] Virtual Feature: Go/Map/Save buttons
@@ -114,6 +114,7 @@ void ZoombiniShelterBasecampTwo::loadFeatures() {
 											ZmbFeature::FLAG_00001000_TOPMOST,
 											hooks);
 		vf->setClickRect(Common::Rect(0x0257, 0x0140, 0x027E, 0x018B)); // covers Go + Map
+		_goButtonFeature = vf;
 	}
 
 	// [*] SCRB 7000 ~ 7015: Pedestals (16 spots for the active Zoombini pack)
@@ -520,6 +521,81 @@ ZmbEventHandleResult ZoombiniShelterBasecampTwo::goButton_onLButtonDown(ZmbFeatu
 	return ZmbEventHandleResult::kPassthrough;
 }
 
+bool ZoombiniShelterBasecampTwo::updateGoMapButtonHover(const Common::Point &absPos) {
+	// Z1-20U/TLC v2.0 release only: BC2 has page-local Go/Map hover shapes.
+	if (!_vm->isGameVariant(GF_ZMB_TLC))
+		return false;
+
+	bool goHovered = _canGoEnabled && !_pendingGoDepart && _goButtonRect.contains(absPos);
+	bool mapHovered = _mapButtonRect.contains(absPos);
+
+	if (goHovered == _goButtonHovered && mapHovered == _mapButtonHovered)
+		return false;
+
+	_goButtonHovered = goHovered;
+	_mapButtonHovered = mapHovered;
+
+	Common::Rect dirtyRect = _goButtonRect;
+	dirtyRect.extend(_mapButtonRect);
+	addExternalDirtyRect(dirtyRect);
+	if (_goButtonFeature)
+		_goButtonFeature->setNeedsRedraw(true);
+	return true;
+}
+
+bool ZoombiniShelterBasecampTwo::updateScrollButtonHover(const Common::Point &absPos) {
+	// Z1-20U/TLC v2.0 release only: BC2 storage scroll buttons use
+	// yellow-outline hover shapes.
+	if (!_vm->isGameVariant(GF_ZMB_TLC))
+		return false;
+
+	bool changed = false;
+	for (uint i = 0; i < ARRAYSIZE(_scrollButtonHovered); i++) {
+		bool hovered = _scrollButtonRects[i].contains(absPos);
+		if (_scrollButtonHovered[i] == hovered)
+			continue;
+
+		_scrollButtonHovered[i] = hovered;
+		changed = true;
+	}
+
+	if (!changed)
+		return false;
+
+	Common::Rect dirtyRect = _scrollButtonRects[0];
+	for (uint i = 1; i < ARRAYSIZE(_scrollButtonHovered); i++)
+		dirtyRect.extend(_scrollButtonRects[i]);
+
+	addExternalDirtyRect(dirtyRect);
+	if (_scrollButtonFeature)
+		_scrollButtonFeature->setNeedsRedraw(true);
+	return true;
+}
+
+bool ZoombiniShelterBasecampTwo::releaseHeldScrollButton() {
+	if (_currentScrollButton == 0)
+		return false;
+
+	_scrollDirection = kScrollDir_None;
+	_currentScrollButton = 0;
+	_scrollAnimating = false;
+
+	_vm->_sound->stopZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound2000_StorageScrolling));
+	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound2001_StorageScrollEnd),
+							  Audio::Mixer::kSFXSoundType, false);
+	_scrollSoundState = 0;
+
+	Common::Rect dirtyRect = _scrollButtonRects[0];
+	for (uint i = 1; i < ARRAYSIZE(_scrollButtonRects); i++)
+		dirtyRect.extend(_scrollButtonRects[i]);
+
+	addExternalDirtyRect(dirtyRect);
+	if (_scrollButtonFeature)
+		_scrollButtonFeature->setNeedsRedraw(true);
+
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // Page-level mouse handlers — Snoid drag/drop
 // IDA: bc2_onHotspotHover (arg0=1 → pick up, arg0=2 → drag/drop)
@@ -614,18 +690,8 @@ ZmbEventHandleResult ZoombiniShelterBasecampTwo::onLButtonDown(const Common::Poi
 ZmbEventHandleResult ZoombiniShelterBasecampTwo::onLButtonUp(const Common::Point &absPos, const Common::Point &relPos) {
 	// Handle scroll button release
 	// IDA: caves_entranceBridge_funcOnClick_413740 scroll loop exit
-	if (_currentScrollButton != 0) {
-		_scrollDirection = kScrollDir_None;
-		_currentScrollButton = 0;
-		_scrollAnimating = false;
-
-		// Stop scroll sound and play end sound
-		_vm->_sound->stopZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound2000_StorageScrolling));
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound2001_StorageScrollEnd),
-								  Audio::Mixer::kSFXSoundType, false);
-		_scrollSoundState = 0;
+	if (releaseHeldScrollButton())
 		return ZmbEventHandleResult::kConsumed;
-	}
 
 	if (!isDragging())
 		return ZoombiniInteractive::onLButtonUp(absPos, relPos);
@@ -799,6 +865,21 @@ ZmbEventHandleResult ZoombiniShelterBasecampTwo::onMouseMove(const Common::Point
 	if (isDragging()) {
 		updatePedestalHover(_draggedSnoid->getPointLoc());
 	}
+
+	if (_currentScrollButton != 0) {
+		const int scrollIdx = _currentScrollButton - 5;
+		bool heldButtonOutside = true;
+		if (0 <= scrollIdx && static_cast<uint>(scrollIdx) < ARRAYSIZE(_scrollButtonRects))
+			heldButtonOutside = !_scrollButtonRects[scrollIdx].contains(absPos);
+
+		// IDA: mouse_processButtonHoldLoop performs this bounds transition
+		// before the storage click handler clears the held scroll state.
+		if (heldButtonOutside)
+			releaseHeldScrollButton();
+	}
+
+	updateGoMapButtonHover(isDragging() ? Common::Point(-1, -1) : absPos);
+	updateScrollButtonHover(isDragging() ? Common::Point(-1, -1) : absPos);
 
 	// Delegate to parent for standard drag handling (snoid position update, etc.)
 	return ZoombiniInteractive::onMouseMove(absPos, relPos);
@@ -1069,23 +1150,43 @@ void ZoombiniShelterBasecampTwo::renderButtons(bool blit, int group, bool presse
 
 		if (i == 0) {
 			// Go button
-			shapeIdx = _canGoEnabled ? kShape9000_GoEnabled_01 : kShape9000_GoDisabled_15;
-			isBtnPressed = _canGoEnabled ? isBtnPressed : false;
+			if (!_canGoEnabled) {
+				shapeIdx = kShape9000_GoDisabled_15;
+				isBtnPressed = false;
+			} else if (isBtnPressed) {
+				shapeIdx = kShape9000_GoPressed_02;
+				isBtnPressed = false;
+			} else {
+				shapeIdx = _goButtonHovered ? kShape9000_GoHover_17 : kShape9000_GoEnabled_01;
+			}
 		} else if (i == 2) {
 			// Map/Return button
-			shapeIdx = kShape9000_MapNormal_05;
+			if (isBtnPressed) {
+				shapeIdx = kShape9000_MapPressed_06;
+				isBtnPressed = false;
+			} else {
+				shapeIdx = _mapButtonHovered ? kShape9000_MapHover_19 : kShape9000_MapNormal_05;
+			}
 		} else if (i == 3) {
 			// Save/Help button (slot 3) uses shape index 24 in the original engine,
-			// which is ≥24 and therefore rendered via the SCRB shape table path
-			// (gfx_blitBitmapShape), not via the tBMP SHPL path.
+			// which is rendered via the SCRB shape table path (gfx_blitBitmapShape),
+			// not via the tBMP SHPL path.
 			// When singleButton==0 the original also skips it (singleSlot>=1 is false).
-			// In ScummVM the SCRB runner draws it automatically — skip here.
+			// In ScummVM the SCRB runner draws it automatically; skip here.
 			continue;
 		} else if (i >= 4 && i <= 7) {
 			// Scroll arrow buttons
 			hasScrollButton = true;
-			shapeIdx = (uint16)(kShape9000_ScrollLMaxNormal_07 + 2 * (i - 4));
-			isBtnPressed = (_currentScrollButton - 1 == i);
+			const int scrollIdx = i - 4;
+			if (_currentScrollButton - 1 == i) {
+				shapeIdx = static_cast<uint16>(kShape9000_ScrollLMaxPressed_08 + 2 * scrollIdx);
+				isBtnPressed = false;
+			} else if (_scrollButtonHovered[scrollIdx]) {
+				shapeIdx = static_cast<uint16>(kShape9000_ScrollLMaxHover_20 + scrollIdx);
+				isBtnPressed = false;
+			} else {
+				shapeIdx = static_cast<uint16>(kShape9000_ScrollLMaxNormal_07 + 2 * scrollIdx);
+			}
 		} else {
 			// Button 1 has no drawn shape in the original loop
 			continue;

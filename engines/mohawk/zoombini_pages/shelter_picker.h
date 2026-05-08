@@ -152,6 +152,11 @@ protected:
 		kShape4200_11_MapButtonNormal = 11,
 		kShape4200_12_MapButtonPressed = 12,
 		kShape4200_13_NameBox = 13,
+		kShape4200_14_GenerateButtonHover = 14, // Z1-20U/TLC v2.0 release only
+		kShape4200_15_DiceButtonHover = 15, // Z1-20U/TLC v2.0 release only
+		kShape4200_16_DiceArrowButtonHover = 16, // Z1-20U/TLC v2.0 release only
+		kShape4200_17_GoButtonHover = 17, // Z1-20U/TLC v2.0 release only
+		kShape4200_18_MapButtonHover = 18, // Z1-20U/TLC v2.0 release only
 	};
 
 	enum Shape4300Id {
@@ -319,6 +324,7 @@ protected:
 
 	Common::StableMap<uint32, ButtonState> _pickerButtonStateMap;
 	Common::HashMap<uint32, Common::Rect> _pickerButtonRectMap;
+	ZmbFeature *_pickerButtonsFeature = nullptr; // Z1-20U/TLC v2.0 release only
 
 	ZmbFeature *_caveMarkFeature = nullptr;
 	bool _caveMarkHighlighted = false;

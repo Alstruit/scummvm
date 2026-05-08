@@ -41,6 +41,15 @@ ZoombiniShelterBasecampOne::ZoombiniShelterBasecampOne(MohawkEngine_Zoombini *vm
 	_scrollButtonStateMap[kScrollButtons_RightOne] = ContinuousButtonState(2, 6, kShape2100_ScrollRightOneNormal_11, kShape2100_ScrollRightOnePressed_12);
 	_scrollButtonStateMap[kScrollButtons_RightFour] = ContinuousButtonState(3, 7, kShape2100_ScrollRightFourNormal_13, kShape2100_ScrollRightFourPressed_14);
 
+	// Z1-20U/TLC v2.0 release only: storage scroll buttons gain yellow-outline
+	// hover bitmap states in addition to the page-local cursor arrows.
+	if (_vm->isGameVariant(GF_ZMB_TLC)) {
+		_scrollButtonStateMap[kScrollButtons_LeftFour].setHoverState(kShape2100_ScrollLeftFourHover_20);
+		_scrollButtonStateMap[kScrollButtons_LeftOne].setHoverState(kShape2100_ScrollLeftOneHover_21);
+		_scrollButtonStateMap[kScrollButtons_RightOne].setHoverState(kShape2100_ScrollRightOneHover_22);
+		_scrollButtonStateMap[kScrollButtons_RightFour].setHoverState(kShape2100_ScrollRightFourHover_23);
+	}
+
 	_scrollButtonRectMap[kScrollButtons_LeftFour] = _scrollLeftFourButtonRect;
 	_scrollButtonRectMap[kScrollButtons_LeftOne] = _scrollLeftOneButtonRect;
 	_scrollButtonRectMap[kScrollButtons_RightOne] = _scrollRightOneButtonRect;
@@ -519,8 +528,10 @@ ZmbEventHandleResult ZoombiniShelterBasecampOne::scroll_lButtonDown(ZmbFeature *
 		if (drawRecord->_hs._hsId != bs._hsNormalIdx && drawRecord->_hs._hsId != bs._hsPressedIdx)
 			continue;
 
+		releaseHeldScrollButton(feature);
 		bs.press();
 		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, static_cast<uint16>(kResSound2000_StorageScrolling)), Audio::Mixer::kSFXSoundType, true);
+		feature->setNeedsRedraw(true);
 		return ZmbEventHandleResult::kConsumed;
 	}
 
@@ -528,67 +539,116 @@ ZmbEventHandleResult ZoombiniShelterBasecampOne::scroll_lButtonDown(ZmbFeature *
 }
 
 ZmbEventHandleResult ZoombiniShelterBasecampOne::scroll_lButtonUp(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
-	ZmbDrawRecord *drawRecord = feature->findDrawRecordAtPoint(absPos);
-	if (!drawRecord)
-		return ZmbEventHandleResult::kPassthrough;
+	if (releaseHeldScrollButton(feature))
+		return ZmbEventHandleResult::kConsumed;
+
+	return ZmbEventHandleResult::kPassthrough;
+}
+
+bool ZoombiniShelterBasecampOne::releaseHeldScrollButton(ZmbFeature *feature) {
+	bool released = false;
+	Common::Rect dirtyRect;
+
+	if (feature)
+		dirtyRect = feature->getZSortRect();
 
 	for (auto it = _scrollButtonStateMap.begin(); it != _scrollButtonStateMap.end(); it++) {
+		uint32 buttonIdx = it->first;
+		ContinuousButtonState &bs = it->second;
+
+		if (!bs._pressed)
+			continue;
+
+		bs.release();
+		released = true;
+
+		auto rit = _scrollButtonRectMap.find(buttonIdx);
+		if (rit != _scrollButtonRectMap.end()) {
+			if (dirtyRect.isEmpty())
+				dirtyRect = rit->_value;
+			else
+				dirtyRect.extend(rit->_value);
+		}
+	}
+
+	if (!released)
+		return false;
+
+	_vm->_sound->stopZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound2000_StorageScrolling));
+	_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound2001_StorageScrollEnd), Audio::Mixer::kSFXSoundType, false);
+
+	if (!dirtyRect.isEmpty())
+		addExternalDirtyRect(dirtyRect);
+	if (feature)
+		feature->setNeedsRedraw(true);
+
+	return true;
+}
+
+ZmbEventHandleResult ZoombiniShelterBasecampOne::scroll_mouseMove(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
+	uint16 cursorShapeIdx = ZmbHotspot::kShapeNone;
+	// Z1-20U/TLC v2.0 release only: 1.x keeps the arrow cursor behavior but
+	// does not swap storage button shapes on hover.
+	bool hoverChanged = false;
+	Common::Rect hoverDirtyRect = feature->getZSortRect();
+	bool releaseHeldButton = false;
+
+	ZmbDrawRecord *drawRecord = feature->findDrawRecordAtPoint(absPos);
+	for (auto it = _scrollButtonStateMap.begin(); it != _scrollButtonStateMap.end(); it++) {
+		uint32 buttonIdx = it->first;
 		ContinuousButtonState &bs = it->second;
 
 		if (!bs._enabled)
 			continue;
 
-		// Find the pressed button
-		if (drawRecord->_hs._hsId != bs._hsNormalIdx && drawRecord->_hs._hsId != bs._hsPressedIdx)
+		auto rit = _scrollButtonRectMap.find(buttonIdx);
+		if (_vm->isGameVariant(GF_ZMB_TLC) && bs.hasHoverState() && rit != _scrollButtonRectMap.end()) {
+			if (hoverDirtyRect.isEmpty())
+				hoverDirtyRect = rit->_value;
+			else
+				hoverDirtyRect.extend(rit->_value);
+		}
+
+		const bool buttonHovered = drawRecord &&
+			(drawRecord->_hs._hsId == bs._hsNormalIdx || drawRecord->_hs._hsId == bs._hsPressedIdx);
+		if (_vm->isGameVariant(GF_ZMB_TLC) && bs.hasHoverState())
+			hoverChanged |= bs.setHovered(buttonHovered);
+
+		if (bs._pressed && rit != _scrollButtonRectMap.end() && !rit->_value.contains(absPos))
+			releaseHeldButton = true;
+
+		if (!buttonHovered)
 			continue;
 
-		bs.release();
-		_vm->_sound->stopZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound2000_StorageScrolling));
-		_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kPage, kResSound2001_StorageScrollEnd), Audio::Mixer::kSFXSoundType, false);
-		return ZmbEventHandleResult::kConsumed;
+		// The button is being hovered. Set corresponding bitmap as a cursor.
+		switch (buttonIdx) {
+		case kScrollButtons_LeftFour:
+			cursorShapeIdx = kShape9000_ArrowLeftMax_01;
+			break;
+		case kScrollButtons_LeftOne:
+			cursorShapeIdx = kShape9000_ArrowLeft_02;
+			break;
+		case kScrollButtons_RightOne:
+			cursorShapeIdx = kShape9000_ArrowRight_03;
+			break;
+		case kScrollButtons_RightFour:
+			cursorShapeIdx = kShape9000_ArrowRightMax_04;
+			break;
+		default:
+			error("ZoombiniInteractiveBasecampOne::scroll_mouseMove: Invalid buttonIdx %u", buttonIdx);
+			break;
+		}
 	}
 
-	return ZmbEventHandleResult::kPassthrough;
-}
+	// IDA: mouse_processButtonHoldLoop checks held-button bounds before the
+	// storage click handler's reset path stops sound 2000 and plays sound 2001.
+	if (releaseHeldButton)
+		releaseHeldScrollButton(feature);
 
-ZmbEventHandleResult ZoombiniShelterBasecampOne::scroll_mouseMove(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
-	uint16 cursorShapeIdx = ZmbHotspot::kShapeNone;
-
-	ZmbDrawRecord *drawRecord = feature->findDrawRecordAtPoint(absPos);
-	if (drawRecord) {
-		for (auto it = _scrollButtonStateMap.begin(); it != _scrollButtonStateMap.end(); it++) {
-			uint32 buttonIdx = it->first;
-			ContinuousButtonState &bs = it->second;
-
-			if (!bs._enabled)
-				continue;
-
-			// If the button was not hovered, release that button.
-			// It is to handle the case of the clicking cursor moved outside wihtout releasing.
-			if (drawRecord->_hs._hsId != bs._hsNormalIdx && drawRecord->_hs._hsId != bs._hsPressedIdx) {
-				bs.release();
-				continue;
-			}
-
-			// The button is being hovered. Set corresponding bitmap as a cursor.
-			switch (buttonIdx) {
-			case kScrollButtons_LeftFour:
-				cursorShapeIdx = kShape9000_ArrowLeftMax_01;
-				break;
-			case kScrollButtons_LeftOne:
-				cursorShapeIdx = kShape9000_ArrowLeft_02;
-				break;
-			case kScrollButtons_RightOne:
-				cursorShapeIdx = kShape9000_ArrowRight_03;
-				break;
-			case kScrollButtons_RightFour:
-				cursorShapeIdx = kShape9000_ArrowRightMax_04;
-				break;
-			default:
-				error("ZoombiniInteractiveBasecampOne::scroll_mouseMove: Invalid buttonIdx %u", buttonIdx);
-				break;
-			}
-		}
+	if (hoverChanged) {
+		if (!hoverDirtyRect.isEmpty())
+			addExternalDirtyRect(hoverDirtyRect);
+		feature->setNeedsRedraw(true);
 	}
 
 	if (cursorShapeIdx != _storageButtonCursorShapeIdx) {

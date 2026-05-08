@@ -568,6 +568,7 @@ public:
 		kShape0001_27_HelpDialogPrevButtonPressed = 27,
 		kShape0001_28_HelpDialogNextButtonNormal = 28,
 		kShape0001_29_HelpDialogNextButtonPressed = 29,
+		kShape0001_39_HelpButtonHover = 39,
 
 		kShape3001_01_NotiBoxShort = 1,
 		kShape3001_02_NotiBoxLong = 2,
@@ -767,6 +768,8 @@ protected:
 		uint16 _hsPressedId = ZmbHotspot::kIndexNone;
 		uint16 _shapeNormalIdx = ZmbHotspot::kShapeNone;
 		uint16 _shapePressedIdx = ZmbHotspot::kShapeNone;
+		uint16 _shapeHoverIdx = ZmbHotspot::kShapeNone;
+		bool _isHovered = false;
 
 		bool _isPressDisabled = false;
 		uint16 _shapeDisabledIdx = ZmbHotspot::kShapeNone;
@@ -784,6 +787,18 @@ protected:
 		bool hasDisabledState() const {
 			return _shapeDisabledIdx != ZmbHotspot::kShapeNone;
 		}
+		void setHoverState(uint16 hoverShapeId) {
+			_shapeHoverIdx = hoverShapeId;
+		}
+		bool hasHoverState() const {
+			return _shapeHoverIdx != ZmbHotspot::kShapeNone;
+		}
+		bool setHovered(bool hovered) {
+			if (_isHovered == hovered)
+				return false;
+			_isHovered = hovered;
+			return true;
+		}
 		void press(MohawkEngine_Zoombini *vm, uint32 frameCounter);
 
 	private:
@@ -795,6 +810,7 @@ protected:
 	void genericButton_textRender(ZmbFeature *feature, Common::StableMap<uint32, ButtonState> &buttonStateMap, Graphics::TextAlign textAlign = Graphics::kTextAlignLeft, int16 normalDeltaY = 0, int16 pressedDeltaY = 0);
 	void genericButton_textRender(ZmbFeature *feature, Common::StableMap<uint32, ButtonState> &buttonStateMap, const ZoombiniGraphics::TextConf &tc, int16 normalDeltaY = 0, int16 pressedDeltaY = 0);
 	void genericButton_textRender(ZmbFeature *feature, Common::StableMap<uint32, ButtonState> &buttonStateMap, ButtonGetRectFunc getRectFunc, const ZoombiniGraphics::TextConf &tc);
+	void genericButton_updateHoverState(ZmbFeature *feature, const Common::Point &absPos, Common::StableMap<uint32, ButtonState> &buttonStateMap, const Common::HashMap<uint32, Common::Rect> &buttonRectMap);
 	void genericButton_action(ZmbFeature *feature, Common::StableMap<uint32, ButtonState> &buttonStateMap, OnButtonActionFunc onButtonActionFunc);
 	ZmbEventHandleResult genericButton_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, Common::StableMap<uint32, ButtonState> &buttonStateMap, OnButtonActionFunc onButtonActionFunc = nullptr);
 	ZmbEventHandleResult genericButton_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, Common::StableMap<uint32, ButtonState> &buttonStateMap, const Common::HashMap<uint32, Common::Rect> &buttonRectMap, OnButtonActionFunc onButtonActionFunc = nullptr);

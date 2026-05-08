@@ -137,12 +137,32 @@ void ZoombiniInteractive::continuousButton_selectShapes(ZmbFeature *feature, Com
 
 		if (cbs._pressed) {
 			hsNormal._shapeIdx = ZmbHotspot::kShapeNone;
+			hsPressed._shapeIdx = cbs._shapePressedId;
 			hsPressed._x += pressedDeltaX;
 			hsPressed._y += pressedDeltaY;
 		} else {
+			if (cbs.hasHoverState() && cbs._isHovered && cbs._shapeHoverId <= _vm->_gfx->getShapeCount(feature->getResource()))
+				hsNormal._shapeIdx = cbs._shapeHoverId;
+			else
+				hsNormal._shapeIdx = cbs._shapeNormalId;
 			hsPressed._shapeIdx = ZmbHotspot::kShapeNone;
 		}
 	}
+}
+
+void ZoombiniInteractive::ContinuousButtonState::setHoverState(uint16 hoverShapeId) {
+	_shapeHoverId = hoverShapeId;
+}
+
+bool ZoombiniInteractive::ContinuousButtonState::hasHoverState() const {
+	return _shapeHoverId != ZmbHotspot::kShapeNone;
+}
+
+bool ZoombiniInteractive::ContinuousButtonState::setHovered(bool hovered) {
+	if (_isHovered == hovered)
+		return false;
+	_isHovered = hovered;
+	return true;
 }
 
 void ZoombiniInteractive::ContinuousButtonState::press() {
@@ -187,7 +207,8 @@ void ZoombiniInteractive::setMapButton(const Common::Rect &rect, uint16 shapeNor
 	_mapButtonShapePressedId = shapePressedId;
 
 	ZmbResource soundResId(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX);
-	_goMapButtonStateMap[kThreeButtons_Map] = ButtonState(soundResId, kHotspotMapButtonNormal, kHotspotMapButtonPressed, shapeNormalId, shapePressedId);
+	ButtonState mapButtonState = ButtonState(soundResId, kHotspotMapButtonNormal, kHotspotMapButtonPressed, shapeNormalId, shapePressedId);
+	_goMapButtonStateMap[kThreeButtons_Map] = mapButtonState;
 	_threeButtonRectMap[kThreeButtons_Map] = rect;
 }
 
@@ -195,12 +216,17 @@ void ZoombiniInteractive::setHelpButton(const Common::Rect &rect) {
 	_helpButtonRect = rect;
 
 	ZmbResource soundResId(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX);
-	_helpButtonStateMap[kThreeButtons_Help] = ButtonState(soundResId, kHotspotHelpButtonNormal, kHotspotHelpButtonPressed, kShape0001_24_HelpButtonNormal, kShape0001_25_HelpButtonPressed);
+	ButtonState helpButtonState = ButtonState(soundResId, kHotspotHelpButtonNormal, kHotspotHelpButtonPressed, kShape0001_24_HelpButtonNormal, kShape0001_25_HelpButtonPressed);
+	// Z1-20U/TLC v2.0 release only: the shared Help button has a hover shape.
+	if (_vm->isGameVariant(GF_ZMB_TLC))
+		helpButtonState.setHoverState(kShape0001_39_HelpButtonHover);
+	_helpButtonStateMap[kThreeButtons_Help] = helpButtonState;
 	_threeButtonRectMap[kThreeButtons_Help] = rect;
 }
 
 void ZoombiniInteractive::loadGoMapButtonsFeature(uint16 bitmapResId) {
 	_goMapBitmapResId = bitmapResId;
+	configureTlcGoMapButtonHover(bitmapResId);
 
 	// At least one of Go or Map button should be enabled to load the feature.
 	if (!_goMapButtonStateMap[kThreeButtons_Map]._drawEnabled && !_goMapButtonStateMap[kThreeButtons_SecondGo]._drawEnabled && !_goMapButtonStateMap[kThreeButtons_Go]._drawEnabled)
@@ -230,10 +256,69 @@ void ZoombiniInteractive::loadGoMapButtonsFeature(uint16 bitmapResId) {
 
 	// IDA overlay03: registered with FLAG_00001000_TOPMOST only (no OVERLAY).
 	// TOPMOST → normalList tail → rendered last → always on top of all features.
-	loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, _goMapBitmapResId), 0,
+	_goMapButtonsFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kPage, _goMapBitmapResId), 0,
 					hotspots, 0,
 					ZmbFeature::FLAG_00001000_TOPMOST,
 					hooksGoMapButtons);
+}
+
+void ZoombiniInteractive::setTlcButtonHoverIfPresent(ButtonState &buttonState, uint16 hoverShapeId, const ZmbResource &bitmapRes) {
+	buttonState._shapeHoverIdx = ZmbHotspot::kShapeNone;
+	buttonState._isHovered = false;
+	if (hoverShapeId <= _vm->_gfx->getShapeCount(bitmapRes))
+		buttonState.setHoverState(hoverShapeId);
+}
+
+void ZoombiniInteractive::configureTlcGoMapButtonHover(uint16 bitmapResId) {
+	// Z1-20U/TLC v2.0 release only: 1.x releases do not have yellow-outline
+	// Go/Map/Help hover bitmap states.
+	if (!_vm->isGameVariant(GF_ZMB_TLC))
+		return;
+
+	const ZmbResource bitmapRes(ZmbArchiveKind::kPage, bitmapResId);
+
+	if (getPageType() == ZoombiniPageType::kBasecamp1 && bitmapResId == kBasecamp1ButtonBitmapResId) {
+		ButtonState &goButtonState = _goMapButtonStateMap[kThreeButtons_Go];
+		if (goButtonState._shapeNormalIdx == kShapeBasecamp1GoRouteUpButtonNormal &&
+			goButtonState._shapePressedIdx == kShapeBasecamp1GoRouteUpButtonPressed)
+			setTlcButtonHoverIfPresent(goButtonState, kShapeBasecamp1GoRouteUpButtonHover, bitmapRes);
+
+		ButtonState &secondGoButtonState = _goMapButtonStateMap[kThreeButtons_SecondGo];
+		if (secondGoButtonState._shapeNormalIdx == kShapeBasecamp1GoRouteDownButtonNormal &&
+			secondGoButtonState._shapePressedIdx == kShapeBasecamp1GoRouteDownButtonPressed)
+			setTlcButtonHoverIfPresent(secondGoButtonState, kShapeBasecamp1GoRouteDownButtonHover, bitmapRes);
+
+		ButtonState &mapButtonState = _goMapButtonStateMap[kThreeButtons_Map];
+		if (mapButtonState._shapeNormalIdx == kShapeMapButtonNormal &&
+			mapButtonState._shapePressedIdx == kShapeMapButtonPressed)
+			setTlcButtonHoverIfPresent(mapButtonState, kShapeBasecamp1MapButtonHover, bitmapRes);
+		return;
+	}
+
+	auto goIt = _goMapButtonStateMap.find(kThreeButtons_Go);
+	if (goIt != _goMapButtonStateMap.end()) {
+		ButtonState &goButtonState = goIt->second;
+		if (goButtonState._shapeNormalIdx == kShapeGoButtonNormal && goButtonState._shapePressedIdx == kShapeGoButtonPressed)
+			setTlcButtonHoverIfPresent(goButtonState, kShapeGoButtonHover, bitmapRes);
+		else if (goButtonState._shapeNormalIdx == kShapePickerGoButtonNormal && goButtonState._shapePressedIdx == kShapePickerGoButtonPressed)
+			setTlcButtonHoverIfPresent(goButtonState, kShapePickerGoButtonHover, bitmapRes);
+	}
+
+	auto secondGoIt = _goMapButtonStateMap.find(kThreeButtons_SecondGo);
+	if (secondGoIt != _goMapButtonStateMap.end()) {
+		ButtonState &secondGoButtonState = secondGoIt->second;
+		if (secondGoButtonState._shapeNormalIdx == kShapeGoButtonNormal && secondGoButtonState._shapePressedIdx == kShapeGoButtonPressed)
+			setTlcButtonHoverIfPresent(secondGoButtonState, kShapeGoButtonHover, bitmapRes);
+	}
+
+	auto mapIt = _goMapButtonStateMap.find(kThreeButtons_Map);
+	if (mapIt != _goMapButtonStateMap.end()) {
+		ButtonState &mapButtonState = mapIt->second;
+		if (mapButtonState._shapeNormalIdx == kShapeMapButtonNormal && mapButtonState._shapePressedIdx == kShapeMapButtonPressed)
+			setTlcButtonHoverIfPresent(mapButtonState, kShapeMapButtonHover, bitmapRes);
+		else if (mapButtonState._shapeNormalIdx == kShapePickerMapButtonNormal && mapButtonState._shapePressedIdx == kShapePickerMapButtonPressed)
+			setTlcButtonHoverIfPresent(mapButtonState, kShapePickerMapButtonHover, bitmapRes);
+	}
 }
 
 void ZoombiniInteractive::loadHelpButtonFeature() {
@@ -244,8 +329,12 @@ void ZoombiniInteractive::loadHelpButtonFeature() {
 	// Help button shapes & hotspots are stored in a common archive, ZOOMBINI.MHK.
 	// Help feature is added in Zoombini 1.1 release, so its shapes are not in the original page archives.
 	ZmbResource soundResId(ZmbArchiveKind::kSystem, kResSound0999_ButtonSFX);
-	_helpButtonStateMap[kThreeButtons_Help] = ButtonState(soundResId, kHotspotHelpButtonNormal, kHotspotHelpButtonPressed,
-														  kShape0001_24_HelpButtonNormal, kShape0001_25_HelpButtonPressed);
+	ButtonState helpButtonState = ButtonState(soundResId, kHotspotHelpButtonNormal, kHotspotHelpButtonPressed,
+													 kShape0001_24_HelpButtonNormal, kShape0001_25_HelpButtonPressed);
+	// Z1-20U/TLC v2.0 release only: the shared Help button has a hover shape.
+	if (_vm->isGameVariant(GF_ZMB_TLC))
+		helpButtonState.setHoverState(kShape0001_39_HelpButtonHover);
+	_helpButtonStateMap[kThreeButtons_Help] = helpButtonState;
 
 	// [*] Callback-only runner (tBMP c:0001) - Help Button
 	// IDA: Same overlay03 wResId=0 runner handles Help alongside Go/Map.
@@ -259,10 +348,19 @@ void ZoombiniInteractive::loadHelpButtonFeature() {
 	hotspots.push_back(ZmbHotspot(kHotspotHelpButtonPressed, kShape0001_25_HelpButtonPressed, 0, _helpButtonRect));
 
 	// IDA overlay03: same TOPMOST-only flags as Go/Map buttons.
-	loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0001_Dialog), 0,
+	_helpButtonFeature = loadScrbFeature(ZmbResource(ZmbArchiveKind::kSystem, kResShapeBitmap0001_Dialog), 0,
 					hotspots, 0,
 					ZmbFeature::FLAG_00001000_TOPMOST,
 					hooksHelpMapButton);
+}
+
+void ZoombiniInteractive::updateTlcButtonHover(const Common::Point &absPos) {
+	// Z1-20U/TLC v2.0 release only: shared three-button hover visuals.
+	if (!_vm->isGameVariant(GF_ZMB_TLC))
+		return;
+
+	genericButton_updateHoverState(_goMapButtonsFeature, absPos, _goMapButtonStateMap, _threeButtonRectMap);
+	genericButton_updateHoverState(_helpButtonFeature, absPos, _helpButtonStateMap, _threeButtonRectMap);
 }
 
 void ZoombiniInteractive::goMapButtons_preRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots) {
@@ -1100,8 +1198,12 @@ const Common::Rect &ZoombiniInteractive::getDragConstraintRect() const {
 }
 
 ZmbEventHandleResult ZoombiniInteractive::onMouseMove(const Common::Point &absPos, const Common::Point &relPos) {
-	if (!_draggedSnoid)
+	if (!_draggedSnoid) {
+		updateTlcButtonHover(absPos);
 		return ZoombiniPage::onMouseMove(absPos, relPos);
+	}
+
+	updateTlcButtonHover(Common::Point(-1, -1));
 
 	// Update snoid position during drag (constrained to drag bounds rect)
 	// IDA: beginDragFeatureRunner_45360F inner loop: pos = mouse - offset, clamped to dragBoundsRect

@@ -258,6 +258,7 @@ protected:
 private:
 	void processEvents(ZoombiniPage *page);
 	void processEvent(ZoombiniPage *page, const Common::Event &event);
+	void beginQuitEvent(ZoombiniPage *page);
 	ZoombiniDialogResult loadModalDialog(ZoombiniDialog *page);
 
 	Common::Language _language = Common::UNK_LANG;
