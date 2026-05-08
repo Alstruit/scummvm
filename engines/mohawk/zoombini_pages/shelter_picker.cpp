@@ -126,11 +126,18 @@ uint16 ZoombiniShelterPicker::getNoDepartureVoiceSoundId() {
 	return kResSound20044_PickerAfterVideoVoice;
 }
 
+Audio::SoundHandle *ZoombiniShelterPicker::playPickerVoice(uint16 soundId) {
+	if (soundId == 0)
+		return nullptr;
+
+	return _vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, soundId), Audio::Mixer::kSFXSoundType, false);
+}
+
 void ZoombiniShelterPicker::playPendingPickerVoice(uint16 soundId) {
 	if (soundId == 0)
 		return;
 
-	Audio::SoundHandle *handle = _vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, soundId), Audio::Mixer::kSFXSoundType, false);
+	Audio::SoundHandle *handle = playPickerVoice(soundId);
 	_pendingPickerVoiceSoundId = soundId;
 	_pendingPickerVoiceSoundHasHandle = handle != nullptr;
 	if (handle)
@@ -208,9 +215,10 @@ void ZoombiniShelterPicker::loadFeatures() {
 		}
 	}
 
-	// Z1-20U/TLC v2.0 release only: on first startup with existing saves,
-	// picker_init opens the load dialog before the picker intro voice path.
-	const bool suppressAutoLoadDialogVoice = _vm->isGameVariant(GF_ZMB_TLC) && _mode == kPickerMode_LoadGame;
+	// On first startup with existing saves, picker_init opens the load dialog
+	// before the picker intro voice path. Our dialog opens after loadFeatures(),
+	// so avoid queueing the prompt while that startup dialog is pending.
+	const bool suppressAutoLoadDialogVoice = _mode == kPickerMode_LoadGame;
 
 	if (f._currentRoute == 1) {
 		if (!suppressAutoLoadDialogVoice)
@@ -417,6 +425,13 @@ void ZoombiniShelterPicker::pickerMatrix_onButtonAction(ZmbFeature *feature, uin
 }
 
 ZmbEventHandleResult ZoombiniShelterPicker::pickerMatrix_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
+	for (auto it = _matrixButtonRectMap.begin(); it != _matrixButtonRectMap.end(); ++it) {
+		if (it->_value.contains(absPos)) {
+			stopPendingPickerVoice();
+			break;
+		}
+	}
+
 	return genericStickyButton_onLButtonDown(feature, absPos, _matrixButtonStateMap, _matrixButtonRectMap, reinterpret_cast<OnStickyButtonActionFunc>(&ZoombiniShelterPicker::pickerMatrix_onButtonAction));
 }
 
@@ -608,12 +623,19 @@ ZmbEventHandleResult ZoombiniShelterPicker::zoombiniPreview_onLButtonDown(ZmbFea
 	const int16 voiceGroup = _vm->_rnd->getRandomNumber(0, 12);
 	const int16 soundId = _previewSnoid.getVoiceResId(voiceGroup);
 	if (0 < soundId)
-		playPendingPickerVoice(static_cast<uint16>(soundId));
+		playPickerVoice(static_cast<uint16>(soundId));
 
 	return ZmbEventHandleResult::kConsumed;
 }
 
 ZmbEventHandleResult ZoombiniShelterPicker::pickerButtons_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
+	for (auto it = _pickerButtonRectMap.begin(); it != _pickerButtonRectMap.end(); ++it) {
+		if (it->_value.contains(absPos)) {
+			stopPendingPickerVoice();
+			break;
+		}
+	}
+
 	return genericButton_onLButtonDown(feature, absPos, _pickerButtonStateMap, _pickerButtonRectMap);
 }
 
@@ -728,6 +750,8 @@ ZmbEventHandleResult ZoombiniShelterPicker::onLButtonDown(const Common::Point &a
 	}
 
 	// Let the base class handle button/feature clicks first.
+	if (_goButtonRect.contains(absPos) || _mapButtonRect.contains(absPos) || _helpButtonRect.contains(absPos))
+		stopPendingPickerVoice();
 	ZmbEventHandleResult result = ZoombiniInteractive::onLButtonDown(absPos, relPos);
 	if (result == ZmbEventHandleResult::kConsumed)
 		return result;
@@ -754,6 +778,7 @@ ZmbEventHandleResult ZoombiniShelterPicker::onLButtonDown(const Common::Point &a
 	if (state != kSnoidAnimIdle && state != kSnoidAnimArrive && state != kSnoidAnimFidget)
 		return ZmbEventHandleResult::kPassthrough;
 
+	stopPendingPickerVoice();
 	startSnoidDrag(snoid, absPos);
 	return ZmbEventHandleResult::kConsumed;
 }

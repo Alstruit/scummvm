@@ -67,6 +67,13 @@ static bool getSaveFormatFromSize(int32 size, bool isTlcVariant, bool &isTlcLayo
 	}
 }
 
+static void migrateV1StateToTlcOptions(ZmbStateFile &state) {
+	uint8 v1TransitionsDisable = state._flagTransitionsDisableOrTlcTouchSenseEnable;
+	state._flagTransitionsDisableOrTlcTouchSenseEnable = 1;
+	state._flagTlcHelpAudioEnable = 1;
+	state._flagTlcTransitionsDisable = v1TransitionsDisable ? 1 : 0;
+}
+
 static int16 countOccupiedSnoidsInPack(const ZmbStateActivePack &pack) {
 	int16 occupiedCount = 0;
 	int16 entryLimit = pack._wPackZmbCount;
@@ -228,6 +235,10 @@ bool ZoombiniGameState::loadState(int slot) {
 
 	Common::Serializer s(loadFile, nullptr);
 	syncGameState(s, isTlcLayout, hasCompletionCounters);
+	if (_vm->isGameVariant(GF_ZMB_TLC) && !isTlcLayout) {
+		migrateV1StateToTlcOptions(_f);
+		_f._isDirty = false;
+	}
 	delete loadFile;
 
 	_currentSaveSlot = slot;

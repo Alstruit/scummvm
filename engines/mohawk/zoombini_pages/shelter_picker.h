@@ -89,6 +89,7 @@ protected:
 	bool hasPickerRoomForVoicePrompt() const;
 	uint16 getAfterVideoVoiceSoundId();
 	uint16 getNoDepartureVoiceSoundId();
+	Audio::SoundHandle *playPickerVoice(uint16 soundId);
 	void playPendingPickerVoice(uint16 soundId);
 	void stopPendingPickerVoice();
 

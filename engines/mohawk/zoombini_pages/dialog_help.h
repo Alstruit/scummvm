@@ -50,6 +50,7 @@ protected:
 	ZmbEventHandleResult helpDialog_onMouseLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 	Common::Rect helpDialog_getButtonClickRect(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs, const Common::Rect &buttonRect);
 	ZmbEventHandleResult helpDialog_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);
+	void stopHelpVoice();
 	void playHelpVoice();
 
 	// MapRect & MapSave data

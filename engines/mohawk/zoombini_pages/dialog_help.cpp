@@ -225,9 +225,17 @@ ZmbEventHandleResult ZoombiniDialogHelp::helpDialog_onKeyDown(ZmbFeature *featur
 	return result;
 }
 
+void ZoombiniDialogHelp::stopHelpVoice() {
+	if (_helpSoundQueue != ZoombiniSound::kInvalidSoundQueueHandle)
+		_vm->_sound->stopSoundQueue(_helpSoundQueue);
+}
+
 void ZoombiniDialogHelp::playHelpVoice() {
 	if (!_vm->isGameVariant(GF_ZMB_TLC))
 		return;
+
+	stopHelpVoice();
+
 	if (!_vm->_state->getEnableHelpAudio())
 		return;
 	if (_helpSoundQueue == ZoombiniSound::kInvalidSoundQueueHandle)
