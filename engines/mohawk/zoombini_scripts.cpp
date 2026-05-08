@@ -1841,7 +1841,11 @@ void ZmbSnoid::updateWalkHotspots(ZoombiniPage *page, int dirBucket, int phase) 
 	if (anim.frameCount == 0 || anim.frames.empty())
 		return;
 
-	const ZmbWalkFrame &fr = anim.frames[phase % static_cast<int>(anim.frameCount)];
+	int frameIdx = 0;
+	if (0 < phase && 1 < anim.frameCount)
+		frameIdx = 1 + ((phase - 1) % static_cast<int>(anim.frameCount - 1));
+
+	const ZmbWalkFrame &fr = anim.frames[frameIdx];
 	// Empty frame: keep current visual state (IDA leaves hotspots unchanged when no entries)
 	if (fr.entryCount == 0)
 		return;

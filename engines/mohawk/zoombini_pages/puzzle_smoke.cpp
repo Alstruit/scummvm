@@ -448,7 +448,7 @@ void ZoombiniPuzzleSmoke::loadFeatures() {
 	setGoButton(Common::Rect(600, 441, 639, 478), 1, 2, 3);
 	setMapButton(Common::Rect(600, 403, 639, 440), 5, 6);
 	setHelpButton(Common::Rect(600, 365, 639, 402));
-	loadGoMapButtonsFeature(10000);
+	loadGoMapButtonsFeature(6000);
 	loadHelpButtonFeature();
 
 	_vm->_state->getDifficultyIdFromPageFlag(_vm->_state->_f._pageFlagSmoke);

@@ -230,7 +230,7 @@ void ZoombiniPuzzleFleens::loadFeatures() {
 	setGoButton(Common::Rect(600, 441, 639, 478), 1, 2, 3);
 	setMapButton(Common::Rect(600, 403, 639, 440), 5, 6);
 	setHelpButton(Common::Rect(600, 365, 639, 402));
-	loadGoMapButtonsFeature(4000);
+	loadGoMapButtonsFeature(400);
 	loadHelpButtonFeature();
 
 	// IDA: v2 = getDifficultyIdFromPuzzleFlag(FLEENS_FLAG)
@@ -1019,12 +1019,6 @@ void ZoombiniPuzzleFleens::spawnFleenCreatures() {
 	int16 mismatchPosIdx = 0;
 	int16 normalPosIdx = 0;
 	_fleenCreatureCount = 0;
-
-	int16 zmbCount = 0;
-	for (int16 i = 0; i < f._zmbPackActive._wPackZmbCount; i++) {
-		if (f._zmbPackActive._entries[i]._bIsOccupied)
-			zmbCount++;
-	}
 
 	int16 zmbIdx = 0;
 	for (int16 i = 0; i < f._zmbPackActive._wPackZmbCount && _fleenCreatureCount < 16; i++) {

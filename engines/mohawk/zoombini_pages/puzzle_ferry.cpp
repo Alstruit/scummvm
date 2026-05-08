@@ -1311,7 +1311,21 @@ void ZoombiniPuzzleFerry::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCod
 			// stays frozen because no later event will fire to clean up.
 			if (_rejectFlightActive && _rejectingSnoid &&
 			    !_rejectFlightLandingScrsActive) {
-				debug("[FERRY] controller SCRB done with no landing -> sail-away cleanup");
+				int16 dest = _rejectDestination;
+				if (dest < 0 || 10 <= dest)
+					dest = 0;
+				if (kRejectFlightSnoidScrsB[dest] != 1907) {
+					debug("[FERRY] controller SCRB done with no landing -> restore rejected snoid");
+					_rejectingSnoid->setPointLoc(_rejectWalkDest);
+					_rejectingSnoid->setFacingLeft(false);
+					_rejectingSnoid->setAnimState(kSnoidAnimIdle);
+					_rejectingSnoid->setupIdleHotspots();
+					_rejectingSnoid->activateRender();
+					_rejectingSnoid->setNeedsRedraw(true);
+					_rejectingSnoid->_packIsOccupied = true;
+				} else {
+					debug("[FERRY] controller SCRB done with no landing -> raft sail-away cleanup");
+				}
 				_rejectingSnoid = nullptr;
 				_interactionLocked = false;
 				_rejectWalkPending = false;

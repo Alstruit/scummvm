@@ -613,24 +613,27 @@ void ZoombiniPuzzleNet::remapHotspotFramesByAttr(ZmbFeature *feature, ZmbHotspot
 				hotspots[i]._shapeIdx = 22 * mappedPrevCol2 + 66;
 			}
 
-			// Position adjustment when bouncing or placing at slot
-			if (_hotspotPositionFlag) {
-				if (i == 0) {
-					// First hotspot: base position
-					hotspots[i]._x = _bounceX;
-					hotspots[i]._y = _bounceY;
-				} else if (_bounceCounter) {
-					// During bounce animation
-					hotspots[i]._x = _bounceX + 4;
-					hotspots[i]._y = _bounceY + 3;
-				} else {
-					// At rest in slot
-					if (_difficultyLevel >= kPuzzleDiffLevel3)
-						hotspots[i]._x = _bounceX + 3;
-					else
-						hotspots[i]._x = _bounceX + 21;
-					hotspots[i]._y = _bounceY + 7;
-				}
+		}
+
+		// Position adjustment when bouncing or placing at slot. IDA applies
+		// this after shape remapping to the live hotspot entries, independent
+		// of which shape-id range the entry came from.
+		if (_hotspotPositionFlag) {
+			if (i == 0) {
+				// First hotspot: base position
+				hotspots[i]._x = _bounceX;
+				hotspots[i]._y = _bounceY;
+			} else if (_bounceCounter) {
+				// During bounce animation
+				hotspots[i]._x = _bounceX + 4;
+				hotspots[i]._y = _bounceY + 3;
+			} else {
+				// At rest in slot
+				if (kPuzzleDiffLevel3 <= _difficultyLevel)
+					hotspots[i]._x = _bounceX + 3;
+				else
+					hotspots[i]._x = _bounceX + 21;
+				hotspots[i]._y = _bounceY + 7;
 			}
 		}
 	}
@@ -872,12 +875,10 @@ void ZoombiniPuzzleNet::generateAttrRules() {
 	// Generate attribute labels
 	if (_difficultyLevel >= kPuzzleDiffLevel4) {
 		// All three labels must be distinct (0, 1, 2 in some order)
-		int16 attempts = 0;
 		do {
 			_attrRowLabel = _vm->_rnd->getRandomNumber(0, 2);
 			_attrColLabel = _vm->_rnd->getRandomNumber(0, 2);
 			_seed = _vm->_rnd->getRandomNumber(0, 2);
-			attempts++;
 		} while (_attrRowLabel == _attrColLabel ||
 				 _attrColLabel == _seed ||
 				 _seed == _attrRowLabel);
