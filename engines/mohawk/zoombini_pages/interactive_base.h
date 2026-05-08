@@ -232,12 +232,14 @@ protected:
 	 * (stop BGM, start walk animation), then call ZoombiniInteractive::onGoButtonActivated().
 	 */
 	virtual void onGoButtonActivated();
+	virtual void onDisabledGoButtonActivated();
 
 	/**
 	 * Called when the secondary Go button is activated.
 	 * Default: plays departure SFX and sets _pendingGoDepart = true (same as Go button).
 	 */
 	virtual void onSecondGoButtonActivated();
+	virtual void onDisabledSecondGoButtonActivated();
 
 	// [*] Two-phase departure system
 	// IDA: puzzle_pendingTransitionTarget → puzzle_nextPuzzleId

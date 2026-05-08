@@ -389,9 +389,15 @@ void ZoombiniInteractive::onGoButtonActivated() {
 	_pendingGoDepart = true;
 }
 
+void ZoombiniInteractive::onDisabledGoButtonActivated() {
+}
+
 void ZoombiniInteractive::onSecondGoButtonActivated() {
 	playDepartSfx();
 	_pendingGoDepart = true;
+}
+
+void ZoombiniInteractive::onDisabledSecondGoButtonActivated() {
 }
 
 void ZoombiniInteractive::debugFinishPuzzle() {
@@ -797,11 +803,15 @@ void ZoombiniInteractive::saveStateBeforeMapTransition() {
 void ZoombiniInteractive::goMapButtons_onButtonAction(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs) {
 	switch (bsIdx) {
 	case kThreeButtons_Go:
-		if (!bs._isPressDisabled)
+		if (bs._isPressDisabled)
+			onDisabledGoButtonActivated();
+		else
 			onGoButtonActivated();
 		break;
 	case kThreeButtons_SecondGo:
-		if (!bs._isPressDisabled)
+		if (bs._isPressDisabled)
+			onDisabledSecondGoButtonActivated();
+		else
 			onSecondGoButtonActivated();
 		break;
 	case kThreeButtons_Map:

@@ -91,6 +91,59 @@ void ZoombiniShelterPicker::setBackgroundBitmap() {
 	_vm->_gfx->drawBackground(kResBackground4000);
 }
 
+bool ZoombiniShelterPicker::hasPickerRoomForVoicePrompt() const {
+	const ZmbStateFile &f = _vm->_state->_f;
+	const int16 activeCount = static_cast<int16>(_snoidMap.size());
+	const int32 remaining = 625
+		- static_cast<int32>(f._zmbStoredTownCount)
+		- static_cast<int32>(f._zmbStoredBC2Count)
+		- static_cast<int32>(f._zmbStoredBC1Count)
+		- activeCount;
+
+	return 0 < remaining && activeCount < 625;
+}
+
+uint16 ZoombiniShelterPicker::getAfterVideoVoiceSoundId() {
+	if (!hasPickerRoomForVoicePrompt())
+		return 0;
+
+	// IDA picker_init: nextRand(20, 1) - 1, so only original rolls 1 and 10 speak.
+	const int16 roll = _vm->_rnd->getRandomNumber(1, 20);
+	if (roll == 1)
+		return kResSound20043_PickerAfterVideoVoice;
+	if (roll == 10)
+		return kResSound20044_PickerAfterVideoVoice;
+	return 0;
+}
+
+uint16 ZoombiniShelterPicker::getNoDepartureVoiceSoundId() {
+	if (!hasPickerRoomForVoicePrompt())
+		return 0;
+
+	// IDA picker button case 6 disabled path: nextRand(2, 1) chooses 20043/20044.
+	if (_vm->_rnd->getRandomNumber(1, 2) == 1)
+		return kResSound20043_PickerAfterVideoVoice;
+	return kResSound20044_PickerAfterVideoVoice;
+}
+
+void ZoombiniShelterPicker::playPendingPickerVoice(uint16 soundId) {
+	if (soundId == 0)
+		return;
+
+	Audio::SoundHandle *handle = _vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, soundId), Audio::Mixer::kSFXSoundType, false);
+	_pendingPickerVoiceSoundId = soundId;
+	_pendingPickerVoiceSoundHasHandle = handle != nullptr;
+	if (handle)
+		_pendingPickerVoiceSoundHandle = *handle;
+}
+
+void ZoombiniShelterPicker::stopPendingPickerVoice() {
+	if (_pendingPickerVoiceSoundHasHandle && _vm->_system->getMixer()->isSoundHandleActive(_pendingPickerVoiceSoundHandle))
+		_vm->_system->getMixer()->stopHandle(_pendingPickerVoiceSoundHandle);
+	_pendingPickerVoiceSoundHasHandle = false;
+	_pendingPickerVoiceSoundId = 0;
+}
+
 void ZoombiniShelterPicker::loadFeatures() {
 	_vm->_gfx->preloadImage(kResBitmapShapes4400_PickerMatrix);    // to shape slot 0
 	_vm->_gfx->preloadImage(kResBitmapShapes4200_Buttons);         // to shape slot 2
@@ -160,22 +213,13 @@ void ZoombiniShelterPicker::loadFeatures() {
 	const bool suppressAutoLoadDialogVoice = _vm->isGameVariant(GF_ZMB_TLC) && _mode == kPickerMode_LoadGame;
 
 	if (f._currentRoute == 1) {
-		uint16 leavedZmbCount = f._zmbStoredBC1Count + f._zmbStoredBC2Count + f._zmbStoredTownCount;
-		uint16 remaingZmbCount = 625 - leavedZmbCount - _snoidMap.size();
-		if (!suppressAutoLoadDialogVoice && 0 < remaingZmbCount && _snoidMap.size() < 625) {
-			uint16 soundRand = _vm->_rnd->getRandomNumber(19);
-			if (soundRand == 0) {
-				_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound20043_PickerAfterVideoVoice), Audio::Mixer::kSFXSoundType);
-			} else if (soundRand == 9) {
-				_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound20044_PickerAfterVideoVoice), Audio::Mixer::kSFXSoundType);
-			}
-		}
+		if (!suppressAutoLoadDialogVoice)
+			playPendingPickerVoice(getAfterVideoVoiceSoundId());
 	} else {
 		_vm->_state->getDifficultyIdFromPageFlag(f._pageFlagIsle);
 		// IDA: only on first visit this session (chIsFirstVisit_4A71B8 == 1)
-		if (!suppressAutoLoadDialogVoice && f._zmbGeneratedCount < 625 && _isFirstVisit) {
-			_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound20042_PickerAfterVideoVoice), Audio::Mixer::kSFXSoundType);
-		}
+		if (!suppressAutoLoadDialogVoice && f._zmbGeneratedCount < 625 && _isFirstVisit)
+			playPendingPickerVoice(kResSound20042_PickerAfterVideoVoice);
 	}
 
 	// Background Animation: Stars
@@ -276,6 +320,7 @@ void ZoombiniShelterPicker::loadFeatures() {
 	{ // [*] Callback-only runner (tBMP 4300) - Zoombini Preview
 		ZmbFeature::EventHooks hooks;
 		hooks.setPreRenderShapeFunc(reinterpret_cast<ZmbFeature::OnPreRenderShapeFunc>(&ZoombiniShelterPicker::zoombiniPreview_onPreRenderShape));
+		hooks.setLButtonDownFunc(reinterpret_cast<ZmbFeature::OnLButtonDownFunc>(&ZoombiniShelterPicker::zoombiniPreview_onLButtonDown));
 
 		// TODO: Use proper ZmbFeature for Zoombinis later
 		const int16 previewTraitOffsetX = _previewZoombiniRect.left + 39;
@@ -455,6 +500,8 @@ bool ZoombiniShelterPicker::areAllEmbarkersDone() const {
 }
 
 void ZoombiniShelterPicker::pickerButtons_onButtonAction(ZmbFeature *feature, uint32 bsIdx, ButtonState &bs) {
+	stopPendingPickerVoice();
+
 	if (bs._isPressDisabled)
 		return;
 
@@ -549,6 +596,21 @@ void ZoombiniShelterPicker::pickerButtons_onButtonAction(ZmbFeature *feature, ui
 		error("ZoombiniInteractivePicker::pickerButtons_onPostAnimation: Invalid ButtonState index %u", bsIdx);
 		break;
 	}
+}
+
+ZmbEventHandleResult ZoombiniShelterPicker::zoombiniPreview_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
+	if (!_previewZoombiniRect.contains(absPos))
+		return ZmbEventHandleResult::kPassthrough;
+
+	stopPendingPickerVoice();
+
+	// IDA picker button case 2: getZoombiniVoiceResId(nextRand(12, 0), preview).
+	const int16 voiceGroup = _vm->_rnd->getRandomNumber(0, 12);
+	const int16 soundId = _previewSnoid.getVoiceResId(voiceGroup);
+	if (0 < soundId)
+		playPendingPickerVoice(static_cast<uint16>(soundId));
+
+	return ZmbEventHandleResult::kConsumed;
 }
 
 ZmbEventHandleResult ZoombiniShelterPicker::pickerButtons_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos) {
@@ -867,6 +929,8 @@ void ZoombiniShelterPicker::onGoButtonActivated() {
 	if (_pendingGoTransition)
 		return;
 
+	stopPendingPickerVoice();
+
 	// IDA: puzzlePicker_buttonClickHandler_439EC2 case 6
 	// Play departure sound 996
 	Audio::SoundHandle *departSfxHandle = _vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, kResSound0996_DepartSFX),
@@ -921,6 +985,16 @@ void ZoombiniShelterPicker::onGoButtonActivated() {
 		_pendingGoTransitionSoundHandle = *departSfxHandle;
 
 	updatePendingGoTransition();
+}
+
+void ZoombiniShelterPicker::onDisabledGoButtonActivated() {
+	stopPendingPickerVoice();
+	playPendingPickerVoice(getNoDepartureVoiceSoundId());
+}
+
+void ZoombiniShelterPicker::onMapButtonActivated() {
+	stopPendingPickerVoice();
+	ZoombiniInteractive::onMapButtonActivated();
 }
 
 void ZoombiniShelterPicker::saveStateBeforeMapTransition() {

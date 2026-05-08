@@ -57,6 +57,9 @@ ZoombiniDialogMsgBox::ZoombiniDialogMsgBox(MohawkEngine_Zoombini *vm, ZoombiniMs
 	case ZoombiniMsgBoxType::kAskReplaceSave:
 		_msgKey = ZoombiniText::kDialogBodyReplaceGame;
 		break;
+	case ZoombiniMsgBoxType::kAskRemoveSave:
+		_msgKey = ZoombiniText::kDialogBodyRemoveGame;
+		break;
 	case ZoombiniMsgBoxType::kAskSaveCurrentGame:
 		_msgKey = ZoombiniText::kDialogBodySaveCurrentGame;
 		break;

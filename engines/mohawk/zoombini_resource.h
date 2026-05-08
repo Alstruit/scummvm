@@ -248,6 +248,7 @@ enum class ZoombiniMsgBoxType : uint32 {
 	kAskCreateAndSaveNewGame,
 	kAskCreateNewGame,
 	kAskReplaceSave,
+	kAskRemoveSave, // Originally TLC v2.0 only, but ScummVM also implemented it for v1.x.
 	kAskSaveCurrentGame,
 	kAskSaveBeforeQuit,
 	kAlertCannotSaveInPractice,

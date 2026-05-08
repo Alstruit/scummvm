@@ -64,6 +64,8 @@ public:
 	ZmbEventHandleResult longButtons_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);
 	
 private:
+	void clampLoadSelection();
+
 	SaveLoadMode _mode;
 
 	Common::Rect _titleRect;

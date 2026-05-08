@@ -129,6 +129,28 @@ Common::Rect ZoombiniDialogSaveLoad::getSaveEntryBaseRect() {
 	return saveEntryRect;
 }
 
+void ZoombiniDialogSaveLoad::clampLoadSelection() {
+	int32 saveCount = _vm->_state->_r._saveCount1;
+	if (saveCount <= 0) {
+		_saveEntrySelectedIdx = 0;
+		_saveEntryBaseIdx = 0;
+		return;
+	}
+
+	if (_saveEntrySelectedIdx < 0)
+		_saveEntrySelectedIdx = 0;
+	if (saveCount <= _saveEntrySelectedIdx)
+		_saveEntrySelectedIdx = saveCount - 1;
+
+	_saveEntryBaseIdx = MIN<int32>(_saveEntryBaseIdx, MAX<int32>(saveCount - SAVESLOTS_PER_SCREEN, 0));
+	_saveEntryBaseIdx = MAX<int32>(_saveEntryBaseIdx, 0);
+	if (_saveEntrySelectedIdx < _saveEntryBaseIdx) {
+		_saveEntryBaseIdx = _saveEntrySelectedIdx;
+	} else if (_saveEntryBaseIdx + SAVESLOTS_PER_SCREEN <= _saveEntrySelectedIdx) {
+		_saveEntryBaseIdx = _saveEntrySelectedIdx - (SAVESLOTS_PER_SCREEN - 1);
+	}
+}
+
 void ZoombiniDialogSaveLoad::dialogFrame_onPostRender(ZmbFeature *feature) {
 	ZoombiniGraphics::ScreenKind screenKind = ZoombiniGraphics::kShapeScreen;
 
@@ -282,19 +304,18 @@ ZmbEventHandleResult ZoombiniDialogSaveLoad::dialogFrame_onKeyDown(ZmbFeature *f
 			break;
 		}
 	} else {
-		// [LoadDialog] ScummVM implementation only - Delete saveGame with 'Delete' key on LoadDialog
-		// - In original game, you had to use external program to delete save files.
-		// - Add `delete` key support to provide alternative method.
-		// - Plus, add support for Left/Right keys (ScummVM implementation only)
+		// [LoadDialog]
+		// - Delete opens the original remove-game confirmation overlay.
+		// - Left/Right key selection is ScummVM-only.
 		switch (kbd.keycode) {
 		case Common::KEYCODE_DELETE:
-			if (_vm->_state->_r._saveCount1 > 0) {
-				_vm->_state->deleteGameAndShiftRoster(_saveEntrySelectedIdx);
-				if (_saveEntrySelectedIdx >= static_cast<int32>(_vm->_state->_r._saveCount1) && _vm->_state->_r._saveCount1 > 0) {
-					_saveEntrySelectedIdx = _vm->_state->_r._saveCount1 - 1;
-				}
-				result = ZmbEventHandleResult::kConsumed;
+			if (0 < _vm->_state->_r._saveCount1) {
+				ZoombiniDialogResult dialogResult = _vm->openMsgBoxDialog(ZoombiniMsgBoxType::kAskRemoveSave);
+				if (dialogResult == ZoombiniDialogResult::kYes)
+					_vm->_state->deleteGameAndShiftRoster(_saveEntrySelectedIdx);
+				clampLoadSelection();
 			}
+			result = ZmbEventHandleResult::kConsumed;
 			break;
 		case Common::KEYCODE_LEFT:
 			_saveEntrySelectedIdx = MAX<int32>(0, _saveEntrySelectedIdx - 1);
@@ -308,12 +329,7 @@ ZmbEventHandleResult ZoombiniDialogSaveLoad::dialogFrame_onKeyDown(ZmbFeature *f
 			return result;
 		}
 
-		// Ensure _saveEntrySelectedIdx is within the visible range [_saveEntryBaseIdx, _saveEntryBaseIdx + SAVESLOTS_PER_SCREEN)
-		if (_saveEntrySelectedIdx < _saveEntryBaseIdx) {
-			_saveEntryBaseIdx = _saveEntrySelectedIdx;
-		} else if (_saveEntryBaseIdx + SAVESLOTS_PER_SCREEN <= _saveEntrySelectedIdx) {
-			_saveEntryBaseIdx = _saveEntrySelectedIdx - (SAVESLOTS_PER_SCREEN - 1);
-		}
+		clampLoadSelection();
 	}
 
 	return result;
@@ -458,7 +474,9 @@ void ZoombiniDialogSaveLoad::longButtons_onButtonAction(ZmbFeature *feature, uin
 			_dialogResult = ZoombiniDialogResult::kYes;
 			close();
 		} else {
-			assert(0 < _vm->_state->_r._saveCount1);
+			if (_vm->_state->_r._saveCount1 <= 0)
+				return;
+
 			do {
 				// Spawn confirmation dialog if a current game is dirty
 				if (_vm->_state->isStateDirty()) {

@@ -1023,6 +1023,10 @@ ZmbEventHandleResult ZoombiniTransitionXfer::onLButtonDown(const Common::Point &
 	return ZmbEventHandleResult::kPassthrough;
 }
 
+ZmbEventHandleResult ZoombiniTransitionXfer::onKeyDown(const Common::KeyState &kbd, bool kbdRepeat) {
+	return ZmbEventHandleResult::kConsumed;
+}
+
 // ---------------------------------------------------------------------------
 // Helper: activate a deferred env SCRB feature by ID.
 // IDA: loadSCRB_460384(1, 0, runner) / scrb_initRunnerWithScript(0, 0, 0, runner).

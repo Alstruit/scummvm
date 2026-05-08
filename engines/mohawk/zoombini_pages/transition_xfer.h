@@ -44,6 +44,7 @@ public:
 	void close() override;
 	void onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode) override;
 	ZmbEventHandleResult onLButtonDown(const Common::Point &absPos, const Common::Point &relPos) override;
+	ZmbEventHandleResult onKeyDown(const Common::KeyState &kbd, bool kbdRepeat) override;
 
 protected:
 	void xfer5TownCount_onPostRender(ZmbFeature *feature);

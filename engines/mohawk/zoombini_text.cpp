@@ -888,8 +888,6 @@ ZoombiniText::ZoombiniText(MohawkEngine_Zoombini *vm, Common::Language lang) : _
 
 		// Initialize string maps
 		initEnglishStrings();
-		if (_vm->isGameVariant(GF_ZMB_TLC))
-			initEnglishTlcStrings();
 		break;
 	case Common::KO_KOR:
 		// Korean Zoombini string resources are encoded as CP949
@@ -1815,9 +1813,10 @@ void ZoombiniText::initEnglishTlcStrings() {
 #endif
 
 void ZoombiniText::initEnglishStrings() {
-}
-
-void ZoombiniText::initEnglishTlcStrings() {
+	if (!_vm->isGameVariant(GF_ZMB_TLC)) {
+		// ScummVM addition for v1.x version
+		_strMap[kDialogBodyRemoveGame] = U"are you sure you want to\rremove this game?";
+	}
 }
 
 #if 0
@@ -2344,6 +2343,10 @@ void ZoombiniText::initKoreanStrings() {
 #endif
 
 void ZoombiniText::initKoreanStrings() {
+	if (!_vm->isGameVariant(GF_ZMB_TLC)) {
+		// ScummVM addition for v1.x version
+		_strMap[kDialogBodyRemoveGame] = U"이 저장된 게임을\r삭제하시겠습니까?";
+	}
 }
 
 #if 0

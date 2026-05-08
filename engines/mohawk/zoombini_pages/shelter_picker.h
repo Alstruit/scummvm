@@ -64,6 +64,7 @@ protected:
 	ZmbEventHandleResult pickerButtons_onKeyUp(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);
 
 	void zoombiniPreview_onPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup *hsGroup, Common::Array<ZmbHotspot> &hotspots);
+	ZmbEventHandleResult zoombiniPreview_onLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 
 	ZmbRenderResult oneTimeLoadDialog_onRenderShape(ZmbFeature *feature);
 
@@ -81,7 +82,15 @@ protected:
 	void repackSeatPositions();
 
 	void onGoButtonActivated() override;
+	void onDisabledGoButtonActivated() override;
+	void onMapButtonActivated() override;
 	void saveStateBeforeMapTransition() override;
+
+	bool hasPickerRoomForVoicePrompt() const;
+	uint16 getAfterVideoVoiceSoundId();
+	uint16 getNoDepartureVoiceSoundId();
+	void playPendingPickerVoice(uint16 soundId);
+	void stopPendingPickerVoice();
 
 	/**
 	 * Load Zoombini snoids from the active pack data.
@@ -346,6 +355,9 @@ protected:
 	bool _pendingGoTransition = false;
 	bool _pendingGoTransitionHasSoundHandle = false;
 	Audio::SoundHandle _pendingGoTransitionSoundHandle;
+	uint16 _pendingPickerVoiceSoundId = 0;
+	bool _pendingPickerVoiceSoundHasHandle = false;
+	Audio::SoundHandle _pendingPickerVoiceSoundHandle;
 
 	/**
 	 * Snoids currently walking during embark animation.

@@ -214,7 +214,7 @@ public:
 		kDialogBodyNewGame,
 		kDialogBodyReallyQuit,
 		kDialogBodySaveBeforeQuit,
-		kDialogBodyRemoveGame, // TLC-only English text key.
+		kDialogBodyRemoveGame, // Originally TLC v2.0 only, but ScummVM also implemented it for v1.x.
 		kDialogButtonNewGame = 600,
 		kDialogButtonReplaceTitle,
 		kDialogButtonLoseThem,
@@ -343,7 +343,6 @@ private:
 	void initPageKeyMap();
 	void initLocalizedCredits();
 	void initEnglishStrings();
-	void initEnglishTlcStrings();
 	bool initOriginalExecutableStrings();
 	void applyOriginalExecutableTextPatches(const Common::HashMap<uint32, Common::U32String> &textPatches);
 	static bool applyOriginalExecutableCreditLinePatches(Common::Array<CreditParagraph> &creditParagraphs, const CreditLinePatchMap &creditLinePatches);
