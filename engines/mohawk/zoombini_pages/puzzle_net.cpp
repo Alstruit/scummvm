@@ -613,27 +613,26 @@ void ZoombiniPuzzleNet::remapHotspotFramesByAttr(ZmbFeature *feature, ZmbHotspot
 				hotspots[i]._shapeIdx = 22 * mappedPrevCol2 + 66;
 			}
 
-		}
-
-		// Position adjustment when bouncing or placing at slot. IDA applies
-		// this after shape remapping to the live hotspot entries, independent
-		// of which shape-id range the entry came from.
-		if (_hotspotPositionFlag) {
-			if (i == 0) {
-				// First hotspot: base position
-				hotspots[i]._x = _bounceX;
-				hotspots[i]._y = _bounceY;
-			} else if (_bounceCounter) {
-				// During bounce animation
-				hotspots[i]._x = _bounceX + 4;
-				hotspots[i]._y = _bounceY + 3;
-			} else {
-				// At rest in slot
-				if (kPuzzleDiffLevel3 <= _difficultyLevel)
-					hotspots[i]._x = _bounceX + 3;
-				else
-					hotspots[i]._x = _bounceX + 21;
-				hotspots[i]._y = _bounceY + 7;
+			// Position adjustment when bouncing or placing at slot. IDA keeps
+			// this inside the 1..184 shape range branch; terminators and out-of-
+			// range helper slots are not moved.
+			if (_hotspotPositionFlag) {
+				if (i == 0) {
+					// First hotspot: base position
+					hotspots[i]._x = _bounceX;
+					hotspots[i]._y = _bounceY;
+				} else if (_bounceCounter) {
+					// During bounce animation
+					hotspots[i]._x = _bounceX + 4;
+					hotspots[i]._y = _bounceY + 3;
+				} else {
+					// At rest in slot
+					if (kPuzzleDiffLevel3 <= _difficultyLevel)
+						hotspots[i]._x = _bounceX + 3;
+					else
+						hotspots[i]._x = _bounceX + 21;
+					hotspots[i]._y = _bounceY + 7;
+				}
 			}
 		}
 	}
@@ -647,9 +646,9 @@ void ZoombiniPuzzleNet::slotPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup 
 	// hotspot array: hsArr[1].shapeid = shapeOffset, hsArr[1].pos = hsArr[0].pos,
 	// hsArr[2].shapeid = 0 (terminator).
 	//
-	// In ScummVM, the hotspots array is a per-frame copy, so we append a
-	// new hotspot with the indicator shape at the same position as the
-	// SCRB's first hotspot (the slot background/dot).
+	// In ScummVM, the hotspots array is a per-frame copy. Preserve the same
+	// fixed slot layout by replacing hotspot 1 and discarding later entries
+	// instead of appending a third visible shape.
 
 	for (int16 i = 0; i < _totalSlotCount; i++) {
 		if (_slotScrbFeatures[i] == feature && _slotColumnAssign[i] > 0) {
@@ -657,12 +656,13 @@ void ZoombiniPuzzleNet::slotPreRenderShape(ZmbFeature *feature, ZmbHotspotGroup 
 				? _slotColumnAssign[i] + 153
 				: _slotColumnAssign[i] + 150;
 			if (!hotspots.empty()) {
-				ZmbHotspot indicator(
-					static_cast<uint16>(hotspots.size()),
-					shapeOffset,
-					hotspots[0]._frame,
+				ZmbHotspot indicator(1, shapeOffset, hotspots[0]._frame,
 					hotspots[0]._x, hotspots[0]._y);
-				hotspots.push_back(indicator);
+				if (hotspots.size() < 2)
+					hotspots.push_back(indicator);
+				else
+					hotspots[1] = indicator;
+				hotspots.resize(2);
 			}
 			return;
 		}

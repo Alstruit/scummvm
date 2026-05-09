@@ -881,9 +881,17 @@ void ZmbSnoid::setAnimState(SnoidAnimState state, const Common::Point *pos) {
 			setupSmallIdleHotspots();
 		else
 			setupIdleHotspots();
-	} else if (state == kSnoidAnimArrive || state == kSnoidAnimTurnRight || state == kSnoidAnimTurnLeft) {
+	} else if (state == kSnoidAnimArrive) {
 		// IDA animateZoombini_455E76 immediately rebuilds hsArr from the current
-		// common-image pose (SCRS 100/101/102) for states 1/2/4.  Without this,
+		// common-image pose (SCRS 100/101/102) for state 4. Generic drag/drop
+		// sets chZmbAnimShapeCommonImageIdx=1 just before animateZoombini(0,4),
+		// so the first post-drop frame uses the seated/common pose, not whatever
+		// dangling drag sub-pose was left in the runner.
+		_shapeImageIdx = 1;
+		setupCurrentCommonImageHotspots();
+	} else if (state == kSnoidAnimTurnRight || state == kSnoidAnimTurnLeft) {
+		// IDA animateZoombini_455E76 immediately rebuilds hsArr from the current
+		// common-image pose (SCRS 100/101/102) for states 1/2.  Without this,
 		// ScummVM keeps rendering the previous state's virtual hotspots until a
 		// later tick, which leaves Ferry seat drops in the drag pose and sorts the
 		// snoid against the seat with the wrong footprint.

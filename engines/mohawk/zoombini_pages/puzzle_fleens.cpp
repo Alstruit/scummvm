@@ -1161,10 +1161,11 @@ ZmbRenderResult ZoombiniPuzzleFleens::fleenCreatures_render(ZmbFeature *feature)
 			if (hs._shapeIdx <= 0)
 				continue;
 
-			// Apply body-code dependent trait offset
-			// IDA: fleens_parseZmbPositions_41D2AB builds v29[1..5] from body code
+			// Apply body-code dependent trait offset.
+			// IDA: fleens_parseZmbPositions_41D2AB stores final 1-based shape
+			// IDs as 2 * (traitOffset + rawShape) - 1 for right-facing Fleens.
 			int16 traitOffset = getFleenBodyLayerOffset(creature, hs._hsId);
-			int16 finalShapeId = hs._shapeIdx + traitOffset;
+			int16 finalShapeId = 2 * (traitOffset + hs._shapeIdx) - 1;
 
 			if (finalShapeId <= 0)
 				continue;
@@ -1174,16 +1175,16 @@ ZmbRenderResult ZoombiniPuzzleFleens::fleenCreatures_render(ZmbFeature *feature)
 			int16 drawX = hs._x - creature.basePos.x;
 			int16 drawY = hs._y - creature.basePos.y;
 
-			// Apply REGS registration point correction (0-based sub-image)
+			// Apply REGS registration point correction (1-based shape id).
 			// IDA: unk_4AB220/224 loaded from REGS 4000/4001
-			const Common::Point regsDelta = _fleenShapeRegs.getSubImageDelta(static_cast<uint16>(finalShapeId));
+			const Common::Point regsDelta = _fleenShapeRegs.getShapeDelta(static_cast<uint16>(finalShapeId));
 			drawX -= regsDelta.x;
 			drawY -= regsDelta.y;
 
-			// Draw shape from tBMP 4000 using 0-based sub-image index.
-			// IDA: caves_renderShapeHotspots_41D04E uses direct shape table access
-			// (no facing direction, no 2*n-1 mirroring — Fleen shapes are pre-rendered).
-			_vm->_gfx->drawSubImage(ZoombiniGraphics::kShapeScreen, fleenBitmapRes,
+			// Draw shape from tBMP 4000 using the original 1-based shape id.
+			// caves_renderShapeHotspots_41D04E consumes the transformed hsArr
+			// entries produced by fleens_parseZmbPositions_41D2AB.
+			_vm->_gfx->drawShape(ZoombiniGraphics::kShapeScreen, fleenBitmapRes,
 				static_cast<uint16>(finalShapeId), Common::Point(drawX, drawY), false);
 		}
 	}
