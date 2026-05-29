@@ -1022,6 +1022,7 @@ ZoombiniConsole::ZoombiniConsole(MohawkEngine_Zoombini *vm) : GUI::Debugger(), _
 	registerCmd("plotRect",				WRAP_METHOD(ZoombiniConsole, Cmd_PlotRect));
 	registerCmd("dumpAllResources",		WRAP_METHOD(ZoombiniConsole, Cmd_DumpAllResources));
 	registerCmd("dumpTexts",			WRAP_METHOD(ZoombiniConsole, Cmd_DumpTexts));
+	registerCmd("man_shortcuts",		WRAP_METHOD(ZoombiniConsole, Cmd_Shortcuts));
 	registerCmd("goXfer",				WRAP_METHOD(ZoombiniConsole, Cmd_GoXfer));
 	registerCmd("goPractice",			WRAP_METHOD(ZoombiniConsole, Cmd_GoPractice));
 	registerCmd("finishPuzzle",			WRAP_METHOD(ZoombiniConsole, Cmd_FinishPuzzle));
@@ -2146,6 +2147,48 @@ bool ZoombiniConsole::Cmd_DumpTexts(int argc, const char **argv) {
 
 	out.close();
 	debugPrintf("Dumped %u strings and %u credit paragraphs to %s\n", strings.size(), paragraphs.size(), filepath.c_str());
+	return true;
+}
+
+bool ZoombiniConsole::Cmd_Shortcuts(int argc, const char **argv) {
+	if (argc != 1) {
+		debugPrintf("[Manual] Print Zoombinis gameplay shortcuts documented by the manuals or the original engine\n");
+		debugPrintf("Usage: man_shortcuts\n");
+		return true;
+	}
+
+	debugPrintf("Zoombinis keyboard shortcut help manual\n");
+	debugPrintf("Modifier note: ScummVM currently recognizes Ctrl for the original Ctrl/Command shortcuts.\n");
+
+	debugPrintf("\nGeneral commands:\n");
+	debugPrintf("  ? or /      Open the Options dialog\n");
+	debugPrintf("  Ctrl+N      Start a new game\n");
+	debugPrintf("  Ctrl+L      Open Load Game\n");
+	debugPrintf("  Ctrl+S      Open Save Game\n");
+	debugPrintf("  Ctrl+Q      Quit\n");
+
+	debugPrintf("\nOptions toggles:\n");
+	debugPrintf("  Ctrl+D      Toggle dialog, sound effects, and Zoombini voices\n");
+	debugPrintf("  Ctrl+B      Toggle background music\n");
+	debugPrintf("  Ctrl+J      Toggle Sticky Mouse\n");
+	debugPrintf("  Ctrl+T      Toggle map transitions\n");
+	debugPrintf("  Ctrl+G      Toggle Less/More Action background animation mode\n");
+	debugPrintf("  Ctrl+H      Hide or show the cursor\n");
+
+	debugPrintf("\nHelp and variant-only shortcuts:\n");
+	debugPrintf("  F1          Replay the active puzzle's help voice, when one is available\n");
+	debugPrintf("  Ctrl+A      Toggle Help Audio in the TLC v2.0 release\n");
+	debugPrintf("  Ctrl+K      Toggle TouchSense in the TLC v2.0 release (hardware feedback is not implemented)\n");
+
+	debugPrintf("\nMap and practice mode:\n");
+	debugPrintf("  Ctrl+P      Toggle Practice Mode on the map\n");
+	debugPrintf("  1-4         Select practice difficulty while Practice Mode is active on the map\n");
+
+	debugPrintf("\nDialog navigation:\n");
+	debugPrintf("  Enter       Activate the selected dialog button\n");
+	debugPrintf("  Esc         Cancel or close supported dialogs\n");
+	debugPrintf("  Arrow keys  Navigate supported help, save/load, credits, and debug dialogs\n");
+
 	return true;
 }
 
