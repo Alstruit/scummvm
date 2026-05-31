@@ -195,7 +195,9 @@ private:
 	/**
 	 * @return True if an export was successful.
 	 */
-	bool exportSurfaceToBMP(const Common::String &filename, const Graphics::Surface *surface, const byte *palette);
+	bool isDumpImageFormat(const char *arg) const;
+	bool parseDumpImageFormat(const char *arg, bool &exportAsPng);
+	bool exportSurfaceToImage(const Common::String &filename, const Graphics::Surface *surface, const byte *palette, bool exportAsPng);
 };
 
 #endif

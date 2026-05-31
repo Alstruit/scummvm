@@ -82,6 +82,10 @@ void ZoombiniTransitionLogo::loadFeatures() {
 			close();
 			return;
 		}
+#else
+		warning("Bink video support is not available, cannot load bink video [%s], skip", VIDEO_PATH_BINK);
+		close();
+		return;
 #endif
 	} else {
 		_vm->_gfx->clearScreens();

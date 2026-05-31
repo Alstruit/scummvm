@@ -54,6 +54,9 @@
 #include "common/file.h"
 #include "graphics/paletteman.h"
 #include "image/bmp.h"
+#ifdef USE_PNG
+#include "image/png.h"
+#endif
 
 #include "mohawk/zoombini.h"
 #include "mohawk/zoombini_sound.h"
@@ -1254,10 +1257,13 @@ bool ZoombiniConsole::Cmd_DrawImage(int argc, const char **argv) {
 }
 
 bool ZoombiniConsole::Cmd_DumpImage(int argc, const char **argv) {
-	if (argc != 2) {
-		debugPrintf("Usage: dumpImage <imageId>\n");
+	if (argc < 2 || 3 < argc) {
+		debugPrintf("Usage: dumpImage <imageId> [bmp|png]\n");
 		return true;
 	}
+	bool exportAsPng = false;
+	if (argc == 3 && !parseDumpImageFormat(argv[2], exportAsPng))
+		return true;
 
 	// There is no palette resource in system ZOOMBINI.MHK
 	errno = 0;
@@ -1300,12 +1306,12 @@ bool ZoombiniConsole::Cmd_DumpImage(int argc, const char **argv) {
 		return true;
 	}
 
-	// Export to BMP
-	Common::String filename = Common::String::format("ZOOMBINI_tBMP_p%04u.BMP", imageId);
-	if (exportSurfaceToBMP(filename, surface, palette)) {
+	const char *extension = exportAsPng ? "PNG" : "BMP";
+	Common::String filename = Common::String::format("ZOOMBINI_tBMP_p%04u.%s", imageId, extension);
+	if (exportSurfaceToImage(filename, surface, palette, exportAsPng)) {
 		debugPrintf("Successfully exported image %u to %s\n", imageId, filename.c_str());
 	} else {
-		debugPrintf("Failed to export image %u to BMP\n", imageId);
+		debugPrintf("Failed to export image %u to %s\n", imageId, extension);
 	}
 
 	return true;
@@ -1380,16 +1386,20 @@ bool ZoombiniConsole::Cmd_DrawShapes(int argc, const char **argv) {
 }
 
 bool ZoombiniConsole::Cmd_DumpShapes(int argc, const char **argv) {
-	if (!(2 <= argc && argc <= 3)) {
-		debugPrintf("Usage: dumpShapes <imageId> [shplId]\n");
+	if (!(2 <= argc && argc <= 4)) {
+		debugPrintf("Usage: dumpShapes <imageId> [shplId] [bmp|png]\n");
 		return true;
 	}
 
 	ZmbResource resource;
 	if (!parseResourceId(argv[1], resource))
 		return true;
+	bool exportAsPng = false;
 	uint16 shplId = 0;
-	if (argc == 3) {
+	if (argc == 3 && isDumpImageFormat(argv[2])) {
+		if (!parseDumpImageFormat(argv[2], exportAsPng))
+			return true;
+	} else if (argc >= 3) {
 		errno = 0;
 		shplId = static_cast<uint16>(strtoul(argv[2], nullptr, 10));
 		if (errno != 0) {
@@ -1401,6 +1411,8 @@ bool ZoombiniConsole::Cmd_DumpShapes(int argc, const char **argv) {
 			return true;
 		}
 	}
+	if (argc == 4 && !parseDumpImageFormat(argv[3], exportAsPng))
+		return true;
 
 	// Collect palette
 	Common::String palLogStr;
@@ -1432,6 +1444,8 @@ bool ZoombiniConsole::Cmd_DumpShapes(int argc, const char **argv) {
 	
 	uint32 shapeCount = _vm->_gfx->getShapeCount(resource);
 	
+	const char *extension = exportAsPng ? "PNG" : "BMP";
+
 	// Export shape bitmaps
 	uint16 exportedCount = 0;
 	for (uint16 shapeIdx = 1; shapeIdx <= shapeCount; shapeIdx++) {
@@ -1447,13 +1461,12 @@ bool ZoombiniConsole::Cmd_DumpShapes(int argc, const char **argv) {
 			continue;
 		}
 
-		// Export to BMP
-		Common::String filename = Common::String::format("ZOOMBINI_tBMP_%s_shape_%03u.BMP", resource.toString().c_str(), shapeIdx);
-		if (exportSurfaceToBMP(filename, surface, palette)) {
+		Common::String filename = Common::String::format("ZOOMBINI_tBMP_%s_shape_%03u.%s", resource.toString().c_str(), shapeIdx, extension);
+		if (exportSurfaceToImage(filename, surface, palette, exportAsPng)) {
 			exportedCount++;
 			debugPrintf("Successfully exported image %s to %s\n", resource.toString().c_str(), filename.c_str());
 		} else {
-			debugPrintf("Failed to export image %s to BMP\n", resource.toString().c_str());
+			debugPrintf("Failed to export image %s to %s\n", resource.toString().c_str(), extension);
 		}
 	}
 
@@ -2451,7 +2464,31 @@ bool ZoombiniConsole::Cmd_PrintAnswer(int argc, const char **argv) {
 	return true;
 }
 
-bool ZoombiniConsole::exportSurfaceToBMP(const Common::String &filename, const Graphics::Surface *surface, const byte *palette) {
+bool ZoombiniConsole::isDumpImageFormat(const char *arg) const {
+	return scumm_stricmp(arg, "bmp") == 0 || scumm_stricmp(arg, "png") == 0;
+}
+
+bool ZoombiniConsole::parseDumpImageFormat(const char *arg, bool &exportAsPng) {
+	if (scumm_stricmp(arg, "bmp") == 0) {
+		exportAsPng = false;
+		return true;
+	}
+
+	if (scumm_stricmp(arg, "png") == 0) {
+#ifdef USE_PNG
+		exportAsPng = true;
+		return true;
+#else
+		debugPrintf("Cannot export tBMP resources to PNG because PNG support is not compiled in this build.\n");
+		return false;
+#endif
+	}
+
+	debugPrintf("Unknown export format '%s'. Use bmp or png.\n", arg);
+	return false;
+}
+
+bool ZoombiniConsole::exportSurfaceToImage(const Common::String &filename, const Graphics::Surface *surface, const byte *palette, bool exportAsPng) {
 	Common::String filepath = "dumps/" + filename;
 
 	Common::DumpFile out;
@@ -2460,7 +2497,16 @@ bool ZoombiniConsole::exportSurfaceToBMP(const Common::String &filename, const G
 		return false;
 	}
 
-	// Image::writeBMP() expects that palette buffer has 256 colors (768 bytes)
+	if (exportAsPng) {
+#ifdef USE_PNG
+		return Image::writePNG(out, *surface, palette);
+#else
+		debugPrintf("Cannot export tBMP resources to PNG because PNG support is not compiled in this build.\n");
+		return false;
+#endif
+	}
+
+	// Image::writeBMP() expects that palette buffer has 256 colors (768 bytes).
 	return Image::writeBMP(out, *surface, palette);
 }
 
