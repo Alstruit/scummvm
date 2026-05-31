@@ -2244,21 +2244,24 @@ bool ZoombiniConsole::Cmd_GoXfer(int argc, const char **argv) {
 
 	// Match by name (case-insensitive) or DI page number
 	ZMB_SI_PAGE srcSiPage = ZMB_SI_MINUS1;
-	int32 numVal;
-	if (ZmbResource::parseInt(argv[1], numVal)) {
-		// Numeric: treat as DI page index
-		for (uint i = 0; i < ARRAYSIZE(xferDestinations); i++) {
-			if ((int16)numVal == xferDestinations[i].diPage) {
-				srcSiPage = xferDestinations[i].srcSiPage;
-				break;
-			}
+	for (uint i = 0; i < ARRAYSIZE(xferDestinations); i++) {
+		if (scumm_stricmp(argv[1], xferDestinations[i].name) == 0) {
+			srcSiPage = xferDestinations[i].srcSiPage;
+			break;
 		}
-	} else {
-		// Name match
-		for (uint i = 0; i < ARRAYSIZE(xferDestinations); i++) {
-			if (scumm_stricmp(argv[1], xferDestinations[i].name) == 0) {
-				srcSiPage = xferDestinations[i].srcSiPage;
-				break;
+	}
+
+	const char *destArg = argv[1];
+	const bool destLooksNumeric = ('0' <= destArg[0] && destArg[0] <= '9') ||
+		destArg[0] == '-' || destArg[0] == '+';
+	if (srcSiPage == ZMB_SI_MINUS1 && destLooksNumeric) {
+		int32 numVal;
+		if (ZmbResource::parseInt(destArg, numVal)) {
+			for (uint i = 0; i < ARRAYSIZE(xferDestinations); i++) {
+				if (static_cast<int16>(numVal) == xferDestinations[i].diPage) {
+					srcSiPage = xferDestinations[i].srcSiPage;
+					break;
+				}
 			}
 		}
 	}

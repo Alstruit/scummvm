@@ -1574,6 +1574,7 @@ void ZoombiniPage::beginSnoidDrag(ZmbSnoid *snoid) {
 
 	snoid->setAnimState(kSnoidAnimDrag);
 	_vm->_cursor->hideCursor();
+	onSnoidDragStarted(snoid);
 }
 
 void ZoombiniPage::endSnoidDrag(ZmbSnoid *snoid) {
@@ -1585,6 +1586,7 @@ void ZoombiniPage::endSnoidDrag(ZmbSnoid *snoid) {
 	snoid->removeFlag(ZmbFeature::FLAG_04000000_OVERLAY);
 
 	_vm->_cursor->showCursor();
+	onSnoidDragEnded(snoid);
 }
 
 void ZoombiniPage::loadTerrainBitmap(uint16 resId) {

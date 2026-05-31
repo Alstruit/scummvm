@@ -892,6 +892,9 @@ void ZoombiniInteractive::showNotiBox(const Common::U32String &ustr, bool isNoti
 		// the first frame), explicitly add the notibox rect as an
 		// external dirty rect to break the first-frame deadlock.
 		addExternalDirtyRect(isNotiBoxLong ? _notiBoxLongRect : _notiBoxShortRect);
+	} else {
+		_notiBoxFeature->setNeedsRedraw(true);
+		addExternalDirtyRect(isNotiBoxLong ? _notiBoxLongRect : _notiBoxShortRect);
 	}
 }
 
@@ -901,6 +904,8 @@ void ZoombiniInteractive::notiBox_preRenderShape(ZmbFeature *feature, ZmbHotspot
 		_notiBoxFeature = nullptr;
 	}
 
+	hotspots[kHotspotNotiBoxShort]._shapeIdx = kShape3001_01_NotiBoxShort;
+	hotspots[kHotspotNotiBoxLong]._shapeIdx = kShape3001_02_NotiBoxLong;
 	uint16 hideShapeIdx = _isNotiBoxLong ? kHotspotNotiBoxShort : kHotspotNotiBoxLong;
 	hotspots[hideShapeIdx]._shapeIdx = ZmbHotspot::kShapeNone;
 }
@@ -1167,6 +1172,15 @@ ZmbSnoid *ZoombiniInteractive::findSnoidAtPoint(const Common::Point &pos) {
 	return nullptr;
 }
 
+void ZoombiniInteractive::onSnoidDragStarted(ZmbSnoid *snoid) {
+	if (!snoid->_name.empty())
+		showNotiBoxShort(snoid->_name);
+}
+
+void ZoombiniInteractive::onSnoidDragEnded(ZmbSnoid *) {
+	hideNotiBoxShort();
+}
+
 void ZoombiniInteractive::startSnoidDrag(ZmbSnoid *snoid, const Common::Point &mousePos) {
 	_draggedSnoid = snoid;
 	_dragOrigPos = snoid->getPointLoc();
@@ -1188,10 +1202,6 @@ void ZoombiniInteractive::startSnoidDrag(ZmbSnoid *snoid, const Common::Point &m
 	snoid->setFacingLeft(false);
 	snoid->setHoldingAnimPhase(2);
 	beginSnoidDrag(snoid);
-
-	// IDA: showNotiBoxMsg_454090 — show snoid name while dragging (all pages)
-	if (!snoid->_name.empty())
-		showNotiBoxShort(snoid->_name);
 }
 
 ZmbSnoid *ZoombiniInteractive::finishSnoidDrag() {
@@ -1199,7 +1209,6 @@ ZmbSnoid *ZoombiniInteractive::finishSnoidDrag() {
 	_draggedSnoid = nullptr;
 	clearDrawOnRegHighlight();
 	endSnoidDrag(snoid);
-	hideNotiBoxShort();
 	return snoid;
 }
 

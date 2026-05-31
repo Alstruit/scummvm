@@ -61,6 +61,9 @@ public:
 	virtual Common::String debugGetAnswer() const { return "(no answer required)"; }
 
 protected:
+	void onSnoidDragStarted(ZmbSnoid *snoid) override;
+	void onSnoidDragEnded(ZmbSnoid *snoid) override;
+
 	/**
 	 * Represent buttons that continously do something while being pressed, e.g. storage scroll buttons
 	 */

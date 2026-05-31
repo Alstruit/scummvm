@@ -619,6 +619,9 @@ public:
 	const ZmbWalkAnim &getHoldingAnim(uint8 footType);
 
 protected:
+	virtual void onSnoidDragStarted(ZmbSnoid *) {}
+	virtual void onSnoidDragEnded(ZmbSnoid *) {}
+
 	MohawkEngine_Zoombini *_vm;
 
 	ZoombiniPageCategory _pageCategory;
