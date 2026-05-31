@@ -71,6 +71,7 @@ struct ExeTextSource {
 	Common::HashMap<uint32, Common::U32String> textPatches;
 	CreditLinePatchMap creditLinePatches;
 	bool escapeMacRomanTrademarkByteAA = false;
+	bool mergeTlcLegalCreditParagraphs = false;
 
 	// Credits are either a null-terminated string sequence found from that known
 	// first line, or a pointer table that maps executable addresses to strings.
@@ -116,6 +117,11 @@ struct ExeTextSource {
 
 	ExeTextSource withMacRomanTrademarkByteAAEscape() {
 		escapeMacRomanTrademarkByteAA = true;
+		return *this;
+	}
+
+	ExeTextSource withMergedTlcLegalCreditParagraphs() {
+		mergeTlcLegalCreditParagraphs = true;
 		return *this;
 	}
 
@@ -770,6 +776,48 @@ bool ZoombiniText::buildCreditParagraphsFromStrings(const Common::Array<Common::
 	return !creditParagraphs.empty();
 }
 
+static bool creditLineMatchesAsciiAt(const Common::U32String &line, uint32 startIndex, const char *text) {
+	for (uint32 textIndex = 0; text[textIndex] != '\0'; textIndex++) {
+		if (line.size() <= startIndex + textIndex || line[startIndex + textIndex] != static_cast<uint32>(text[textIndex]))
+			return false;
+	}
+	return true;
+}
+
+static bool isTlcLegalBodyParagraphStart(const Common::U32String &line) {
+	if (2 <= line.size() && line[0] == ' ' && line[1] == 0xA9 &&
+		creditLineMatchesAsciiAt(line, 2, " 2001 TLC Education Properties LLC, and its"))
+		return true;
+
+	return creditLineMatchesAsciiAt(line, 0, " DirectX is a proprietary tool of Microsoft");
+}
+
+static bool mergeTlcLegalCreditParagraphs(Common::Array<ZoombiniText::CreditParagraph> &creditParagraphs) {
+	uint32 mergedParagraphs = 0;
+	for (uint32 paragraphIndex = 0; paragraphIndex < creditParagraphs.size();) {
+		ZoombiniText::CreditParagraph &paragraph = creditParagraphs[paragraphIndex];
+		if (paragraph._lines.empty() || !isTlcLegalBodyParagraphStart(paragraph._lines[0])) {
+			paragraphIndex++;
+			continue;
+		}
+
+		if (paragraphIndex == 0)
+			return false;
+
+		ZoombiniText::CreditParagraph &previousParagraph = creditParagraphs[paragraphIndex - 1];
+		for (uint32 blankLineIndex = 0; blankLineIndex < previousParagraph._blankLineCount; blankLineIndex++)
+			previousParagraph._lines.push_back(Common::U32String());
+		for (const Common::U32String &line : paragraph._lines)
+			previousParagraph._lines.push_back(line);
+		previousParagraph._blankLineCount = paragraph._blankLineCount;
+
+		creditParagraphs.remove_at(paragraphIndex);
+		mergedParagraphs++;
+	}
+
+	return mergedParagraphs == 2;
+}
+
 bool ZoombiniText::loadOriginalExecutableCredits(const Common::Array<byte> &data, const ExeTextSource &source, Common::Array<CreditParagraph> &creditParagraphs) {
 	Common::Array<Common::U32String> creditStrings;
 	if (!source.creditPointerRanges.empty()) {
@@ -782,7 +830,13 @@ bool ZoombiniText::loadOriginalExecutableCredits(const Common::Array<byte> &data
 		return false;
 	}
 
-	return buildCreditParagraphsFromStrings(creditStrings, creditParagraphs);
+	if (!buildCreditParagraphsFromStrings(creditStrings, creditParagraphs))
+		return false;
+
+	if (source.mergeTlcLegalCreditParagraphs && !mergeTlcLegalCreditParagraphs(creditParagraphs))
+		return false;
+
+	return true;
 }
 
 bool ZoombiniText::applyOriginalExecutableCreditLinePatches(Common::Array<CreditParagraph> &creditParagraphs, const CreditLinePatchMap &creditLinePatches) {
@@ -979,6 +1033,7 @@ bool ZoombiniText::initOriginalExecutableStrings() {
 			.withTextPatches(englishTextPatches)
 			.withCreditLinePatches(englishCreditLinePatches)
 			.withMacRomanTrademarkByteAAEscape()
+			.withMergedTlcLegalCreditParagraphs()
 			.withCreditPointerTable(0x90080, 0x400000, kEnglish20CreditPointerRanges)
 			.withCreditPointerBlankAddress(0x4A286C)};
 	static const ExeTextSource korean11Sources[] = {

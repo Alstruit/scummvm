@@ -715,7 +715,7 @@ protected:
 	void loadREGS(ZmbArchiveKind archiveKind, uint16 imgResource);
 
 	static constexpr uint32 BUTTON_PRESS_ANIMATION_FRAMES = 4;
-	static constexpr uint32 DEFAULT_WARNING_BOX_SHOW_SECONDS = 3;
+	static constexpr uint32 DEFAULT_WARNING_BOX_SHOW_SECONDS = 4;
 	static constexpr uint32 WARNING_BOX_OUTER_COLOR = ZoombiniGraphics::kColor29_Brown;
 	static constexpr uint32 WARNING_BOX_INNER_COLOR = ZoombiniGraphics::kColor27_Red;
 	static constexpr uint32 WARNING_BOX_FILL_COLOR = ZoombiniGraphics::kColor2B_Yellow;

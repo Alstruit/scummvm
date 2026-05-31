@@ -33,6 +33,18 @@
 
 namespace Mohawk {
 
+namespace {
+
+const uint16 kTlcCreditsBinkLogoShape = 8;
+const uint16 kTlcCreditsMilesLogoShape = 7;
+const uint32 kTlcCreditsPreLogoBlankLineCount = 2;
+const uint32 kTlcCreditsLogoLineCount = 4;
+const uint32 kTlcCreditsPostLogoBlankLineCount = 15;
+const int16 kTlcCreditsBinkLogoX = 203;
+const int16 kTlcCreditsMilesLogoX = 349;
+
+} // End of anonymous namespace
+
 ZoombiniDialogCredits::ZoombiniDialogCredits(MohawkEngine_Zoombini *vm) : ZoombiniDialog(vm, ZoombiniPageType::kCreditScreen) {
 }
 
@@ -61,10 +73,46 @@ void ZoombiniDialogCredits::drawCreditLine(const Common::U32String &lineText, bo
 	tc._vAlign = Graphics::kTextAlignCenter;
 	tc._textPalette = isTitle ? kColorCreditsTitle : kColorCreditsLine;
 
-	Common::Rect drawRect = _textRect;
+	Common::Rect drawRect = getCreditLineRect();
 	drawRect.top = topY;
 	drawRect.bottom = static_cast<int16>(drawRect.top + 16);
 	_vm->_gfx->drawText(ZoombiniGraphics::kShapeScreen, lineText, drawRect, tc);
+}
+
+Common::Rect ZoombiniDialogCredits::getCreditLineRect() const {
+	Common::Rect lineRect = _textRect;
+	lineRect.left = 0;
+	lineRect.right = ZoombiniGraphics::kScreenWidth;
+	return lineRect;
+}
+
+uint32 ZoombiniDialogCredits::getCreditScrollLineCount() const {
+	if (_vm->isGameVariant(GF_ZMB_TLC))
+		return _totalCreditLines + kTlcCreditsPreLogoBlankLineCount +
+			kTlcCreditsLogoLineCount + kTlcCreditsPostLogoBlankLineCount;
+
+	return _totalCreditLines;
+}
+
+void ZoombiniDialogCredits::drawTlcEndLogos(uint32 elapsedFrames, int32 baseLineIdx, int32 startLineIdx, int32 endLineIdx) {
+	if (!_vm->isGameVariant(GF_ZMB_TLC))
+		return;
+
+	const int32 logoStartLineIdx = static_cast<int32>(_totalCreditLines + kTlcCreditsPreLogoBlankLineCount + 1);
+	const int32 logoEndLineIdx = static_cast<int32>(_totalCreditLines + kTlcCreditsPreLogoBlankLineCount + kTlcCreditsLogoLineCount);
+	if (endLineIdx < logoStartLineIdx || logoEndLineIdx < startLineIdx)
+		return;
+
+	const int32 logoTopY = drawLines_getLinePosY(elapsedFrames, baseLineIdx + logoStartLineIdx);
+	if (ZoombiniGraphics::kScreenHeight <= logoTopY || logoTopY <= -64)
+		return;
+
+	const int16 logoY = static_cast<int16>(logoTopY);
+	const ZmbResource creditsBitmap(ZmbArchiveKind::kSystem, kResShapeBitmap0020_Credits);
+	_vm->_gfx->drawShape(ZoombiniGraphics::kShapeScreen, creditsBitmap, kTlcCreditsBinkLogoShape,
+		Common::Point(kTlcCreditsBinkLogoX, logoY), false);
+	_vm->_gfx->drawShape(ZoombiniGraphics::kShapeScreen, creditsBitmap, kTlcCreditsMilesLogoShape,
+		Common::Point(kTlcCreditsMilesLogoX, logoY), false);
 }
 
 void ZoombiniDialogCredits::loadFeatures() {
@@ -133,6 +181,8 @@ ZmbRenderResult ZoombiniDialogCredits::creditScreen_render(ZmbFeature *feature) 
 	if (_totalCreditLines == 0)
 		return blitShapes(feature);
 
+	const uint32 scrollLineCount = getCreditScrollLineCount();
+
 	// Original engine draws one credit line per every 16 frames.
 	// - lineIdx = frameCounter / 16
 	// In each frame, the text pixel rects are scrolled up by 1 pixel to create scrolling effect.
@@ -148,9 +198,9 @@ ZmbRenderResult ZoombiniDialogCredits::creditScreen_render(ZmbFeature *feature) 
 	int32 rawStartLineIdx = MAX(0, drawLines_getStartLineIdx(elapsedFrames));
 	int32 rawEndLineIdx = drawLines_getEndLineIdx(elapsedFrames);
 
-	int32 baseLineIdx = (rawStartLineIdx / _totalCreditLines) * _totalCreditLines;
-	int32 startLineIdx = rawStartLineIdx % _totalCreditLines;
-	int32 endLineIdx = MIN<int32>(rawEndLineIdx, _totalCreditLines);
+	int32 baseLineIdx = (rawStartLineIdx / scrollLineCount) * scrollLineCount;
+	int32 startLineIdx = rawStartLineIdx % scrollLineCount;
+	int32 endLineIdx = MIN<int32>(rawEndLineIdx, scrollLineCount);
 
 	// Find the paragraphs to be drawn
 	do {
@@ -178,11 +228,13 @@ ZmbRenderResult ZoombiniDialogCredits::creditScreen_render(ZmbFeature *feature) 
 			lineIdx += paragraph._blankLineCount;
 		}
 
+		drawTlcEndLogos(elapsedFrames, baseLineIdx, startLineIdx, endLineIdx);
+
 		// End reached, loop to the beginning of the credits
-		if (endLineIdx == static_cast<int32>(_totalCreditLines)) {
-			baseLineIdx += _totalCreditLines;
+		if (endLineIdx == static_cast<int32>(scrollLineCount)) {
+			baseLineIdx += scrollLineCount;
 			startLineIdx = 0;
-			endLineIdx = rawEndLineIdx % _totalCreditLines;
+			endLineIdx = rawEndLineIdx % scrollLineCount;
 			continue;
 		}
 

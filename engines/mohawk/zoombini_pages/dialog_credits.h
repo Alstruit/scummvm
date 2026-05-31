@@ -37,6 +37,9 @@ public:
 protected:
 	void updateCreditScrollElapsedFrames();
 	void drawCreditLine(const Common::U32String &lineText, bool isTitle, int16 topY);
+	Common::Rect getCreditLineRect() const;
+	uint32 getCreditScrollLineCount() const;
+	void drawTlcEndLogos(uint32 elapsedFrames, int32 baseLineIdx, int32 startLineIdx, int32 endLineIdx);
 
 	ZmbEventHandleResult creditScreen_onMouseLButtonDown(ZmbFeature *feature, const Common::Point &absPos, const Common::Point &relPos);
 	ZmbEventHandleResult creditScreen_onKeyDown(ZmbFeature *feature, const Common::KeyState &kbd, bool kbdRepeat);
