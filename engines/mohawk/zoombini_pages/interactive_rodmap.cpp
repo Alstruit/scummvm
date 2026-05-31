@@ -406,10 +406,11 @@ void ZoombiniInteractiveRodMap::optionButton1006_preRenderShape(ZmbFeature *feat
 	if (_optionButtonState.isAnimating()) {
 		uint32 elapsedFrames = _currentFrameCounter - _optionButtonState._animationStartFrame;
 		if (elapsedFrames < _optionButtonState._animationFrameCount) {
-			// Animate by changing hotspot shape id
+			// SCRB 1007 uses shape 115 for TLC hover; shape 114 is an unrelated panel.
+			// Use the explicit pressed shape 92 instead of decrementing the current shape.
 			if (elapsedFrames < feature->getFrameInterval() - 1) {
 				ZmbHotspot &hs = hotspots[0];
-				hs._shapeIdx -= 1;
+				hs._shapeIdx = _optionButtonState._shapePressedIdx;
 				hs._x += 1;
 				hs._y += 2;
 			}
