@@ -351,10 +351,10 @@ private:
 	static bool readExecutableData(Common::SeekableReadStream *exeStream, Common::Array<byte> &data);
 	static int64 getExeTextEntryOffset(const ExeTextSource &source, const ExeTextEntry &entry);
 	static bool findBytes(const Common::Array<byte> &data, const char *needle, uint32 &offset);
-	static Common::U32String decodeCreditStringBytes(const byte *bytes, uint32 length, Common::CodePage codePage);
-	static bool readExecutableStringAt(const Common::Array<byte> &data, uint32 offset, Common::CodePage codePage, Common::U32String &text);
+	static Common::U32String decodeExecutableStringBytes(const byte *bytes, uint32 length, const ExeTextSource &source);
+	static bool readExecutableStringAt(const Common::Array<byte> &data, uint32 offset, const ExeTextSource &source, Common::U32String &text);
 	static bool isCreditTerminator(const Common::U32String &text);
-	static bool readCreditStringsFromAnchor(const Common::Array<byte> &data, Common::CodePage codePage, const char *anchor, Common::Array<Common::U32String> &creditStrings);
+	static bool readCreditStringsFromAnchor(const Common::Array<byte> &data, const ExeTextSource &source, Common::Array<Common::U32String> &creditStrings);
 	static bool readCreditStringsFromPointerTable(const Common::Array<byte> &data, const ExeTextSource &source, Common::Array<Common::U32String> &creditStrings);
 	static bool buildCreditParagraphsFromStrings(const Common::Array<Common::U32String> &creditStrings, Common::Array<CreditParagraph> &creditParagraphs);
 	static bool loadOriginalExecutableCredits(const Common::Array<byte> &data, const ExeTextSource &source, Common::Array<CreditParagraph> &creditParagraphs);

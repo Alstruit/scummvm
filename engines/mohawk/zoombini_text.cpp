@@ -70,6 +70,7 @@ struct ExeTextSource {
 	// slices after loading. These do not depend on the built-in string tables.
 	Common::HashMap<uint32, Common::U32String> textPatches;
 	CreditLinePatchMap creditLinePatches;
+	bool escapeMacRomanTrademarkByteAA = false;
 
 	// Credits are either a null-terminated string sequence found from that known
 	// first line, or a pointer table that maps executable addresses to strings.
@@ -113,6 +114,11 @@ struct ExeTextSource {
 		return *this;
 	}
 
+	ExeTextSource withMacRomanTrademarkByteAAEscape() {
+		escapeMacRomanTrademarkByteAA = true;
+		return *this;
+	}
+
 	ExeTextSource withCreditAnchor(const char *sourceCreditAnchor) {
 		creditAnchor = sourceCreditAnchor;
 		return *this;
@@ -145,11 +151,11 @@ CreditLinePatchMap ZoombiniText::buildEnglishExeCreditLinePatches() {
 CreditLinePatchMap ZoombiniText::buildKoreanExeCreditLinePatches() {
 	CreditLinePatchMap patches;
 
-	// Original: "이민선(프로그래머", omitted the closing parenthesis.
+	// Original Korean programmer line omitted the closing parenthesis.
 	patches[CreditLineAddress(36, 19)] = U"이민선(프로그래머)";
 
-	// Original engine could not draw the 'Ø' character in "BrØderbund" which the byte encoded with Windows-1252 was kept.
-	// ScummVM detects that and decodes only that string with Windows-1252.
+	// Original engine could not draw byte 0xD8 in the Broderbund QA credit line.
+	// ScummVM detects that isolated byte and decodes only that string as Windows-1252.
 
 	return patches;
 }
@@ -635,25 +641,36 @@ CreditParagraphSplitMap ZoombiniText::buildCreditParagraphSplits() {
 	return patches;
 }
 
-Common::U32String ZoombiniText::decodeCreditStringBytes(const byte *bytes, uint32 length, Common::CodePage codePage) {
-	Common::CodePage decodeCodePage = codePage;
-	if (codePage == Common::kWindows949) {
+Common::U32String ZoombiniText::decodeExecutableStringBytes(const byte *bytes, uint32 length, const ExeTextSource &source) {
+	Common::CodePage decodeCodePage = source.codePage;
+	if (source.codePage == Common::kWindows949) {
 		uint32 extendedByteCount = 0;
 		for (uint32 byteIndex = 0; byteIndex < length; byteIndex++) {
 			if (0x80 <= bytes[byteIndex])
 				extendedByteCount++;
 		}
 
-		// If there are just one extended bytes, then the text is likely Windows-1252 - Ex) 'Ø' (0xD8) of the 'BrØderbund'.
-		// In that case, always decode that string with Windows-1252.
+		// If there is just one extended byte, the text is likely Windows-1252.
+		// Example: byte 0xD8 in the Broderbund QA credit line.
 		if (extendedByteCount <= 1)
 			decodeCodePage = Common::kWindows1252;
 	}
 
-	return Common::U32String(reinterpret_cast<const char *>(bytes), length, decodeCodePage);
+	Common::U32String text(reinterpret_cast<const char *>(bytes), length, decodeCodePage);
+	if (source.escapeMacRomanTrademarkByteAA) {
+		// Z1-20U stores TouchSense's U+2122 as byte 0xAA. The source is otherwise
+		// Windows-1252, where 0xAA decodes as U+00AA, so keep this as a narrow
+		// source-specific escape instead of decoding all v2.0 text as MacRoman.
+		for (uint32 byteIndex = 0; byteIndex < length && byteIndex < text.size(); byteIndex++) {
+			if (bytes[byteIndex] == 0xAA)
+				text.setChar(0x2122, byteIndex);
+		}
+	}
+
+	return text;
 }
 
-bool ZoombiniText::readExecutableStringAt(const Common::Array<byte> &data, uint32 offset, Common::CodePage codePage, Common::U32String &text) {
+bool ZoombiniText::readExecutableStringAt(const Common::Array<byte> &data, uint32 offset, const ExeTextSource &source, Common::U32String &text) {
 	if (data.size() <= offset)
 		return false;
 
@@ -663,7 +680,7 @@ bool ZoombiniText::readExecutableStringAt(const Common::Array<byte> &data, uint3
 	if (data.size() <= endOffset)
 		return false;
 
-	text = decodeCreditStringBytes(data.data() + offset, endOffset - offset, codePage);
+	text = decodeExecutableStringBytes(data.data() + offset, endOffset - offset, source);
 	return true;
 }
 
@@ -671,15 +688,15 @@ bool ZoombiniText::isCreditTerminator(const Common::U32String &text) {
 	return text.size() == 1 && text[0] == U'*';
 }
 
-bool ZoombiniText::readCreditStringsFromAnchor(const Common::Array<byte> &data, Common::CodePage codePage, const char *anchor, Common::Array<Common::U32String> &creditStrings) {
+bool ZoombiniText::readCreditStringsFromAnchor(const Common::Array<byte> &data, const ExeTextSource &source, Common::Array<Common::U32String> &creditStrings) {
 	uint32 offset = 0;
-	if (!findBytes(data, anchor, offset))
+	if (!findBytes(data, source.creditAnchor, offset))
 		return false;
 
 	creditStrings.clear();
 	while (offset < data.size()) {
 		Common::U32String text;
-		if (!readExecutableStringAt(data, offset, codePage, text))
+		if (!readExecutableStringAt(data, offset, source, text))
 			return false;
 
 		creditStrings.push_back(text);
@@ -715,7 +732,7 @@ bool ZoombiniText::readCreditStringsFromPointerTable(const Common::Array<byte> &
 				return false;
 
 			Common::U32String text;
-			if (!readExecutableStringAt(data, stringAddress - source.creditPointerBaseAddress, source.codePage, text))
+			if (!readExecutableStringAt(data, stringAddress - source.creditPointerBaseAddress, source, text))
 				return false;
 			creditStrings.push_back(text);
 		}
@@ -759,7 +776,7 @@ bool ZoombiniText::loadOriginalExecutableCredits(const Common::Array<byte> &data
 		if (!readCreditStringsFromPointerTable(data, source, creditStrings))
 			return false;
 	} else if (source.creditAnchor) {
-		if (!readCreditStringsFromAnchor(data, source.codePage, source.creditAnchor, creditStrings))
+		if (!readCreditStringsFromAnchor(data, source, creditStrings))
 			return false;
 	} else {
 		return false;
@@ -961,6 +978,7 @@ bool ZoombiniText::initOriginalExecutableStrings() {
 			.withTextTable(Common::kWindows1252, kEnglish20ExeTextEntries)
 			.withTextPatches(englishTextPatches)
 			.withCreditLinePatches(englishCreditLinePatches)
+			.withMacRomanTrademarkByteAAEscape()
 			.withCreditPointerTable(0x90080, 0x400000, kEnglish20CreditPointerRanges)
 			.withCreditPointerBlankAddress(0x4A286C)};
 	static const ExeTextSource korean11Sources[] = {
@@ -1035,7 +1053,7 @@ bool ZoombiniText::initOriginalExecutableStrings() {
 				break;
 			}
 
-			strings.push_back(Common::U32String(reinterpret_cast<const char *>(exeData.data() + entryOffset), entry.length, source.codePage));
+			strings.push_back(decodeExecutableStringBytes(exeData.data() + entryOffset, entry.length, source));
 		}
 
 		Common::Array<CreditParagraph> executableCredits;
@@ -1800,7 +1818,7 @@ void ZoombiniText::initEnglishStrings() {
 void ZoombiniText::initEnglishTlcStrings() {
 	_strMap[kOptionsTitle] = U"OPTIONS (SHIFT ?)";
 	_strMap[kOptionsHelpAudio] = U"HELP AUDIO (CTRL A)";
-	_strMap[kOptionsTouchSense] = U"IMMERSION TOUCHSENSEª (CTRL K)";
+	_strMap[kOptionsTouchSense] = U"IMMERSION TOUCHSENSE™ (CTRL K)";
 	_strMap[kDialogHelpTitle] = U"help";
 	_strMap[kDialogButtonOkay] = U"ok";
 	_strMap[kDialogButtonNext] = U"next";
@@ -2155,7 +2173,7 @@ void ZoombiniText::getEnglishTlcCredits(Common::Array<CreditParagraph> &paragrap
 	addCreditParagraph(paragraphs, voiceTalent, 1);
 	const char *const soundDesign[] = { "SOUND DESIGN", "andrew kawamura", "jamie hert" };
 	addCreditParagraph(paragraphs, soundDesign, 1);
-	const char *const touchSenseEngineer[] = { "IMMERSION TOUCHSENSEª ENGINEER", "margie luong" };
+	const char *const touchSenseEngineer[] = { "IMMERSION TOUCHSENSE™ ENGINEER", "margie luong" };
 	addCreditParagraph(paragraphs, touchSenseEngineer, 1);
 	const char *const creativeDevelopment[] = { "DIR of CREATIVE DEVELOPMENT", "drayson nowlan" };
 	addCreditParagraph(paragraphs, creativeDevelopment, 1);
@@ -2287,7 +2305,7 @@ void ZoombiniText::initKoreanStrings() {
 	_strMap[kDialogButtonCancel] = U"취소";
 	_strMap[kDialogButtonYes] = U"예";
 	_strMap[kDialogButtonNo] = U"아니오";
-	_strMap[kDialogButtonQuit] = U"아니오"; // Not a typo, Arisumedia translated QUIT as 아니오
+	_strMap[kDialogButtonQuit] = U"아니오"; // Not a typo: Arisumedia translated QUIT as the Korean "No" string.
 	_strMap[kDialogButtonLoad] = U"불러오기";
 	_strMap[kDialogButtonSave] = U"저장하기";
 	_strMap[kOptionsTitle] = U"설정";
@@ -2358,7 +2376,7 @@ void ZoombiniText::getKoreanCredits(Common::Array<CreditParagraph> &paragraphs) 
 	assert(0 < paragraph._lines.size());
 	assert(paragraph._lines[0].equals(Common::U32String("SPECIAL THANKS TO:")));
 
-	// Should be placed between "alex tkaczevski" ~ "BrØderbund's QA department" without any blank lines.
+	// Should be placed between "alex tkaczevski" and the Broderbund QA credit line without any blank lines.
 	Common::Array<Common::U32String> lines;
 	lines.push_back(Common::U32String("줌비니 수학 논리 여행 한글판 제작팀", Common::kUtf8));
 	lines.push_back(Common::U32String("황인영(기획)", Common::kUtf8));
