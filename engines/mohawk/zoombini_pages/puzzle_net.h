@@ -27,7 +27,7 @@
 namespace Mohawk {
 
 /**
- * Net puzzle page (ZoombiniPageType::kNet).
+ * Mudball Wall puzzle page (ZoombiniPageType::kNet).
  * Route 3, Puzzle 3
  *
  * IDA entry: puzzleNet_4361D4 (0x4361d4)

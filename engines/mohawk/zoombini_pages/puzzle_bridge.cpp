@@ -108,7 +108,7 @@ void ZoombiniPuzzleBridge::open() {
 void ZoombiniPuzzleBridge::setBackgroundMusic() {
 	// Bridge intentionally has no dedicated BGM in the original game.
 	// IDA: bridge_initPuzzleState (0x414C83) has no call to playBgm/loadBgmTrack.
-	// Ambient audio comes from water/troll SCRS animations.
+	// Ambient audio comes from water/cliff SCRS animations.
 }
 
 void ZoombiniPuzzleBridge::setBackgroundBitmap() {
@@ -132,12 +132,12 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 	_bridgeTransitCount = 0;
 
 	_isRejectPlaying = 0;
-	_currentMatchResult = 0;
+	_currentDropRejected = 0;
 	_currentDropLane = 0;
 	_trailLength = 0;
 	memset(_trailDropZone, 0, sizeof(_trailDropZone));
 	memset(_trailRunnerIdx, 0, sizeof(_trailRunnerIdx));
-	memset(_trailMatchResult, 0, sizeof(_trailMatchResult));
+	memset(_trailRejectResult, 0, sizeof(_trailRejectResult));
 	memset(_lane1ZmbIds, 0, sizeof(_lane1ZmbIds));
 	memset(_lane2ZmbIds, 0, sizeof(_lane2ZmbIds));
 	_lane1Count = 0;
@@ -145,11 +145,11 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 	_isDragging = 0;
 	_activeLaneScrb = -1;
 	_activeRejectScrb = -1;
-	_trollAttrState = 0;
+	_cliffAttrState = 0;
 	_crossingHotspotIdx = 0;
 	_pendingLaneEvent = 0;
 	_bRetryAllowed = 0;
-	_trollAnimPending = 0;
+	_cliffEntranceAnimPending = 0;
 	_celebrationTarget = 0;
 	_celebrationsPlayed = 0;
 	_celebrationTimer = 0;
@@ -174,14 +174,14 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 		ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE | ZmbFeature::FLAG_00008000_LOOP_ANIM |
 		ZmbFeature::FLAG_00020000_SKIP_RENDER | ZmbFeature::FLAG_04000000_OVERLAY);
 
-	// [*] SCRB 1200-1248: Troll/bridge animation sub-features (49 chained from main)
+	// [*] SCRB 1200-1248: Cliff/bridge animation sub-features (49 chained from main)
 	// IDA: loadSubFeatureSCRB_45FE2C(10, 49, 0x4B0)
 	{
 		ZmbFeature *parent = mainFeature;
 		for (uint16 i = 0; i < 49; i++) {
 			parent = loadSubFeature(parent,
 				ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1200),
-				kResScrb1200_TrollLane1 + i);
+				kResScrb1200_CliffLane1 + i);
 		}
 	}
 
@@ -223,7 +223,7 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 			ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_01000000_DEFER_RENDER);
 	}
 
-	// [*] Troll gate SCRB (SCRB 1105 = 0x451): main troll feature
+	// [*] Cliff gate SCRB (SCRB 1105 = 0x451): main cliff feature
 	// IDA: word_4AAE6A = registerSCRB_45F60C(0,0,0, 6, 0x451, ..., flags)
 	loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100),
@@ -232,23 +232,23 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 		ZmbFeature::FLAG_01000000_DEFER_RENDER | ZmbFeature::FLAG_08000000_REGION_TRACK);
 
-	// [*] Troll animations (SCRB 1202=0x4B2, 1201=0x4B1, 1200=0x4B0)
+	// [*] Cliff animations (SCRB 1202=0x4B2, 1201=0x4B1, 1200=0x4B0)
 	// IDA: word_4AAE66, word_4AAE64, word_4AAE68
 	loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1200),
-		kResScrb1202_TrollGate, 0,
+		kResScrb1202_CliffGate, 0,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 		ZmbFeature::FLAG_08000000_REGION_TRACK);
 
 	loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1200),
-		kResScrb1201_TrollLane2, 0,
+		kResScrb1201_CliffLane2, 0,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 		ZmbFeature::FLAG_08000000_REGION_TRACK);
 
 	loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1200),
-		kResScrb1200_TrollLane1, 0,
+		kResScrb1200_CliffLane1, 0,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 		ZmbFeature::FLAG_08000000_REGION_TRACK);
 
@@ -298,12 +298,12 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 			_totalZmbCount++;
 	}
 
-	// Store feature handles for troll animation manipulation.
+	// Store feature handles for cliff animation manipulation.
 	// IDA: word_4AAE68 = 0x4B0, word_4AAE64 = 0x4B1, etc.
-	_scrbTrollLane1Idx = kResScrb1200_TrollLane1;
-	_scrbTrollLane2Idx = kResScrb1201_TrollLane2;
-	_scrbTrollGateIdx  = kResScrb1202_TrollGate;
-	_scrbTrollMainIdx  = kResScrb1105_Overlay;
+	_scrbCliffLane1Idx = kResScrb1200_CliffLane1;
+	_scrbCliffLane2Idx = kResScrb1201_CliffLane2;
+	_scrbCliffGateIdx  = kResScrb1202_CliffGate;
+	_scrbCliffMainIdx  = kResScrb1105_Overlay;
 	_scrbWaterIdx      = kResScrb1106_Water;
 	_scrbSegmentIdx[0] = kResScrb1300_Segment0;
 	_scrbSegmentIdx[1] = kResScrb1301_Segment1;
@@ -783,6 +783,8 @@ bool ZoombiniPuzzleBridge::testAttrMatch(const ZmbTrait &trait, int16 targetSlot
 	// IDA: bridge_testAttrMatchRule_4168E9
 	// Uses _bRandomLaneSwap to determine which lane is the "match" lane.
 	// targetSlot=1 or 2, laneResult is computed from match + randomSwap + slot inversion.
+	// The return value is stored as bridge_bCurrentDropRejected in the original hover
+	// loop: nonzero means the selected bridge rejects this Zoombini.
 
 	if (targetSlot < 1 || targetSlot > 2)
 		targetSlot = 1;
@@ -849,6 +851,15 @@ void ZoombiniPuzzleBridge::reloadScrbAnimation(uint16 featureId, uint16 newScrbI
 	ZmbFeature *feature = _scrbFeatures.find(featureId);
 	if (!feature)
 		return;
+
+	if (kResScrb1200_CliffLane1 <= newScrbId && newScrbId <= 1248) {
+		feature->setResource(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1200));
+	} else if (kResScrb1300_Segment0 <= newScrbId && newScrbId <= kResScrb1301_Segment1) {
+		feature->setResource(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1300));
+	} else {
+		feature->setResource(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100));
+	}
+
 	loadScrbOntoFeature(feature, newScrbId);
 }
 
@@ -932,25 +943,25 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 	}
 
 	// -----------------------------------------------------------------------
-	// [1] Troll entrance animation trigger.
-	// IDA: word_4AAE6E check → start entrance anim on trollLane1
+	// [1] Cliff entrance animation trigger.
+	// IDA: word_4AAE6E check -> start entrance anim on cliff lane 1
 	// -----------------------------------------------------------------------
-	if (_trollAnimPending) {
-		debugC(1, kZmbDebugAnimation, "Bridge: troll entrance animation triggered");
-		_trollAnimPending = 0;
+	if (_cliffEntranceAnimPending) {
+		debugC(1, kZmbDebugAnimation, "Bridge: cliff entrance animation triggered");
+		_cliffEntranceAnimPending = 0;
 
-		// Hide the lane-2 troll feature (it's offscreen during entrance)
-		ZmbFeature *lane2 = _scrbFeatures.find(_scrbTrollLane2Idx);
+		// Hide the lane-2 cliff feature (it is offscreen during entrance)
+		ZmbFeature *lane2 = _scrbFeatures.find(_scrbCliffLane2Idx);
 		if (lane2) {
 			lane2->deactivateRender();
 			lane2->deactivateAnimate();
 		}
 
-		// Load SCRB 1235 on the gate troll
-		reloadScrbAnimation(_scrbTrollGateIdx, 1235);
+		// Load SCRB 1235 on the cliff gate
+		reloadScrbAnimation(_scrbCliffGateIdx, 1235);
 
-		// Load SCRB 1221 on lane-1 troll (entrance animation with callbacks)
-		reloadScrbAnimation(_scrbTrollLane1Idx, 1221);
+		// Load SCRB 1221 on lane-1 cliff (entrance animation with callbacks)
+		reloadScrbAnimation(_scrbCliffLane1Idx, 1221);
 	}
 
 	// -----------------------------------------------------------------------
@@ -967,7 +978,7 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 		if (_successCount >= _totalZmbCount)
 			skip = true;
 
-		if (_trailMatchResult[0] && _bridgeTransitCount > 4)
+		if (_trailRejectResult[0] && _bridgeTransitCount > 4)
 			skip = true;
 		if (!skip && (getCurrentFrameCounter() - _lastFrameSnapshot) < 0x2D)
 			skip = true;
@@ -982,29 +993,32 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 			// Shift trail queue forward
 			if (_trailLength >= 1 && _trailLength <= 2) {
 				_currentDropLane = _trailDropZone[0];
-				_currentMatchResult = _trailMatchResult[0];
+				_currentDropRejected = _trailRejectResult[0];
 				_trailDropZone[0] = _trailDropZone[1];
 				_trailRunnerIdx[0] = _trailRunnerIdx[1];
-				_trailMatchResult[0] = _trailMatchResult[1];
+				_trailRejectResult[0] = _trailRejectResult[1];
 				_trailLength--;
 			}
 
-			// Determine SCRS resource based on lane and match result.
-			// IDA: lane1 match→2010, lane1 reject→2015, lane2 match→2000, lane2 reject→2005
+			// Determine SCRS resource based on lane and toll result.
+			// IDA hover @ 0x415501: a nonzero bridge_testAttrMatch result selects
+			// the rejected lead-in; zero selects the accepted full crossing.
+			// SCRS 2005-2009/2015-2019 cross the whole bridge; SCRS
+			// 2000-2004/2010-2014 are the slow rejected lead-ins.
 			uint16 scrsBase;
 			if (_currentDropLane == 1) {
-				scrsBase = _currentMatchResult ? 2010 : 2015;
+				scrsBase = _currentDropRejected ? 2010 : 2015;
 			} else {
-				scrsBase = _currentMatchResult ? 2000 : 2005;
+				scrsBase = _currentDropRejected ? 2000 : 2005;
 			}
 
 			_bridgeTransitCount++;
-			_isRejectPlaying = _currentMatchResult;
+			_isRejectPlaying = _currentDropRejected ? 1 : 0;
 			// IDA bridge_funcOnHover @ 0x41555a: *((BYTE*)runner+295) = 1 — mark
 			// snoid as reject-walking so onLButtonDown ignores subsequent drag
 			// attempts until the SCRS finishes.
 			snoid->_runnerStatus = 1;
-			if (!_currentMatchResult) {
+			if (_currentDropRejected) {
 				// Set random speed for reject path
 				snoid->setAnimSpeed(_vm->_rnd->getRandomNumber(4, 5), 0);
 			}
@@ -1014,55 +1028,57 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 
 			// Start SCRS playback on the pack snoid.
 			// IDA: snoidScript_initAndPlay_455C0D(0, 0, shapeImageIdx + scrsBase - 1, core)
-			// shapeImageIdx = byte 239 of runner struct = snoid foot trait (1-5).
-			// Each lane/match combo has 5 SCRS variants (one per foot type).
-			uint16 scrsId = scrsBase + snoid->_trait._foot - 1;
+			uint16 footVariant = snoid->_trait._foot;
+			if (footVariant < 1 || 5 < footVariant)
+				footVariant = 1;
+			uint16 scrsId = scrsBase + footVariant - 1;
 			Common::SeekableReadStream *scrsStream =
 				_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsId));
 			if (scrsStream) {
-				snoid->startScrsPlayback(scrsStream, false /* hideOnComplete */,
-										 _currentMatchResult == 0 /* rejectState */);
+				// The rejected lead-in is still a normal bridge-walk SCRS. The
+				// 1000-series sneeze/return SCRS switches to reject body tables.
+				snoid->startScrsPlayback(scrsStream, false /* hideOnComplete */, false);
 			}
 		}
 	}
 
 	// -----------------------------------------------------------------------
-	// [3] Process pending lane event (troll gate animation after crossing step).
+	// [3] Process pending lane event (cliff gate animation after crossing step).
 	// IDA: word_4AAE7A branch
 	// -----------------------------------------------------------------------
 	if (_pendingLaneEvent) {
-		debugC(2, kZmbDebugAnimation, "Bridge: pending lane event, runner=%d match=%d", _pendingLaneEvent, _currentMatchResult);
+		debugC(2, kZmbDebugAnimation, "Bridge: pending lane event, runner=%d rejected=%d", _pendingLaneEvent, _currentDropRejected);
 		ZmbFeature *lane = _scrbFeatures.find(_pendingLaneEvent);
-		if (lane && _currentMatchResult) {
-			// Load the appropriate troll animation SCRB on the lane feature
-			uint16 trollLaneScrb;
-			if (_pendingLaneEvent == _scrbTrollLane2Idx)
-				trollLaneScrb = 1222;
+		if (lane && _currentDropRejected) {
+			// Load the appropriate cliff animation SCRB on the lane feature
+			uint16 cliffLaneScrb;
+			if (_pendingLaneEvent == _scrbCliffLane2Idx)
+				cliffLaneScrb = 1222;
 			else
-				trollLaneScrb = 1214;
+				cliffLaneScrb = 1214;
 			_pendingLaneEvent = 0;
-			reloadScrbAnimation(lane->getId(), trollLaneScrb);
+			reloadScrbAnimation(lane->getId(), cliffLaneScrb);
 
-			// Trigger troll gate match animation.
-			// IDA: troll gate SCRB = successCount + 1223 (lane1) or 1208 (lane2)
-			if (_currentMatchResult) {
+			// Trigger cliff gate rejection animation.
+			// IDA: cliff gate SCRB = successCount + 1223 (lane1) or 1208 (lane2)
+			if (_currentDropRejected) {
 				uint16 gateScrbId;
 				if (_currentDropLane == 1)
 					gateScrbId = _successCount + 1223;
 				else
 					gateScrbId = _successCount + 1208;
-				reloadScrbAnimation(_scrbTrollMainIdx, gateScrbId);
+				reloadScrbAnimation(_scrbCliffMainIdx, gateScrbId);
 			}
 
 			// Update bridge segment animation.
-			// IDA: troll gate visual SCRB on _scrbTrollGateIdx
+			// IDA: cliff gate visual SCRB on _scrbCliffGateIdx
 			uint16 segScrbId;
-			if (!_currentMatchResult) {
+			if (!_currentDropRejected) {
 				segScrbId = (_currentDropLane == 1) ? _successCount + 1243 : _successCount + 1237;
 			} else {
 				segScrbId = (_currentDropLane == 1) ? _successCount + 1229 : _successCount + 1215;
 			}
-			reloadScrbAnimation(_scrbTrollGateIdx, segScrbId);
+			reloadScrbAnimation(_scrbCliffGateIdx, segScrbId);
 		}
 		_pendingLaneEvent = 0;
 	}
@@ -1147,17 +1163,60 @@ void ZoombiniPuzzleBridge::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCo
 void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 stepCode) {
 	ZmbSnoid *snoid = static_cast<ZmbSnoid *>(snoidFeature);
 
+	// SCRS frame terminators carry 1-based callback IDs. The original bridge
+	// callback switch uses the adjusted IDA step code.
+	if (0 < stepCode)
+		stepCode--;
+
+	auto startRejectThrowScript = [&]() -> bool {
+		if (_cliffAttrState <= 0)
+			return false;
+
+		uint16 scrsBase;
+		switch (_cliffAttrState) {
+		case 2: scrsBase = 1012; break; // eyes
+		case 3: scrsBase = 1008; break; // nose
+		case 4: scrsBase = 1000; break; // feet
+		case 5: scrsBase = 1004; break; // hair? (head)
+		default: scrsBase = 1016; break; // default
+		}
+
+		Common::Point initPos;
+		if (_currentDropLane == 1) {
+			scrsBase += 2;
+			initPos = Common::Point(38, 106);
+		} else {
+			initPos = Common::Point(56, 205);
+		}
+
+		scrsBase += _vm->_rnd->getRandomNumber(0, 1);
+
+		Common::SeekableReadStream *scrsStream =
+			_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsBase));
+		if (!scrsStream)
+			return false;
+
+		// IDA: snoidScript_initAndPlay(0, &pInitPos, scrsBase, core). Passing
+		// initPos anchors the final SCRS frame at the starting point, so the
+		// sneeze/return animation begins near the bridge and lands back on the bank.
+		snoid->startScrsPlayback(scrsStream, false, true, &initPos);
+		_activeRejectScrb = scrsBase;
+		_activeLaneScrb = _cliffAttrState;
+		_cliffAttrState = 0;
+		return true;
+	};
+
 	switch (stepCode) {
 	case 1:
 	case 4:
-		// Set pending lane event to troll lane 1
-		_pendingLaneEvent = _scrbTrollLane1Idx;
+		// Set pending lane event to the lower bridge cliff runner.
+		_pendingLaneEvent = _scrbCliffLane1Idx;
 		break;
 
 	case 2:
 	case 5:
-		// Set pending lane event to troll lane 2
-		_pendingLaneEvent = _scrbTrollLane2Idx;
+		// Set pending lane event to the upper bridge cliff runner.
+		_pendingLaneEvent = _scrbCliffLane2Idx;
 		break;
 
 	case 3:
@@ -1166,8 +1225,9 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 		_bridgeTransitCount--;
 
 		// IDA: *(linkDirection+47) = 0; animateZoombini(0, 7, core); flags |= 0x4008000
-		// Save the snoid's current SCRS-driven position (on the bridge) before
-		// finishScrsPlayback() restores it to the pre-SCRS origPointLoc.
+		// Save the snoid's current SCRS-driven visible root (on the bridge) before
+		// finishScrsPlayback() restores it to the pre-SCRS origPointLoc. IDA
+		// snoidScript_renderFrame_4562B2 updates posLoc from every SCRS frame.
 		Common::Point bridgePos = snoid->getPointLoc();
 		snoid->finishScrsPlayback();
 		snoid->setPointLoc(bridgePos);  // Stay at the SCRS position, not the origPointLoc
@@ -1244,49 +1304,13 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 
 	case 10: {
 		// Play snoid attribute display script.
-		// IDA: SCRS base depends on _trollAttrState (which attr type the troll shows)
-		if (_trollAttrState <= 0)
-			break;
-
-		uint16 scrsBase;
-		switch (_trollAttrState) {
-		case 2: scrsBase = 1012; break; // eyes
-		case 3: scrsBase = 1008; break; // nose
-		case 4: scrsBase = 1000; break; // feet
-		case 5: scrsBase = 1004; break; // hair? (head)
-		default: scrsBase = 1016; break; // default
-		}
-
-		// IDA: set initial position and offset by lane number
-		Common::Point initPos;
-		if (_currentDropLane == 1) {
-			scrsBase += 2;
-			initPos = Common::Point(38, 106);
-		} else {
-			initPos = Common::Point(56, 205);
-		}
-
-		// Random variant (0 or 1)
-		scrsBase += _vm->_rnd->getRandomNumber(0, 1);
-
-		// IDA: snoidScript_initAndPlay(0, &pInitPos, scrsBase, core)
-		// Set snoid position before starting SCRS playback
-		snoid->setPointLoc(initPos);
-
-		Common::SeekableReadStream *scrsStream =
-			_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsBase));
-		if (scrsStream) {
-			snoid->startScrsPlayback(scrsStream, false, true);
-			_activeRejectScrb = scrsBase;
-			_activeLaneScrb = _trollAttrState;
-		}
-		_trollAttrState = 0;
+		// IDA: SCRS base depends on _cliffAttrState (which attr type the cliff shows)
+		startRejectThrowScript();
 		break;
 	}
 
 	case 20:
-		// Transit complete: Zoombini has crossed the bridge.
-		_bridgeTransitCount--;
+		// Reject/attribute display script completed its logical effect.
 		if (_successCount < 6)
 			_successCount++;
 		// IDA: bridge_bRetryAllowed = 1 at case 20
@@ -1296,10 +1320,17 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 	case kZmbAnimEventM1_End: {
 		// End of SCRS playback: reposition rejected Zoombini.
 		_bRetryAllowed = 0;
-		if (_isRejectPlaying) {
-			_failureCount++;
-			_isRejectPlaying = 0;
-		}
+		if (!_isRejectPlaying)
+			break;
+		if (_activeRejectScrb < 0 && startRejectThrowScript())
+			break;
+
+		if (0 < _bridgeTransitCount)
+			_bridgeTransitCount--;
+		_failureCount++;
+		_isRejectPlaying = 0;
+		_activeRejectScrb = -1;
+		_activeLaneScrb = -1;
 
 
 		// Find a non-colliding position to place the rejected Zoombini.
@@ -1331,15 +1362,15 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 }
 
 // ---------------------------------------------------------------------------
-// processEntranceEvent: Troll entrance event callback.
+// processEntranceEvent: Cliff entrance event callback.
 // IDA: bridge_onEntranceCallback_415C34
 // ---------------------------------------------------------------------------
 void ZoombiniPuzzleBridge::processEntranceEvent(int16 eventId, ZmbFeature *eventSource) {
 	if (eventId >= 1 && eventId <= 6) {
-		// Record the troll attribute display state (which attribute the troll shows)
-		_trollAttrState = eventId;
+		// Record the cliff attribute display state (which attribute the cliff shows)
+		_cliffAttrState = eventId;
 	} else if (eventId != 10 && eventId >= 100 && eventId <= 101) {
-		// IDA: (trollEventId - 100) < 2, but exclude 10
+		// IDA: (eventId - 100) < 2, but exclude 10
 		// Change water overlay animation.
 		// 100: load SCRB 1236 (water splash), 101: load SCRB 1103 (normal water)
 		uint16 waterScrbId = (eventId == 100) ? 1236 : 1103;
@@ -1362,8 +1393,8 @@ void ZoombiniPuzzleBridge::processEntranceEvent(int16 eventId, ZmbFeature *event
 			}
 		}
 	} else if (eventId == 0) {
-		// Activate troll entrance animation trigger for next frame.
-		_trollAnimPending = 1;
+		// Activate cliff entrance animation trigger for next frame.
+		_cliffEntranceAnimPending = 1;
 	}
 }
 
@@ -1428,7 +1459,7 @@ ZmbEventHandleResult ZoombiniPuzzleBridge::onLButtonDown(const Common::Point &ab
 		} else if (_trailRunnerIdx[0] == snoid->getId()) {
 			_trailDropZone[0] = _trailDropZone[1];
 			_trailRunnerIdx[0] = _trailRunnerIdx[1];
-			_trailMatchResult[0] = _trailMatchResult[1];
+			_trailRejectResult[0] = _trailRejectResult[1];
 			_trailLength = 1;
 		}
 	}
@@ -1446,10 +1477,10 @@ void ZoombiniPuzzleBridge::endDrag(const Common::Point &dropPos) {
 
 	if (dropLane > 0 && static_cast<uint16>(_trailLength) < 2) {
 		// Valid drop: add to trail
-		bool isMatch = testAttrMatch(snoid->_trait, dropLane);
+		bool dropRejected = testAttrMatch(snoid->_trait, dropLane);
 		_trailDropZone[_trailLength] = dropLane;
 		_trailRunnerIdx[_trailLength] = snoid->getId();
-		_trailMatchResult[_trailLength] = isMatch ? 1 : 0;
+		_trailRejectResult[_trailLength] = dropRejected ? 1 : 0;
 		_trailLength++;
 
 		// IDA: beginDragFeatureRunner_45360F sets pos2 = posArr_4B7C44[dropSlotIdx]

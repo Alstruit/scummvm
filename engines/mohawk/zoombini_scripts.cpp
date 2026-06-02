@@ -796,6 +796,7 @@ void ZmbSnoid::startScrsPlayback(Common::SeekableReadStream *scrsStream, bool hi
 	// During SCRS rendering, position = SCRS_xy + (-pos2) - REGS.
 	ZmbHotspotGroup *anchorFrame = nullptr;
 	Common::Point anchorRefPoint = _scrsOrigPointLoc;
+	_scrsRenderOffset = _scrsOrigPointLoc;
 	if (initPos) {
 		anchorRefPoint = *initPos;
 		// Scan from the highest frame index downward for a frame whose first hotspot has
@@ -818,9 +819,9 @@ void ZmbSnoid::startScrsPlayback(Common::SeekableReadStream *scrsStream, bool hi
 		Common::Array<ZmbHotspot> hotspots = anchorFrame->copyHotspots();
 		for (uint32 i = 0; i < hotspots.size(); i++) {
 			if (hotspots[i]._shapeIdx > 0) {
-				setPointLoc(Common::Point(
+				_scrsRenderOffset = Common::Point(
 					anchorRefPoint.x - hotspots[i]._x,
-					anchorRefPoint.y - hotspots[i]._y));
+					anchorRefPoint.y - hotspots[i]._y);
 				break;
 			}
 		}
@@ -838,11 +839,27 @@ void ZmbSnoid::startScrsPlayback(Common::SeekableReadStream *scrsStream, bool hi
 	// Start at frame 0. activateAnimate enables voice/sound event processing.
 	setLastFrameIdx(0);
 	setLastSoundedFrameIdx(-1);
+	syncScrsPointLoc();
 	activateAnimate();
 
 	// Set the select-render-frame hook so blitShapes reads _lastFrameIdx
 	// instead of time-cycling via defaultSelectRenderFrame.
 	setSelectRenderFrameFunc(&ZoombiniPage::selectScrsRenderFrame);
+}
+
+void ZmbSnoid::syncScrsPointLoc() {
+	ZmbHotspotGroup *frame = getHotspotGroupExact(getLastFrameIdx());
+	if (!frame || frame->getHotspotCount() == 0)
+		return;
+
+	// IDA snoidScript_renderFrame_4562B2 updates posLoc only when the first
+	// entry in the current SCRS frame is positive.
+	const ZmbHotspot &anchor = frame->getHotspot(0);
+	if (0 < anchor._shapeIdx) {
+		setPointLoc(Common::Point(
+			_scrsRenderOffset.x + anchor._x,
+			_scrsRenderOffset.y + anchor._y));
+	}
 }
 
 void ZmbSnoid::finishScrsPlayback() {
@@ -1012,6 +1029,50 @@ void ZmbSnoid::initWalkToTarget(const Common::Point &target) {
 }
 
 static int computeWalkDirBucket(int16 dx, int16 dy);
+
+bool ZmbSnoid::advancePathSubTarget(ZoombiniPage *page, bool forceHotspotUpdate) {
+	// IDA: snoidPath_stepAndComputeVelocity_4548DF reads exactly one PATH slot,
+	// advances the route cursor, then chooses that checkpoint or the final seat
+	// solely by squared distance. It does not apply snoid occupancy filtering.
+	_pathSubTarget = _animTargetPos;
+
+	ZmbNode *node = page ? page->getFirstNode() : nullptr;
+	if (node && 0 <= _pathRouteIdx && _pathRouteIdx < static_cast<int16>(node->_paths.size()) && 0 <= _pathSlotIdx) {
+		const Common::Array<uint8> &path = node->_paths[_pathRouteIdx];
+		uint8 waypointRef = 0;
+		if (_pathSlotIdx < static_cast<int16>(path.size()))
+			waypointRef = path[_pathSlotIdx];
+		_pathSlotIdx += _pathWalkDir;
+
+		if (0 < waypointRef && waypointRef <= node->_waypoints.size()) {
+			const Common::Point &waypoint = node->_waypoints[waypointRef - 1];
+			const Common::Point curPos = getPointLoc();
+			int32 dxFinal = _animTargetPos.x - curPos.x;
+			int32 dyFinal = _animTargetPos.y - curPos.y;
+			int32 dxWaypoint = waypoint.x - curPos.x;
+			int32 dyWaypoint = waypoint.y - curPos.y;
+			if (dxWaypoint * dxWaypoint + dyWaypoint * dyWaypoint <
+				dxFinal * dxFinal + dyFinal * dyFinal)
+				_pathSubTarget = waypoint;
+		}
+	}
+
+	const Common::Point curPos = getPointLoc();
+	int16 dx = _pathSubTarget.x - curPos.x;
+	int16 dy = curPos.y - _pathSubTarget.y;
+	if (dx == 0 && dy == 0)
+		return false;
+
+	int newBucket = computeWalkDirBucket(dx, dy);
+	if (forceHotspotUpdate || newBucket != _walkDirBucket) {
+		_walkDirBucket = newBucket;
+		updateWalkHotspots(page, _walkDirBucket, _walkPhase);
+	}
+	calcPathSpeed(dx, dy, _animSpeedX, _animSpeedY);
+	if (dx != 0)
+		_isFacingLeft = (dx < 0);
+	return true;
+}
 
 bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 	// IDA: onRender_ZoombiniAnimation_452B9C checks dNextRenderFrame <= scrb_dwFrameRenderTime
@@ -1242,165 +1303,80 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 		// snoidPath_stepAndComputeVelocity_4548DF (compute speed), then transitions to state 112 and falls through.
 		//
 		// IDA snoidPath_initRoute_454CA9 path-routing algorithm (translated from original binary):
-		// 1. Find v16 = 1-indexed waypoint nearest to finalDest (a1 = a2+278 in IDA).
-		// 2. Among all paths containing v16, find the path j where the member
-		//    nearest to curPos (position v2) has minimum squared distance.
-		// 3. Determine walk direction: +1 if v2→k is forward, -1 if backward.
-		//    Rule: dir=-1 when k≠0 AND v2≥k (curPos is at or past dest in path order).
-		// 4. Start reading from position v2+1 (skip nearest-to-curPos, already there)
-		//    and walk toward k, stopping when k is reached.
-		_pathWaypoints.clear();
-		_pathWaypointIdx = 0;
+		// 1. Find the 1-indexed waypoint nearest to finalDest.
+		// 2. Among paths containing that waypoint, find the member nearest to curPos.
+		// 3. Store routeIdx, slotIdx=nearestSlot+1, and walkDir. The stepper reads
+		//    PATH slots dynamically; it does not precompute or occupancy-filter them.
+		_pathRouteIdx = -1;
+		_pathSlotIdx = -1;
+		_pathWalkDir = 1;
+		_pathSubTarget = _animTargetPos;
 
 		if (page) {
 			ZmbNode *node = page->getFirstNode();
-			if (node && !node->_waypoints.empty()) {
+			if (node && !node->_waypoints.empty() && !node->_paths.empty()) {
 				const Common::Point curPos = getPointLoc();
 				const Common::Array<Common::Point> &wps = node->_waypoints;
 
-				if (!node->_paths.empty()) {
-					// --- snoidPath_initRoute_454CA9 correct routing ---
-					// Step 1: v16 = nearest waypoint (1-indexed) to finalDest
-					uint8 v16 = 0;
-					int32 minDestDist = INT32_MAX;
-					for (uint32 i = 0; i < wps.size(); i++) {
-						int32 ddx = wps[i].x - _animTargetPos.x;
-						int32 ddy = wps[i].y - _animTargetPos.y;
-						int32 dist = ddx * ddx + ddy * ddy;
-						if (dist <= minDestDist) {
-							minDestDist = dist;
-							v16 = (uint8)(i + 1);
-						}
+				uint8 destinationWaypointRef = 0;
+				int32 minDestDist = 999999;
+				for (uint32 i = 0; i < wps.size(); i++) {
+					int32 dx = wps[i].x - _animTargetPos.x;
+					int32 dy = wps[i].y - _animTargetPos.y;
+					int32 dist = dx * dx + dy * dy;
+					if (dist <= minDestDist) {
+						minDestDist = dist;
+						destinationWaypointRef = static_cast<uint8>(i + 1);
 					}
+				}
 
-					// Step 2: find best path + starting position (snoidPath_initRoute_454CA9 inner scan)
-					int bestPath = -1;
-					int bestV2 = 0; // 0-indexed position in path of nearest-to-curPos member
-					int bestK = 0;  // 0-indexed position in path of v16
-					int bestDir = 1;
-					int32 bestCurDist = INT32_MAX; // v13
+				int32 minCurDist = 999999;
+				for (uint32 routeIdx = 0; routeIdx < node->_paths.size(); routeIdx++) {
+					const Common::Array<uint8> &path = node->_paths[routeIdx];
+					int16 destinationSlotIdx = -1;
+					for (uint32 slotIdx = 0; slotIdx < path.size(); slotIdx++) {
+						if (path[slotIdx] == destinationWaypointRef) {
+							destinationSlotIdx = static_cast<int16>(slotIdx);
+							break;
+						}
+					}
+					if (destinationSlotIdx < 0)
+						continue;
 
-					for (int j = 0; j < (int)node->_paths.size(); j++) {
-						const Common::Array<uint8> &path = node->_paths[j];
-						// Find k: position of v16 in this path
-						int k = -1;
-						for (int idx = 0; idx < (int)path.size() && path[idx] != 0; idx++) {
-							if (path[idx] == v16) {
-								k = idx;
-								break;
-							}
-						}
-						if (k < 0)
-							continue; // v16 not in this path
+					for (uint32 slotIdx = 0; slotIdx < path.size(); slotIdx++) {
+						uint8 waypointRef = path[slotIdx];
+						if (waypointRef == 0 || wps.size() < waypointRef)
+							continue;
 
-						// Scan all path members for nearest to curPos (v13 / bestCurDist)
-						for (int v2 = 0; v2 < (int)path.size() && path[v2] != 0; v2++) {
-							const Common::Point &wp = wps[path[v2] - 1]; // 1-indexed → 0-indexed
-							int32 ddx = wp.x - curPos.x;
-							int32 ddy = wp.y - curPos.y;
-							int32 dist = ddx * ddx + ddy * ddy;
-							if (dist <= bestCurDist) {
-								bestCurDist = dist;
-								bestPath = j;
-								bestV2 = v2;
-								bestK = k;
-								bestDir = 1;
-								// IDA: if (k != 0 && v2 >= k) dir = -1
-								if (k != 0 && v2 >= k)
-									bestDir = -1;
-							}
+						const Common::Point &waypoint = wps[waypointRef - 1];
+						int32 dx = waypoint.x - curPos.x;
+						int32 dy = waypoint.y - curPos.y;
+						int32 dist = dx * dx + dy * dy;
+						if (dist <= minCurDist) {
+							minCurDist = dist;
+							_pathRouteIdx = static_cast<int16>(routeIdx);
+							_pathSlotIdx = static_cast<int16>(slotIdx + 1);
+							_pathWalkDir = 1;
+							if (destinationSlotIdx != 0 && destinationSlotIdx <= static_cast<int16>(slotIdx))
+								_pathWalkDir = -1;
 						}
-					}
-
-					// Step 3: build path waypoints from bestV2+1 walking toward bestK
-					if (bestPath >= 0) {
-						const Common::Array<uint8> &path = node->_paths[bestPath];
-						int pos = bestV2 + 1;
-						while (pos >= 0 && pos < (int)path.size() && path[pos] != 0) {
-							_pathWaypoints.push_back(wps[path[pos] - 1]);
-							if (pos == bestK)
-								break; // reached dest-nearest waypoint
-							pos += bestDir;
-						}
-					}
-				} else {
-					// Fallback (no PATH data): linear traversal between nearest waypoints.
-					// Find waypoint nearest to snoid's current position (entry into the path)
-					uint32 iStart = 0;
-					int32 minStartDist = INT32_MAX;
-					for (uint32 i = 0; i < wps.size(); i++) {
-						int32 ddx = wps[i].x - curPos.x;
-						int32 ddy = wps[i].y - curPos.y;
-						int32 dist = ddx * ddx + ddy * ddy;
-						if (dist < minStartDist) {
-							minStartDist = dist;
-							iStart = i;
-						}
-					}
-					// Find waypoint nearest to final destination (exit from the path)
-					uint32 iEnd = 0;
-					int32 minEndDist = INT32_MAX;
-					for (uint32 i = 0; i < wps.size(); i++) {
-						int32 ddx = wps[i].x - _animTargetPos.x;
-						int32 ddy = wps[i].y - _animTargetPos.y;
-						int32 dist = ddx * ddx + ddy * ddy;
-						if (dist < minEndDist) {
-							minEndDist = dist;
-							iEnd = i;
-						}
-					}
-					if (iStart <= iEnd) {
-						for (uint32 i = iStart; i <= iEnd; i++)
-							_pathWaypoints.push_back(wps[i]);
-					} else {
-						for (int32 i = static_cast<int32>(iStart); i >= static_cast<int32>(iEnd); i--)
-							_pathWaypoints.push_back(wps[i]);
 					}
 				}
 			}
 		}
 
-		// IDA: snoidPath_stepAndComputeVelocity_4548DF bUseSubTargetFinalDest check:
-		// The first call to stepAndComputeVelocity (state 7) reads the waypoint at
-		// path[bestV2+1] and checks whether finalDest is closer to curPos than that
-		// waypoint.  If so it sets pos2 = finalDest, skipping the entire path.
-		// Without this, walk-in snoids overshoot their seats by visiting every path
-		// waypoint before the distance shortcut fires at waypoint arrival.
-		if (_pathWaypointIdx < _pathWaypoints.size()) {
-			const Common::Point curPos = getPointLoc();
-			int32 dxFd = _animTargetPos.x - curPos.x;
-			int32 dyFd = _animTargetPos.y - curPos.y;
-			int32 dxWp = _pathWaypoints[_pathWaypointIdx].x - curPos.x;
-			int32 dyWp = _pathWaypoints[_pathWaypointIdx].y - curPos.y;
-			if (dxFd * dxFd + dyFd * dyFd <= dxWp * dxWp + dyWp * dyWp)
-				_pathWaypointIdx = (uint32)_pathWaypoints.size(); // cull all waypoints
-		}
+		advancePathSubTarget(page, true);
 
 		// IDA: state 7 (departing) falls through directly to LABEL_20 (movement code)
-		// in the same tick — route init + first movement step happen simultaneously.
+		// in the same tick - route init + first movement step happen simultaneously.
 		// Matching this: transition to kSnoidAnimPath then immediately apply the first step.
 		needsRedraw = true;
 		_animState = kSnoidAnimPath;
-		// IDA: snoidPath_stepAndComputeVelocity_4548DF is called here to set dVelocityXY
-		// and wAnimBaseFlag00F5 (direction bucket) — both constant for the first segment.
-		// Compute initial direction bucket AND speed toward the first waypoint (or final target).
-		{
-			const Common::Point curPos = getPointLoc();
-			const Common::Point nextWp = (_pathWaypointIdx < _pathWaypoints.size()) ? _pathWaypoints[_pathWaypointIdx] : _animTargetPos;
-			int16 initDx = nextWp.x - curPos.x;
-			int16 initDy = curPos.y - nextWp.y; // curY - targetY (IDA convention)
-			_walkDirBucket = computeWalkDirBucket(initDx, initDy);
-			calcPathSpeed(initDx, initDy, _animSpeedX, _animSpeedY);
-			// Ensure facing direction is set before first walk frame
-			_isFacingLeft = (initDx < 0);
-		}
-		updateWalkHotspots(page, _walkDirBucket, 0);
 		// Fall through: apply first movement step in this same tick (IDA LABEL_20 fallthrough).
 		{
 			Common::Point pos = getPointLoc();
-			const Common::Point subTarget = (_pathWaypointIdx < _pathWaypoints.size()) ? _pathWaypoints[_pathWaypointIdx] : _animTargetPos;
-			int16 dx = subTarget.x - pos.x;
-			int16 dy = pos.y - subTarget.y;
+			int16 dx = _pathSubTarget.x - pos.x;
+			int16 dy = pos.y - _pathSubTarget.y;
 			if (dx != 0 || dy != 0) {
 				if (dx != 0) {
 					int16 step = MIN<int16>(ABS(dx), ABS(_animSpeedX));
@@ -1421,64 +1397,16 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 
 	case kSnoidAnimPath: {
 		// IDA LABEL_20 / state 112: move along NODE waypoints toward final destination.
-		// Sub-target advances through _pathWaypoints; after the last waypoint,
-		// walks straight to _animTargetPos.
+		// pos2 advances through the selected PATH slots until the final-seat
+		// squared-distance shortcut wins.
 		needsRedraw = true;
 		Common::Point pos = getPointLoc();
 
-		// Pick current sub-target
-		Common::Point subTarget = _animTargetPos;
-		if (_pathWaypointIdx < _pathWaypoints.size())
-			subTarget = _pathWaypoints[_pathWaypointIdx];
-
-		int16 dx = subTarget.x - pos.x;
-		int16 dy = pos.y - subTarget.y; // IDA convention: curY - targetY
+		int16 dx = _pathSubTarget.x - pos.x;
+		int16 dy = pos.y - _pathSubTarget.y; // IDA convention: curY - targetY
 
 		if (dx == 0 && dy == 0) {
-			if (_pathWaypointIdx < _pathWaypoints.size()) {
-				// Reached this waypoint — advance to the next, skipping any
-				// occupied by a stationary snoid.
-				// IDA threshold 500 = squared distance (~radius √500 ≈ 22px).
-				_pathWaypointIdx++;
-				if (page) {
-					while (_pathWaypointIdx < _pathWaypoints.size() &&
-						   page->isPointOccupiedByOtherSnoid(this, _pathWaypoints[_pathWaypointIdx], 500))
-						_pathWaypointIdx++;
-				}
-				// IDA finalDest distance shortcut (snoidPath_stepAndComputeVelocity_4548DF):
-				// After advancing the slot, check: if distSq(curPos, finalDest) <=
-				// distSq(curPos, nextWaypoint), skip remaining waypoints and go straight
-				// to finalDest.  This culls waypoints once the destination becomes the
-				// nearest point, exactly matching the binary's bUseSubTargetFinalDest logic.
-				// Without this, ScummVM visits every waypoint even when finalDest is
-				// already closer — causing ~50% slower walks on the Picker path.
-				if (_pathWaypointIdx < _pathWaypoints.size()) {
-					const Common::Point &nextWp = _pathWaypoints[_pathWaypointIdx];
-					int32 dxFd = _animTargetPos.x - pos.x;
-					int32 dyFd = _animTargetPos.y - pos.y;
-					int32 dxWp = nextWp.x - pos.x;
-					int32 dyWp = nextWp.y - pos.y;
-					if (dxFd * dxFd + dyFd * dyFd <= dxWp * dxWp + dyWp * dyWp)
-						_pathWaypointIdx = (uint32)_pathWaypoints.size(); // cull remaining
-				}
-				// IDA: snoidPath_stepAndComputeVelocity_4548DF() advances pos2 to the next
-				// sub-target AND recomputes dVelocityXY + wAnimBaseFlag00F5 for the new segment.
-				// Update bucket, speed, and sprite direction now — all held constant until the
-				// next waypoint is reached (eliminating mid-segment direction drift).
-				subTarget = (_pathWaypointIdx < _pathWaypoints.size()) ? _pathWaypoints[_pathWaypointIdx] : _animTargetPos;
-				int16 newDx = subTarget.x - pos.x;
-				int16 newDy = pos.y - subTarget.y;
-				if (newDx != 0 || newDy != 0) {
-					int newBucket = computeWalkDirBucket(newDx, newDy);
-					if (newBucket != _walkDirBucket) {
-						_walkDirBucket = newBucket;
-						updateWalkHotspots(page, _walkDirBucket, _walkPhase);
-					}
-					calcPathSpeed(newDx, newDy, _animSpeedX, _animSpeedY);
-					if (newDx != 0)
-						_isFacingLeft = (newDx < 0);
-				}
-			} else {
+			if (!advancePathSubTarget(page)) {
 				// Reached the final destination — enter arrivalTurnState, face right.
 				// IDA: wBool_0x122=0 on arrival (same as kSnoidAnimArrive teleport path).
 				// IDA: animateZoombini(0, word_4B6D4A, pZmb) — enter global turn-around state.
@@ -1536,6 +1464,7 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 		const int32 lastFrame = static_cast<int32>(getFrameCount()) - 1;
 		if (getLastFrameIdx() < lastFrame) {
 			setLastFrameIdx(getLastFrameIdx() + 1);
+			syncScrsPointLoc();
 			needsRedraw = true;
 		} else {
 			// SCRS animation finished.

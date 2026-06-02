@@ -2213,22 +2213,22 @@ bool ZoombiniConsole::Cmd_GoXfer(int argc, const char **argv) {
 		ZMB_SI_PAGE srcSiPage;
 		const char *desc;
 	} xferDestinations[] = {
-		{ "bridge",    ZMB_DI_BRIDGE_07,    ZMB_SI_PICKER_01,    "From Isle -> Bridge" },
-		{ "tunnels",   ZMB_DI_TUNNELS_08,   ZMB_SI_BRIDGE_02,    "Big Bad & Hungry: Bridge -> Tunnels" },
-		{ "pizza",     ZMB_DI_PIZZA_09,     ZMB_SI_TUNNELS_03,   "Big Bad & Hungry: Tunnels -> Pizza" },
-		{ "bc1",       ZMB_DI_BC1_04,       ZMB_SI_PIZZA_04,     "Big Bad & Hungry: Pizza -> Basecamp1" },
-		{ "ferry",     ZMB_DI_FERRY_10,     ZMB_SI_BC1_NORTH_05, "Who's Bayou: Basecamp1N -> Ferry" },
-		{ "lilly",     ZMB_DI_LILLY_11,     ZMB_SI_FERRY_07,     "Who's Bayou: Ferry -> Lilly" },
-		{ "slides",    ZMB_DI_SLIDES_12,    ZMB_SI_LILLY_08,     "Who's Bayou: Lilly -> Slides" },
-		{ "bc2north",  ZMB_DI_BC2_05,       ZMB_SI_SLIDES_09,    "Who's Bayou: Slides -> Basecamp2" },
-		{ "fleens",    ZMB_DI_FLEENS_13,    ZMB_SI_BC1_SOUTH_06, "Deep Dark Forest: Basecamp1S -> Fleens" },
-		{ "hotel",     ZMB_DI_HOTEL_14,     ZMB_SI_FLEENS_10,    "Deep Dark Forest: Fleens -> Hotel" },
-		{ "net",       ZMB_DI_NET_15,       ZMB_SI_HOTEL_11,     "Deep Dark Forest: Hotel -> Net" },
-		{ "bc2south",  ZMB_DI_BC2_05,       ZMB_SI_NET_12,       "Deep Dark Forest: Net -> Basecamp2" },
-		{ "caves",     ZMB_DI_CAVES_16,     ZMB_SI_BASECAMP2_13, "Mountain of Despair: Basecamp2 -> Caves" },
-		{ "smoke",     ZMB_DI_SMOKE_17,     ZMB_SI_CAVES_14,     "Mountain of Despair: Caves -> Smoke" },
-		{ "maze",      ZMB_DI_MAZE_18,      ZMB_SI_SMOKE_15,     "Mountain of Despair: Smoke -> Maze" },
-		{ "town",      ZMB_DI_TOWN_06,      ZMB_SI_MAZE_16,      "To Town: Maze -> Town" },
+		{ "bridge",    ZMB_DI_BRIDGE_07,    ZMB_SI_PICKER_01,    "From Isle -> Allergic Cliffs" },
+		{ "tunnels",   ZMB_DI_TUNNELS_08,   ZMB_SI_BRIDGE_02,    "The Big, the Bad, and the Hungry Trail: Allergic Cliffs -> Stone Cold Caves" },
+		{ "pizza",     ZMB_DI_PIZZA_09,     ZMB_SI_TUNNELS_03,   "The Big, the Bad, and the Hungry Trail: Stone Cold Caves -> Pizza Pass" },
+		{ "bc1",       ZMB_DI_BC1_04,       ZMB_SI_PIZZA_04,     "The Big, the Bad, and the Hungry Trail: Pizza Pass -> Shelter Rock" },
+		{ "ferry",     ZMB_DI_FERRY_10,     ZMB_SI_BC1_NORTH_05, "Who's Bayou?: Shelter Rock -> Captain Cajun's Ferryboat" },
+		{ "lilly",     ZMB_DI_LILLY_11,     ZMB_SI_FERRY_07,     "Who's Bayou?: Captain Cajun's Ferryboat -> Titanic Tattooed Toads" },
+		{ "slides",    ZMB_DI_SLIDES_12,    ZMB_SI_LILLY_08,     "Who's Bayou?: Titanic Tattooed Toads -> Stone Rise" },
+		{ "bc2north",  ZMB_DI_BC2_05,       ZMB_SI_SLIDES_09,    "Who's Bayou?: Stone Rise -> Shade Tree" },
+		{ "fleens",    ZMB_DI_FLEENS_13,    ZMB_SI_BC1_SOUTH_06, "The Deep, Dark Forest: Shelter Rock -> Fleens!" },
+		{ "hotel",     ZMB_DI_HOTEL_14,     ZMB_SI_FLEENS_10,    "The Deep, Dark Forest: Fleens! -> Hotel Dimensia" },
+		{ "net",       ZMB_DI_NET_15,       ZMB_SI_HOTEL_11,     "The Deep, Dark Forest: Hotel Dimensia -> Mudball Wall" },
+		{ "bc2south",  ZMB_DI_BC2_05,       ZMB_SI_NET_12,       "The Deep, Dark Forest: Mudball Wall -> Shade Tree" },
+		{ "caves",     ZMB_DI_CAVES_16,     ZMB_SI_BASECAMP2_13, "Mountains of Despair: Shade Tree -> The Lion's Lair" },
+		{ "smoke",     ZMB_DI_SMOKE_17,     ZMB_SI_CAVES_14,     "Mountains of Despair: The Lion's Lair -> Mirror Machine" },
+		{ "maze",      ZMB_DI_MAZE_18,      ZMB_SI_SMOKE_15,     "Mountains of Despair: Mirror Machine -> Bubblewonder Abyss" },
+		{ "town",      ZMB_DI_TOWN_06,      ZMB_SI_MAZE_16,      "To Town: Bubblewonder Abyss -> Zoombiniville" },
 	};
 
 	if (argc < 2 || argc > 3) {
@@ -2362,9 +2362,9 @@ bool ZoombiniConsole::Cmd_GoPractice(int argc, const char **argv) {
 		{ "fleens",  ZoombiniPageType::kFleens,  "Fleens!" },
 		{ "hotel",   ZoombiniPageType::kHotel,   "Hotel Dimensia" },
 		{ "net",     ZoombiniPageType::kNet,     "Mudball Wall" },
-		{ "caves",   ZoombiniPageType::kCaves,   "Cave of the Bubblesmokers" },
-		{ "smoke",   ZoombiniPageType::kSmoke,   "Snack Attack" },
-		{ "maze",    ZoombiniPageType::kMaze,    "Mirror Machine" },
+		{ "caves",   ZoombiniPageType::kCaves,   "The Lion's Lair" },
+		{ "smoke",   ZoombiniPageType::kSmoke,   "Mirror Machine" },
+		{ "maze",    ZoombiniPageType::kMaze,    "Bubblewonder Abyss" },
 	};
 
 	if (argc != 3) {

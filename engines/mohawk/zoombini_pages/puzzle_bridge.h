@@ -27,11 +27,11 @@
 namespace Mohawk {
 
 /**
- * Bridge puzzle page (ZoombiniPageType::kBridge).
+ * Allergic Cliffs puzzle page (ZoombiniPageType::kBridge).
  * Route 1, Puzzle 1
  *
- * The bridge has two lanes. A troll stands at one end and demands Zoombinis
- * with certain attribute(s) to cross. The player must drag each Zoombini
+ * The bridge has two lanes. The Allergic Cliffs sneeze at Zoombinis with
+ * certain attribute(s). The player must drag each Zoombini
  * to the correct lane.
  *
  * IDA entry: puzzleBridge_414D6E
@@ -114,7 +114,7 @@ protected:
 	void processLaneStepEvent(ZmbFeature *snoidFeature, int16 stepCode);
 
 	/**
-	 * Process troll entrance events from SCRB animation playback.
+	 * Process cliff entrance events from SCRB animation playback.
 	 * IDA: bridge_onEntranceCallback_415C34
 	 */
 	void processEntranceEvent(int16 eventId, ZmbFeature *eventSource);
@@ -159,7 +159,7 @@ protected:
 		kResScrb1102_Overlay = 1102,
 		kResScrb1103_Overlay = 1103,  // special: water overlay
 		kResScrb1104_Overlay = 1104,
-		kResScrb1105_Overlay = 1105,  // troll gate
+		kResScrb1105_Overlay = 1105,  // cliff gate
 
 		// SCRB features - SHPL (shapes loaded separately)
 		kResScrb1106_Water = 1106,    // 0x452
@@ -168,10 +168,10 @@ protected:
 		kResScrb1300_Segment0 = 1300,
 		kResScrb1301_Segment1 = 1301,
 
-		// SCRB features - troll/gate animations
-		kResScrb1200_TrollLane1 = 1200,  // 0x4B0
-		kResScrb1201_TrollLane2 = 1201,  // 0x4B1
-		kResScrb1202_TrollGate = 1202,   // 0x4B2
+		// SCRB features - cliff/gate animations
+		kResScrb1200_CliffLane1 = 1200,  // 0x4B0
+		kResScrb1201_CliffLane2 = 1201,  // 0x4B1
+		kResScrb1202_CliffGate = 1202,   // 0x4B2
 
 		// SCRS snoid scripts - reject pool
 		kResScrs1000_RejectBase = 1000,
@@ -256,8 +256,8 @@ protected:
 	/** Whether a reject script is playing. IDA: word_4AAE72 */
 	int16 _isRejectPlaying = 0;
 
-	/** Whether the current crossing result was a match. IDA: word_4AAE70 */
-	int16 _currentMatchResult = 0;
+	/** Whether the current drop is rejected by the bridge toll. IDA: word_4AAE70 */
+	int16 _currentDropRejected = 0;
 
 	/** Current drop target lane (1 or 2). IDA: word_4AAE74 */
 	int16 _currentDropLane = 0;
@@ -271,8 +271,8 @@ protected:
 	/** Drag trail runner IDs. IDA: word_4AAE80[2] */
 	int16 _trailRunnerIdx[2] = {};
 
-	/** Drag trail match results. IDA: word_4AAE84[2] */
-	int16 _trailMatchResult[2] = {};
+	/** Drag trail rejection results. IDA: word_4AAE84[2] */
+	int16 _trailRejectResult[2] = {};
 
 	/** Lane 1 (top) Zoombini runner IDs. IDA: word_4AAE1A[16] */
 	int16 _lane1ZmbIds[16] = {};
@@ -295,8 +295,8 @@ protected:
 	/** Active reject lane indicator (-1=none). IDA: word_4AAEAE */
 	int16 _activeRejectScrb = -1;
 
-	/** Troll attribute display state. IDA: word_4AAE8A */
-	int16 _trollAttrState = 0;
+	/** Cliff attribute display state. IDA: word_4AAE8A */
+	int16 _cliffAttrState = 0;
 
 	/** Snoid hotspot group index for bridge crossing. IDA: word_4AAE78 */
 	int16 _crossingHotspotIdx = 0;
@@ -307,8 +307,8 @@ protected:
 	/** New arrival flag / retry allowed. IDA: word_4AAEAC (bridge_bRetryAllowed) */
 	int16 _bRetryAllowed = 0;
 
-	/** Whether a new troll anim needs rendering. IDA: word_4AAE6E */
-	int16 _trollAnimPending = 0;
+	/** Whether a new cliff anim needs rendering. IDA: word_4AAE6E */
+	int16 _cliffEntranceAnimPending = 0;
 
 	/** Total loaded Zoombini count. IDA: word_4AAEB6 */
 	int16 _totalZmbCount = 0;
@@ -342,11 +342,11 @@ protected:
 
 	// --- Feature handles ---
 
-	/** SCRB feature indices for troll animations. IDA: word_4AAE68 (0x4B0), word_4AAE64 (0x4B1), word_4AAE66 (0x4B2), word_4AAE6A (0x451) */
-	uint16 _scrbTrollLane1Idx = 0;  // 0x4B0 = SCRB 1200
-	uint16 _scrbTrollLane2Idx = 0;  // 0x4B1 = SCRB 1201
-	uint16 _scrbTrollGateIdx = 0;   // 0x4B2 = SCRB 1202
-	uint16 _scrbTrollMainIdx = 0;   // 0x451 = SCRB 1105 (troll gate overlay)
+	/** SCRB feature indices for cliff animations. IDA: word_4AAE68 (0x4B0), word_4AAE64 (0x4B1), word_4AAE66 (0x4B2), word_4AAE6A (0x451) */
+	uint16 _scrbCliffLane1Idx = 0;  // 0x4B0 = SCRB 1200
+	uint16 _scrbCliffLane2Idx = 0;  // 0x4B1 = SCRB 1201
+	uint16 _scrbCliffGateIdx = 0;   // 0x4B2 = SCRB 1202
+	uint16 _scrbCliffMainIdx = 0;   // 0x451 = SCRB 1105 (cliff gate overlay)
 
 	/** Water overlay feature index. IDA: word_4AAE6C */
 	uint16 _scrbWaterIdx = 0;

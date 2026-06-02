@@ -77,7 +77,7 @@ struct ZmbMazeRunnerState {
 };
 
 /**
- * Maze puzzle page (ZoombiniPageType::kMaze).
+ * Bubblewonder Abyss puzzle page (ZoombiniPageType::kMaze).
  * Route 4, Puzzle 3
  *
  * Zoombinis navigate a grid maze, riding in the bubble, with attribute-based path selection.

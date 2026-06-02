@@ -27,7 +27,7 @@
 namespace Mohawk {
 
 /**
- * Slides puzzle page (ZoombiniPageType::kSlides).
+ * Stone Rise puzzle page (ZoombiniPageType::kSlides).
  * Route 2, Puzzle 3
  *
  * Zoombinis must be placed into slots on a hex grid.

@@ -1154,6 +1154,16 @@ public:
 	void finishScrsPlayback();
 
 	/**
+	 * Return the translation applied to raw SCRS hotspot coordinates while rendering.
+	 * IDA stores this separately as -pos2 while posLoc tracks the current visible root.
+	 */
+	Common::Point getScrsRenderOffset() const {
+		if (_animState == kSnoidAnimScriptReject || _animState == kSnoidAnimScriptNormal)
+			return _scrsRenderOffset;
+		return getPointLoc();
+	}
+
+	/**
 	 * Returns true if the hotspot data was synthesised by setupIdleHotspots() and already
 	 * contains the combined (traitTableOffset + rawShape) value in _shapeIdx.
 	 * Returns false for SCRS-parsed snoids whose _shapeIdx is just rawShapeFromData and
@@ -1280,6 +1290,9 @@ public:
 	uint8 _runnerStatus = 0;
 
 private:
+	bool advancePathSubTarget(ZoombiniPage *page, bool forceHotspotUpdate = false);
+	void syncScrsPointLoc();
+
 	MohawkEngine_Zoombini *_vm;
 	int16 _id = 0;
 
@@ -1338,13 +1351,14 @@ private:
 	 * This creates the "dangling feet" animation while snoid is held.
 	 */
 	uint16 _holdingAnimPhase = 0;
-	/**
-	 * Intermediate waypoints built in kSnoidAnimDepart from the page's loaded ZmbNode.
-	 * kSnoidAnimPath walks each point in order before heading straight to _animTargetPos.
-	 */
-	Common::Array<Common::Point> _pathWaypoints;
-	/** Index of the next sub-target in _pathWaypoints. */
-	uint32 _pathWaypointIdx = 0;
+	/** Current NODE/PATH route index. IDA: chPathRouteIdx. */
+	int16 _pathRouteIdx = -1;
+	/** Next PATH slot to read. IDA: chPathSlotIdx. */
+	int16 _pathSlotIdx = -1;
+	/** PATH slot increment, +1 or -1. IDA: chPathWalkDir. */
+	int16 _pathWalkDir = 1;
+	/** Current checkpoint or final destination. IDA: pos2. */
+	Common::Point _pathSubTarget;
 	/**
 	 * True when hotspot _shapeIdx values already include the trait-base offset
 	 * (set by setupIdleHotspots / updateWalkHotspots). False for SCRS-parsed snoids.
@@ -1359,6 +1373,12 @@ private:
 	 * so the snoid reappears at its original position when reverting to idle.
 	 */
 	Common::Point _scrsOrigPointLoc;
+	/**
+	 * Translation added to raw SCRS hotspot coordinates while rendering.
+	 * IDA: -pos2. Kept separate from pointLoc because scripted frames update
+	 * pointLoc to the current visible root before callbacks are dispatched.
+	 */
+	Common::Point _scrsRenderOffset;
 	/**
 	 * IDA chRand_64_0: when true, the snoid is hidden (render deactivated) after
 	 * states 8/9 SCRS playback finishes. Set by startScrsPlayback from the

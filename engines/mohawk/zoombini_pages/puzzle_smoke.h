@@ -40,7 +40,7 @@ struct ZmbSmokeRunnerState {
 };
 
 /**
- * Smoke puzzle page (ZoombiniPageType::kSmoke).
+ * Mirror Machine puzzle page (ZoombiniPageType::kSmoke).
  * Route 4, Puzzle 2
  * 
  * Magic mirror checks if the lvalue and rvalue matches. 

@@ -95,7 +95,9 @@ bool parsePracticeBootParam(int32 bootParam, ZoombiniPageType &pageType, uint16 
 void addSearchDirectoryIfPresent(const Common::FSNode &node, int priority = 0, int depth = 1) {
 	if (!node.exists() || !node.isDirectory())
 		return;
-	SearchMan.addDirectory(node.getPath().toString(), node, priority, depth);
+	Common::String path = node.getPath().toString();
+	if (!SearchMan.hasArchive(path))
+		SearchMan.addDirectory(path, node, priority, depth);
 }
 
 bool hasSubDirectoryMatching(const Common::FSNode &root, const Common::String &name) {

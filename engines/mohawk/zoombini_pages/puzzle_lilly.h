@@ -162,7 +162,7 @@ struct ZmbLillyRunnerState {
 };
 
 /**
- * Lily Pads puzzle page (ZoombiniPageType::kLilly).
+ * Titanic Tattooed Toads puzzle page (ZoombiniPageType::kLilly).
  * Route 2, Puzzle 2
  *
  * Zoombinis must cross a pond by hopping on lily pads, seating on the big toads.

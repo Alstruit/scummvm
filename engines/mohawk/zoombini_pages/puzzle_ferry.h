@@ -27,7 +27,7 @@
 namespace Mohawk {
 
 /**
- * Ferry puzzle page (ZoombiniPageType::kFerry).
+ * Captain Cajun's Ferryboat puzzle page (ZoombiniPageType::kFerry).
  * Route 2, Puzzle 1
  *
  * Zoombinis must board boats by matching attributes.

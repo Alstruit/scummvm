@@ -121,13 +121,13 @@ enum class ZoombiniPageType : uint16 {
 	 * Zoombiniville
 	 */
 	kTown = 6,
-	// Route: The Big, the Bad, and the Hungry
+	// Route: The Big, the Bad, and the Hungry Trail
 	/**
 	 * Allergic Cliffs
 	 */
 	kBridge = 7,
 	/**
-	 * The Lion's Lair (TUNNELS.MHK)
+	 * Stone Cold Caves (TUNNELS.MHK)
 	 */
 	kTunnels = 8,
 	/**
@@ -147,9 +147,9 @@ enum class ZoombiniPageType : uint16 {
 	 * Stone Rise
 	 */
 	kSlides = 12,
-	// Route: Deep, Dark Forest (South)
+	// Route: The Deep, Dark Forest (South)
 	/**
-	 * Fleens
+	 * Fleens!
 	 */
 	kFleens = 13,
 	/**
@@ -162,7 +162,7 @@ enum class ZoombiniPageType : uint16 {
 	kNet = 15,
 	// Route: Mountains of Despair
 	/**
-	 * Stone Cold Caves (CAVES.MHK)
+	 * The Lion's Lair (CAVES.MHK)
 	 */
 	kCaves = 16,
 	/**

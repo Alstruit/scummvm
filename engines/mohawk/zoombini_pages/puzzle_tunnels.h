@@ -27,7 +27,7 @@
 namespace Mohawk {
 
 /**
- * Stone Cold Cave: puzzle page (ZoombiniPageType::kTunnels).
+ * Stone Cold Caves puzzle page (ZoombiniPageType::kTunnels).
  * Route 1, Puzzle 2
  * 
  * Players must guide Zoombinis through one of four tunnels, by matching their attributes to the correct tunnel entrances.

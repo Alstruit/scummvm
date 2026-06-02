@@ -27,7 +27,7 @@
 namespace Mohawk {
 
 /**
- * Caves puzzle page (ZoombiniPageType::kCaves).
+ * The Lion's Lair puzzle page (ZoombiniPageType::kCaves).
  * Route 4, Puzzle 1
  *
  * Zoombinis must enter the correct cave based on hieroglyph patterns. 

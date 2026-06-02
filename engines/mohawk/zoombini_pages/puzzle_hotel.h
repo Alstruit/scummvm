@@ -28,7 +28,7 @@
 namespace Mohawk {
 
 /**
- * Hotel puzzle page (ZoombiniPageType::kHotel).
+ * Hotel Dimensia puzzle page (ZoombiniPageType::kHotel).
  * Route 3, Puzzle 2
  * 
  * Zoombinis must be assigned to hotel rooms based on attribute matching.

@@ -27,7 +27,7 @@
 namespace Mohawk {
 
 /**
- * Pizza puzzle page (ZoombiniPageType::kPizza).
+ * Pizza Pass puzzle page (ZoombiniPageType::kPizza).
  * Route 1, Puzzle 3
  *
  * Zoombinis deliver pizzas to the pizza trolls with specific toppings.

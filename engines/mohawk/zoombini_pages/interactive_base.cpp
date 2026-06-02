@@ -1008,7 +1008,7 @@ static const uint16 kAmbientPoolBC2[10] = {924, 904, 905, 906, 933, 936, 917, 91
 // DI=7
 static const uint16 kAmbientPoolBridge[9] = {924, 933, 904, 905, 906, 942, 943, 944, 902};
 // DI=8
-static const uint16 kAmbientPoolCaves[9] = {911, 914, 915, 942, 943, 944, 904, 933, 934};
+static const uint16 kAmbientPoolTunnels[9] = {911, 914, 915, 942, 943, 944, 904, 933, 934};
 // DI=9
 static const uint16 kAmbientPoolPizza[12] = {940, 941, 943, 921, 917, 918, 919, 920, 905, 911, 912, 916};
 // DI=10
@@ -1022,7 +1022,7 @@ static const uint16 kAmbientPoolFleens[13] = {911, 912, 913, 914, 921, 936, 904,
 // DI=15
 static const uint16 kAmbientPoolNet[17] = {924, 933, 904, 905, 906, 931, 932, 938, 925, 926, 927, 928, 929, 917, 918, 919, 920};
 // DI=16
-static const uint16 kAmbientPoolTunnels[10] = {922, 923, 935, 907, 908, 909, 900, 901, 934, 910};
+static const uint16 kAmbientPoolCaves[10] = {922, 923, 935, 907, 908, 909, 900, 901, 934, 910};
 // DI=17
 static const uint16 kAmbientPoolSmoke[10] = {922, 923, 935, 907, 908, 909, 900, 901, 934, 910};
 // DI=18
@@ -1080,9 +1080,9 @@ void ZoombiniInteractive::runAmbientSoundDriver() {
 		pool = kAmbientPoolBridge;
 		poolSize = ARRAYSIZE(kAmbientPoolBridge);
 		break;
-	case ZoombiniPageType::kCaves:
-		pool = kAmbientPoolCaves;
-		poolSize = ARRAYSIZE(kAmbientPoolCaves);
+	case ZoombiniPageType::kTunnels:
+		pool = kAmbientPoolTunnels;
+		poolSize = ARRAYSIZE(kAmbientPoolTunnels);
 		break;
 	case ZoombiniPageType::kPizza:
 		pool = kAmbientPoolPizza;
@@ -1108,9 +1108,9 @@ void ZoombiniInteractive::runAmbientSoundDriver() {
 		pool = kAmbientPoolNet;
 		poolSize = ARRAYSIZE(kAmbientPoolNet);
 		break;
-	case ZoombiniPageType::kTunnels:
-		pool = kAmbientPoolTunnels;
-		poolSize = ARRAYSIZE(kAmbientPoolTunnels);
+	case ZoombiniPageType::kCaves:
+		pool = kAmbientPoolCaves;
+		poolSize = ARRAYSIZE(kAmbientPoolCaves);
 		break;
 	case ZoombiniPageType::kSmoke:
 		pool = kAmbientPoolSmoke;

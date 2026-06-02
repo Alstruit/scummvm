@@ -1264,8 +1264,8 @@ ZmbRenderResult ZoombiniPage::blitShapes(ZmbFeature *feature) {
 		ZmbResource snoidShapeRes = feature->getResource();
 		if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 			const ZmbSnoid *snoid = static_cast<const ZmbSnoid *>(feature);
-			hs._x += snoid->getPointLoc().x;
-			hs._y += snoid->getPointLoc().y;
+			hs._x += snoid->getScrsRenderOffset().x;
+			hs._y += snoid->getScrsRenderOffset().y;
 			if (hs._shapeIdx > 0) {
 				if (!snoid->hasCombinedShapeIndices()) {
 					hs._shapeIdx += snoid->getBodyLayerBaseOffset(hs._hsId, snoidLayerShift);

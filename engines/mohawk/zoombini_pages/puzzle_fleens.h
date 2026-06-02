@@ -55,7 +55,7 @@ struct FleenCreature {
 };
 
 /**
- * Fleens puzzle page (ZoombiniPageType::kFleens).
+ * Fleens! puzzle page (ZoombiniPageType::kFleens).
  * Route 3, Puzzle 1
  *
  * Fleens is a Zoombini-like creature that its traits are linked with the Zoombini's.
