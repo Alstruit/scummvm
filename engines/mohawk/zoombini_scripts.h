@@ -278,6 +278,11 @@ public:
 	bool isVirtualZone() { return _hs._frame == ZmbHotspot::kDrawnRectVirtual; }
 };
 
+struct ZmbPreparedRenderHotspot {
+	ZmbHotspot _hotspot;
+	ZmbResource _resource;
+};
+
 class ZmbFeature {
 public:	
 	enum Flag : uint32 {
@@ -1163,6 +1168,13 @@ public:
 		return getPointLoc();
 	}
 
+	void setPreparedRenderHotspots(const Common::Array<ZmbPreparedRenderHotspot> &hotspots) {
+		_preparedRenderHotspots = hotspots;
+	}
+	const Common::Array<ZmbPreparedRenderHotspot> &getPreparedRenderHotspots() const { return _preparedRenderHotspots; }
+	bool hasPreparedRenderHotspots() const { return !_preparedRenderHotspots.empty(); }
+	void clearPreparedRenderHotspots() { _preparedRenderHotspots.clear(); }
+
 	/**
 	 * Returns true if the hotspot data was synthesised by setupIdleHotspots() and already
 	 * contains the combined (traitTableOffset + rawShape) value in _shapeIdx.
@@ -1386,6 +1398,7 @@ private:
 	 * disappear after their scripts complete.
 	 */
 	bool _scrsHideOnComplete = false;
+	Common::Array<ZmbPreparedRenderHotspot> _preparedRenderHotspots;
 	/**
 	 * Time-based animation deadline (IDA: CFeatureRunner307::dNextRenderFrame).
 	 * Animation fires when page->getCurrentFrameCounter() >= _nextAnimFrame,

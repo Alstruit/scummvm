@@ -217,6 +217,7 @@ Common::Error MohawkEngine_Zoombini::run() {
 	if (parsePracticeBootParam(bootParam, bootPracticePage, bootPracticeLevel)) {
 		_state->_practiceLevel = bootPracticeLevel;
 		_state->generateRandomPack();
+		_state->markGameStateReady();
 		setNextPage(bootPracticePage);
 		debug("Zoombini: boot_param=%d -> practice page=%d level=%u",
 		      bootParam, static_cast<int32>(bootPracticePage), bootPracticeLevel);
@@ -227,6 +228,8 @@ Common::Error MohawkEngine_Zoombini::run() {
 			warning("Zoombini: ignoring unsupported boot_param %d (expected puzzlePage*100 + level, e.g. 1204 for Slides level 4)",
 			        bootParam);
 		}
+		if (_state->_r._saveCount1 == 0)
+			_state->markGameStateReady();
 		setNextPage(ZoombiniPageType::kLogo);
 	}
 	loadNextPage();

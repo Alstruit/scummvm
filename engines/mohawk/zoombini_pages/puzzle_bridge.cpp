@@ -1014,12 +1014,12 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 
 			_bridgeTransitCount++;
 			_isRejectPlaying = _currentDropRejected ? 1 : 0;
-			// IDA bridge_funcOnHover @ 0x41555a: *((BYTE*)runner+295) = 1 — mark
-			// snoid as reject-walking so onLButtonDown ignores subsequent drag
-			// attempts until the SCRS finishes.
-			snoid->_runnerStatus = 1;
-			if (_currentDropRejected) {
-				// Set random speed for reject path
+			// IDA bridge_funcOnHover @ 0x415558: ONLY accepted crossings mark the
+			// snoid busy (*((BYTE*)runner+295) = 1) and assign a random walk speed
+			// (runner[10] = nextRand(4, 5)). Rejected lead-ins keep the default
+			// status/speed and are gated by _isRejectPlaying instead.
+			if (!_currentDropRejected) {
+				snoid->_runnerStatus = 1;
 				snoid->setAnimSpeed(_vm->_rnd->getRandomNumber(4, 5), 0);
 			}
 
@@ -1035,9 +1035,26 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 			Common::SeekableReadStream *scrsStream =
 				_vm->getResource(MKTAG('S', 'C', 'R', 'S'), ZmbResource(ZmbArchiveKind::kPage, scrsId));
 			if (scrsStream) {
-				// The rejected lead-in is still a normal bridge-walk SCRS. The
-				// 1000-series sneeze/return SCRS switches to reject body tables.
-				snoid->startScrsPlayback(scrsStream, false /* hideOnComplete */, false);
+				// IDA snoidScript_initAndPlay_455C0D @ 0x455c75: dirty_mergeDrawnRectIntoRMap
+				// — invalidates the old pack position so the idle snoid ghost is erased.
+				addExternalDirtyRect(snoid->getSortRect());
+
+				// IDA snoidScript_initAndPlay_455C0D: anchorRefPoint = posLoc when
+				// pInitPos==NULL. Setting posLoc to the lane entry makes
+				// _scrsRenderOffset = (kSegmentPositions - SCRS0_anchor), which is
+				// ~(0,0) for foot=1 SCRSes and a small per-variant offset otherwise.
+				// Also seed the sort rect at the bridge entry for correct Z-ordering.
+				//
+				// rejectState=true (state 8): bridge walk SCRSes use the GENERAL body
+				// tables (kFootTable/kNoseTable/etc.) paired with tBMP 3000 and REGS
+				// 100/101 — exactly matching the original pOutGroupIdx==1 (REJECT)
+				// returned by scrs_lookupIndexByResId for SCRS IDs 2000-2019.
+				// rejectState=false (state 9) would select tBMP 3100 (flat horizontal
+				// walking sprites) and NORMAL-specific body tables — visually wrong.
+				const Common::Point &segPos = kSegmentPositions[_currentDropLane - 1];
+				snoid->setPointLoc(segPos);
+				snoid->setSortRect(Common::Rect(segPos.x, segPos.y, segPos.x + 1, segPos.y + 1));
+				snoid->startScrsPlayback(scrsStream, false /* hideOnComplete */, true /* rejectState=state8+tBMP3000 */);
 			}
 		}
 	}
@@ -1163,10 +1180,13 @@ void ZoombiniPuzzleBridge::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCo
 void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 stepCode) {
 	ZmbSnoid *snoid = static_cast<ZmbSnoid *>(snoidFeature);
 
-	// SCRS frame terminators carry 1-based callback IDs. The original bridge
-	// callback switch uses the adjusted IDA step code.
-	if (0 < stepCode)
-		stepCode--;
+	// `stepCode` already equals the IDA callback step code. renderShapes()
+	// applies the single `-1` adjustment (matching the original onRender's
+	// `--scrsOpcode` at 0x453437) before dispatching SCRS frame terminators.
+	// Do NOT subtract again here -- a second decrement made arrival events
+	// (raw 4/7 -> 3/6) collapse onto the early fast/slow-lane cases, so
+	// accepted snoids "arrived" at crossing frame 3 (walking over the void)
+	// and rejected snoids never reached the throw case 10 (raw 11 -> 10).
 
 	auto startRejectThrowScript = [&]() -> bool {
 		if (_cliffAttrState <= 0)

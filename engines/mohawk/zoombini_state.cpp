@@ -146,6 +146,7 @@ bool ZoombiniGameState::loadGame(int slot) {
 
 	// Setup _zoombiniNameGeneratedTable based on the generated/stored zoombinis information
 	buildNameGeneratedTable();
+	_gameStateReady = true;
 
 	return true;
 }
@@ -921,6 +922,7 @@ void ZoombiniGameState::startNewGame() {
 	_f._isDirty = true;
 	_debugStateMutationBlocksSave = false;
 	_currentSaveSlot = kUnsavedNewGame;
+	_gameStateReady = true;
 
 	_practiceLevel = 0;
 	ZoombiniPage *activePage = _vm->getActivePage();

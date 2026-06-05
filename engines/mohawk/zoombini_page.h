@@ -701,6 +701,8 @@ protected:
 	 * is the new coverage that must expand the active dirty clip.
 	 */
 	void markFeatureVisualCoverageDirty(ZmbFeature *feature, bool expandRenderClip);
+	bool transformSnoidHotspotForRender(const ZmbSnoid *snoid, ZmbHotspot &hs, uint8 snoidLayerShift, ZmbResource &snoidShapeRes) const;
+	void prepareSnoidVisualCoverage(ZmbSnoid *snoid, bool cacheFrame);
 
 	/**
 	 * IDA: scrb_currentRenderRunnerIdx accumulator.

@@ -717,8 +717,11 @@ void ZoombiniShelterPicker::zoombiniPreview_onPreRenderShape(ZmbFeature *feature
 ZmbRenderResult ZoombiniShelterPicker::oneTimeLoadDialog_onRenderShape(ZmbFeature *feature) {
 	_vm->_gfx->flushScreens(); // Ensure screen is up-to-date before opening a first-screen loadDialog
 	ZoombiniDialogResult dialogResult = _vm->openLoadDialog(true);
-	if (dialogResult == ZoombiniDialogResult::kYes)
+	if (dialogResult == ZoombiniDialogResult::kYes) {
 		close();
+	} else if (dialogResult == ZoombiniDialogResult::kNo) {
+		_vm->_state->markGameStateReady();
+	}
 
 	// This function must be called only once
 	feature->scheduleClose();

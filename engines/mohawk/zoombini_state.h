@@ -592,6 +592,8 @@ public:
 	void buildNameGeneratedTable();
 
 	bool isStateDirty() const { return _f._isDirty; }
+	bool isGameStateReady() const { return _gameStateReady; }
+	void markGameStateReady() { _gameStateReady = true; }
 	bool isFirstLaunch() {
 		bool ret = _isFirstLaunch;
 		_isFirstLaunch = false;
@@ -737,6 +739,7 @@ private:
 	 */
 	bool _flagCursorVisible = true;
 	bool _debugStateMutationBlocksSave = false;
+	bool _gameStateReady = false;
 
 	struct HelpSTRL {
 		uint16 _helpResBase = 0;

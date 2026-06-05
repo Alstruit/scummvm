@@ -51,7 +51,8 @@ void ZoombiniPage::onAnimFrame() {
 	// Tick every snoid's animation state machine before rendering.
 	// IDA: onRender_ZoombiniAnimation_452B9C is invoked once per animation frame per snoid.
 	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		(*it)->onSnoidAnimTick(this);
+		if ((*it)->onSnoidAnimTick(this))
+			(*it)->setNeedsRedraw(true);
 	}
 
 	renderFeatures();
@@ -797,6 +798,130 @@ void ZoombiniPage::addExternalDirtyRect(const Common::Rect &rect) {
 	}
 }
 
+bool ZoombiniPage::transformSnoidHotspotForRender(const ZmbSnoid *snoid, ZmbHotspot &hs, uint8 snoidLayerShift, ZmbResource &snoidShapeRes) const {
+	if (hs._shapeIdx == ZmbHotspot::kShapeNone)
+		return false;
+
+	if (snoid->hasFlag(ZmbFeature::FLAG_00800000_POS_DELTA)) {
+		const Common::Point &posDelta = snoid->getPosDelta();
+		hs._x += posDelta.x;
+		hs._y += posDelta.y;
+	}
+
+	snoidShapeRes = snoid->getResource();
+	hs._x += snoid->getScrsRenderOffset().x;
+	hs._y += snoid->getScrsRenderOffset().y;
+
+	if (0 < hs._shapeIdx) {
+		if (!snoid->hasCombinedShapeIndices())
+			hs._shapeIdx += snoid->getBodyLayerBaseOffset(hs._hsId, snoidLayerShift);
+
+		if (0 < hs._shapeIdx) {
+			if (snoid->isFacingLeft())
+				hs._shapeIdx = static_cast<int16>(2 * hs._shapeIdx);
+			else
+				hs._shapeIdx = static_cast<int16>(2 * hs._shapeIdx - 1);
+
+			ZmbRegs *activeRegs = nullptr;
+			if (snoid->getAnimState() == kSnoidAnimScriptNormal &&
+			    !snoid->_useSmallShapeRegs) {
+				// State 9 NORMAL: pair with tBMP 3100 + REGS 102/103.
+				activeRegs = _vm->_snoidScriptShapeRegs;
+				snoidShapeRes = ZmbResource(ZmbArchiveKind::kSystem, 3100);
+			} else if (snoid->_useSmallShapeRegs) {
+				activeRegs = _vm->_smallSnoidShapeRegs;
+			} else {
+				activeRegs = _vm->_snoidShapeRegs;
+			}
+			if (activeRegs) {
+				const Common::Point delta = activeRegs->getShapeDelta(hs._shapeIdx);
+				hs._x -= delta.x;
+				hs._y -= delta.y;
+			}
+		}
+	}
+
+	if (hs._shapeIdx < 1)
+		return false;
+
+	// Binary validation (IDA 0x45662E): skip layers whose final shape
+	// exceeds the selected tBMP's shape count.
+	if (_vm->_gfx->getShapeCount(snoidShapeRes) < static_cast<uint32>(hs._shapeIdx))
+		return false;
+
+	return true;
+}
+
+void ZoombiniPage::prepareSnoidVisualCoverage(ZmbSnoid *snoid, bool cacheFrame) {
+	if (!snoid || !snoid->isRenderActivated())
+		return;
+
+	ZmbHotspotGroup *hsGroup = snoid->getHotspotGroup(snoid->getLastFrameIdx());
+	if (!hsGroup)
+		return;
+
+	Common::Array<ZmbHotspot> hotspots = hsGroup->copyHotspots();
+
+	ZmbRegs *shapeRegs = snoid->getShapeRegs();
+	if (shapeRegs) {
+		for (uint32 i = 0; i < hotspots.size(); i++) {
+			ZmbHotspot &hs = hotspots[i];
+			if (hs._shapeIdx != ZmbHotspot::kShapeNone) {
+				const Common::Point delta = shapeRegs->getShapeDelta(hs._shapeIdx);
+				hs._x -= delta.x;
+				hs._y -= delta.y;
+			}
+		}
+	}
+
+	uint8 snoidLayerShift = 0;
+	if (!snoid->hasCombinedShapeIndices() &&
+	    snoid->getAnimState() == kSnoidAnimScriptNormal) {
+		if (!hotspots.empty() && 18 < hotspots[0]._shapeIdx)
+			snoidLayerShift = 1;
+	}
+
+	Common::Rect sortRect;
+	Common::Array<ZmbPreparedRenderHotspot> preparedHotspots;
+	bool hasSortRect = false;
+	for (uint32 i = 0; i < hotspots.size(); i++) {
+		ZmbHotspot hs = hotspots[i];
+		ZmbResource snoidShapeRes;
+		if (!transformSnoidHotspotForRender(snoid, hs, snoidLayerShift, snoidShapeRes))
+			continue;
+
+		if (cacheFrame) {
+			ZmbPreparedRenderHotspot prepared;
+			prepared._hotspot = hs;
+			prepared._resource = snoidShapeRes;
+			preparedHotspots.push_back(prepared);
+		}
+
+		Common::Rect shapeSize = _vm->_gfx->getShapeSize(snoidShapeRes, static_cast<uint16>(hs._shapeIdx));
+		Common::Rect drawnRect(hs._x, hs._y, hs._x + shapeSize.width(), hs._y + shapeSize.height());
+		drawnRect.clip(Common::Rect(0, 0, ZoombiniGraphics::kScreenWidth, ZoombiniGraphics::kScreenHeight));
+		if (drawnRect.isEmpty())
+			continue;
+
+		if (hasSortRect) {
+			sortRect.extend(drawnRect);
+		} else {
+			sortRect = drawnRect;
+			hasSortRect = true;
+		}
+	}
+
+	if (!hasSortRect)
+		return;
+
+	snoid->setSortRect(sortRect);
+	snoid->setClickRect(sortRect);
+	if (cacheFrame)
+		snoid->setPreparedRenderHotspots(preparedHotspots);
+	if (snoid->needsRedraw())
+		addDirtyRect(sortRect);
+}
+
 void ZoombiniPage::renderFeatures() {
 	// IDA gfx_renderFrame (0x45F070) - dirty-rect rendering architecture:
 	//
@@ -850,6 +975,15 @@ void ZoombiniPage::renderFeatures() {
 		f->onPreRender(this);
 	for (ZmbSnoid *s : _snoidMap)
 		s->onPreRender(this);
+
+	// IDA snoidScript_renderFrame_4562B2 rebuilds clickRect during the
+	// pre-render callback, before z-sort and background restore. ScummVM draws
+	// later, so compute the current snoid visual bounds here from the same
+	// hotspot/body-layer/REGS transform used by blitShapes().
+	for (ZmbSnoid *s : _snoidMap) {
+		if (!s->hasPreparedRenderHotspots())
+			prepareSnoidVisualCoverage(s, false);
+	}
 
 	// Z-sort: partition and sort feature runners (IDA 0x45F2F1)
 	Common::Array<ZmbFeature *> renderList;
@@ -1003,6 +1137,13 @@ void ZoombiniPage::preRenderFeature(ZmbFeature *feature) {
 	if (!feature->hasFlag(ZmbFeature::FLAG_00004000_NO_DIRTY_MERGE))
 		markFeatureVisualCoverageDirty(feature, false);
 	feature->setNeedsRedraw(true);
+
+	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+		ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
+		const SnoidAnimState st = snoid->getAnimState();
+		if (st == kSnoidAnimScriptReject || st == kSnoidAnimScriptNormal)
+			prepareSnoidVisualCoverage(snoid, true);
+	}
 
 	if (feature->isAnimateActivated()) {
 		// 2. End-of-cycle handling (IDA 0x461C05–0x461D06)
@@ -1186,8 +1327,10 @@ ZmbRenderResult ZoombiniPage::blitShapes(ZmbFeature *feature) {
 	//   if ( featureRunner->core188.wBoolDoRender ) { ... render ... }
 	// So for snoids, skip rendering when _isRenderActivated=false regardless of flags.
 	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
-		if (!feature->isRenderActivated())
+		if (!feature->isRenderActivated()) {
+			static_cast<ZmbSnoid *>(feature)->clearPreparedRenderHotspots();
 			return ZmbRenderResult::kSkipped;
+		}
 	} else {
 		if (!feature->isRenderActivated() && feature->hasFlag(ZmbFeature::FLAG_01000000_DEFER_RENDER))
 			return ZmbRenderResult::kSkipped;
@@ -1197,6 +1340,38 @@ ZmbRenderResult ZoombiniPage::blitShapes(ZmbFeature *feature) {
 	int32 frameIdx = feature->getLastFrameIdx();
 
 	ZoombiniGraphics::ScreenKind screenKind = ZoombiniGraphics::kShapeScreen;
+
+	if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
+		ZmbSnoid *snoid = static_cast<ZmbSnoid *>(feature);
+		if (snoid->hasPreparedRenderHotspots()) {
+			const Common::Array<ZmbPreparedRenderHotspot> &preparedHotspots = snoid->getPreparedRenderHotspots();
+			feature->clearDrawRecords();
+
+			Common::Rect sortRect;
+			bool hasSortRect = false;
+			for (uint32 i = 0; i < preparedHotspots.size(); i++) {
+				ZmbHotspot hs = preparedHotspots[i]._hotspot;
+				bool clearBeforeRender = false;
+				const Common::Rect &drawnRect = _vm->_gfx->drawShape(screenKind, preparedHotspots[i]._resource, &hs, clearBeforeRender);
+
+				feature->setDrawRecord(nullptr, hs, drawnRect);
+
+				if (hasSortRect) {
+					sortRect.extend(drawnRect);
+				} else {
+					sortRect = drawnRect;
+					hasSortRect = true;
+				}
+			}
+
+			if (hasSortRect) {
+				feature->setSortRect(sortRect);
+				feature->setClickRect(sortRect);
+			}
+			snoid->clearPreparedRenderHotspots();
+			return ZmbRenderResult::kRendered;
+		}
+	}
 
 	// Render sprites (Shape)
 	ZmbHotspotGroup *hsGroup = feature->getHotspotGroup(frameIdx);
@@ -1233,80 +1408,31 @@ ZmbRenderResult ZoombiniPage::blitShapes(ZmbFeature *feature) {
 		const ZmbSnoid *snoid = static_cast<const ZmbSnoid *>(feature);
 		if (!snoid->hasCombinedShapeIndices() &&
 		    snoid->getAnimState() == kSnoidAnimScriptNormal) {
-			if (!hotspots.empty() && hotspots[0]._shapeIdx > 18)
+			if (!hotspots.empty() && 18 < hotspots[0]._shapeIdx)
 				snoidLayerShift = 1;
 		}
 	}
 
 	for (uint32 i = 0; i < hotspots.size(); i++) {
 		ZmbHotspot &hs = hotspots[i];
-		if (hs._shapeIdx == ZmbHotspot::kShapeNone)
-			continue;
-
-		if (feature->hasFlag(ZmbFeature::FLAG_00800000_POS_DELTA)) {
-			const Common::Point &posDelta = feature->getPosDelta();
-			hs._x += posDelta.x;
-			hs._y += posDelta.y;
-		}
-
-		// IDA `snoidScript_renderFrame_4562B2` selects DIFFERENT shape pool +
-		// REGS for state 9 NORMAL playback (= ScummVM `kSnoidAnimScriptNormal`):
-		//   state 9 NORMAL : tBMP 3100 + REGS 102/103 (`dword_4B7324/4B7328`)
-		//   else (state 8 reject / idle / walk / drag / fidget):
-		//                    tBMP 3000 + REGS 100/101 (`dword_4B731C/4B7320`)
-		// Pack snoids are registered with `feature->getResource()` = tBMP 3000,
-		// so we override the resource here for state-9-NORMAL renders. Required
-		// for Ferry's reject-flight where SCRS 1900-1906 are drawn against the
-		// dedicated "in-flight" body-part sprite pool — without this override,
-		// shape indices computed from the NORMAL trait tables (kNormalFootTable
-		// etc.) point into the wrong tBMP and the snoid renders with garbled
-		// body parts.
-		ZmbResource snoidShapeRes = feature->getResource();
+		ZmbResource shapeRes = feature->getResource();
 		if (feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 			const ZmbSnoid *snoid = static_cast<const ZmbSnoid *>(feature);
-			hs._x += snoid->getScrsRenderOffset().x;
-			hs._y += snoid->getScrsRenderOffset().y;
-			if (hs._shapeIdx > 0) {
-				if (!snoid->hasCombinedShapeIndices()) {
-					hs._shapeIdx += snoid->getBodyLayerBaseOffset(hs._hsId, snoidLayerShift);
-				}
-				if (hs._shapeIdx > 0) {
-					if (snoid->isFacingLeft())
-						hs._shapeIdx = 2 * hs._shapeIdx;
-					else
-						hs._shapeIdx = 2 * hs._shapeIdx - 1;
-
-					ZmbRegs *activeRegs;
-					if (snoid->getAnimState() == kSnoidAnimScriptNormal &&
-					    !snoid->_useSmallShapeRegs) {
-						// State 9 NORMAL: pair with tBMP 3100 + REGS 102/103.
-						activeRegs = _vm->_snoidScriptShapeRegs;
-						snoidShapeRes = ZmbResource(ZmbArchiveKind::kSystem, 3100);
-					} else if (snoid->_useSmallShapeRegs) {
-						activeRegs = _vm->_smallSnoidShapeRegs;
-					} else {
-						activeRegs = _vm->_snoidShapeRegs;
-					}
-					if (activeRegs) {
-						const Common::Point delta = activeRegs->getShapeDelta(hs._shapeIdx);
-						hs._x -= delta.x;
-						hs._y -= delta.y;
-					}
-				}
-			}
-			// Binary validation (IDA 0x45662E): snoidScript_renderFrame checks
-			// *pRMapLayerData >= shapeid before processing each layer. If the
-			// final shape ID exceeds the resource's shape count, skip this slot.
-			// This happens with small snoids (resource 3200) whose walk frame
-			// shapes combined with trait bases can exceed the 568-entry limit.
-			if (hs._shapeIdx > 0 &&
-			    static_cast<uint32>(hs._shapeIdx) > _vm->_gfx->getShapeCount(snoidShapeRes)) {
+			if (!transformSnoidHotspotForRender(snoid, hs, snoidLayerShift, shapeRes))
 				continue;
+		} else {
+			if (hs._shapeIdx == ZmbHotspot::kShapeNone)
+				continue;
+
+			if (feature->hasFlag(ZmbFeature::FLAG_00800000_POS_DELTA)) {
+				const Common::Point &posDelta = feature->getPosDelta();
+				hs._x += posDelta.x;
+				hs._y += posDelta.y;
 			}
 		}
 
 		bool clearBeforeRender = false;
-		const Common::Rect &drawnRect = _vm->_gfx->drawShape(screenKind, snoidShapeRes, &hs, clearBeforeRender);
+		const Common::Rect &drawnRect = _vm->_gfx->drawShape(screenKind, shapeRes, &hs, clearBeforeRender);
 
 		feature->setDrawRecord(hsGroup, hs, drawnRect);
 

@@ -1049,6 +1049,15 @@ bool ZoombiniConsole::parseResourceId(const char *str, ZmbResource &outRes) {
 	return success;
 }
 
+bool ZoombiniConsole::requireGameStateReady(const char *commandName) {
+	if (!_vm->_state || !_vm->_state->isGameStateReady()) {
+		debugPrintf("%s is unavailable until a new game is created or a saved game is loaded.\n", commandName);
+		return false;
+	}
+
+	return true;
+}
+
 bool ZoombiniConsole::Cmd_PlaySound(int argc, const char **argv) {
 	if (argc != 2) {
 		debugPrintf("Usage: playSound <value>\n");
@@ -2206,6 +2215,9 @@ bool ZoombiniConsole::Cmd_Shortcuts(int argc, const char **argv) {
 }
 
 bool ZoombiniConsole::Cmd_GoXfer(int argc, const char **argv) {
+	if (!requireGameStateReady("goXfer"))
+		return true;
+
 	// Map: destination name/DI page -> source SI page needed to show that xfer transition
 	static const struct {
 		const char *name;
@@ -2348,6 +2360,9 @@ bool ZoombiniConsole::Cmd_GoXfer(int argc, const char **argv) {
 }
 
 bool ZoombiniConsole::Cmd_GoPractice(int argc, const char **argv) {
+	if (!requireGameStateReady("goPractice"))
+		return true;
+
 	static const struct {
 		const char *name;
 		ZoombiniPageType pageType;
@@ -2428,6 +2443,9 @@ bool ZoombiniConsole::Cmd_GoPractice(int argc, const char **argv) {
 }
 
 bool ZoombiniConsole::Cmd_FinishPuzzle(int argc, const char **argv) {
+	if (!requireGameStateReady("finishPuzzle"))
+		return true;
+
 	ZoombiniPage *page = _vm->getActivePage();
 	if (!page) {
 		debugPrintf("No active page.\n");
@@ -2447,6 +2465,9 @@ bool ZoombiniConsole::Cmd_FinishPuzzle(int argc, const char **argv) {
 }
 
 bool ZoombiniConsole::Cmd_PrintAnswer(int argc, const char **argv) {
+	if (!requireGameStateReady("printAnswer"))
+		return true;
+
 	ZoombiniPage *page = _vm->getActivePage();
 	if (!page) {
 		debugPrintf("No active page.\n");

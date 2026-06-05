@@ -159,6 +159,7 @@ private:
 
 	bool parseInt(const char *str, int32 &result);
 	bool parseResourceId(const char *str, ZmbResource &outRes);
+	bool requireGameStateReady(const char *commandName);
 	bool Cmd_PlaySound(int argc, const char **argv);
 	bool Cmd_StopSound(int argc, const char **argv);
 #if 0
