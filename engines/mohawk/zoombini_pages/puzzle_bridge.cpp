@@ -196,16 +196,16 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 		}
 	}
 
-	// [*] SCRS Reject pool: 20 reject scripts (SCRS 1000-1019)
-	// IDA: loadSCRS_RejectPool_4524AF(20, 20, 1000)
+	// [*] SCRS group 0: 20 throw scripts (SCRS 1000-1019, state 9 renderer)
+	// IDA: scrs_registerGroup0_4524AF(20, 20, 1000)
 	for (uint16 i = 0; i < kBridgeRejectScrsCount; i++) {
 		loadSnoid(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100),
 				  kResScrs1000_RejectBase + i,
 				  ZmbFeature::FLAG_00000001_TYPE_SNOID | ZmbFeature::FLAG_00020000_SKIP_RENDER);
 	}
 
-	// [*] SCRS Normal pool: 5 normal scripts (SCRS 2000-2004)
-	// IDA: loadSCRS_NormalPool_45258E(5, 25, 2000)
+	// [*] SCRS group 1: 25 crossing/celebration scripts (SCRS 2000-2024, state 8 renderer)
+	// IDA: scrs_registerGroup1_45258E(5, 25, 2000)
 	for (uint16 i = 0; i < kBridgeNormalScrsCount; i++) {
 		loadSnoid(ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100),
 				  kResScrs2000_NormalBase + i,
@@ -216,7 +216,7 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 	// IDA: registerSCRB_45F60C loop for v0=0..1, SCRB 1300+v0, at kSegmentPositions
 	for (uint16 i = 0; i < 2; i++) {
 		loadScrbFeature(
-			ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100),
+			ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1300),
 			kResScrb1300_Segment0 + i, 7,
 			kSegmentPositions[i],
 			ZmbFeature::FLAG_00002000_DRAW_ON_REG | ZmbFeature::FLAG_00008000_LOOP_ANIM |
@@ -863,6 +863,49 @@ void ZoombiniPuzzleBridge::reloadScrbAnimation(uint16 featureId, uint16 newScrbI
 	loadScrbOntoFeature(feature, newScrbId);
 }
 
+void ZoombiniPuzzleBridge::playCurrentFrameSound(ZmbFeature *feature) {
+	if (!feature)
+		return;
+
+	ZmbHotspotGroup *soundGroup = feature->getHotspotGroupExact(feature->getLastFrameIdx());
+	if (!soundGroup || !soundGroup->hasAssignedSoundRes())
+		return;
+
+	_vm->_sound->playZmbSound(soundGroup->getAssignedSoundRes(), Audio::Mixer::kSFXSoundType);
+	feature->setLastSoundedFrameIdx(feature->getLastFrameIdx());
+}
+
+Common::Point ZoombiniPuzzleBridge::findRejectReturnPosition(ZmbSnoid *snoid) {
+	static const int32 kRejectCollisionThreshold = 36;
+	static const Common::Rect kLaneRejectReturnRects[2] = {
+		Common::Rect(10, 50, 57, 105),
+		Common::Rect(10, 165, 65, 212),
+	};
+
+	const Common::Rect &rect = kLaneRejectReturnRects[(_currentDropLane == 1) ? 0 : 1];
+	const int16 width = rect.width();
+	const int16 height = rect.height();
+	const int16 halfCellWidth = width / 10;
+	Common::Point best(rect.left, rect.top);
+
+	for (int16 row = 1; row <= 4; row++) {
+		for (int16 col = 1; col <= 5; col++) {
+			Common::Point candidate(
+				rect.left + col * width / 5 + _vm->_rnd->getRandomNumber(0, 5),
+				rect.top + row * height / 4);
+			if ((row & 1) == 0)
+				candidate.x += halfCellWidth;
+			candidate.x = CLIP<int16>(candidate.x, 0, 640);
+			candidate.y = CLIP<int16>(candidate.y, 0, 480);
+			best = candidate;
+			if (!isPointOccupiedByOtherSnoid(snoid, candidate, kRejectCollisionThreshold))
+				return candidate;
+		}
+	}
+
+	return best;
+}
+
 // ---------------------------------------------------------------------------
 // Helper: Find an idle pack snoid (IDs 10000+).
 // IDA: findIdleFeatureRunner_456A95
@@ -962,6 +1005,7 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 
 		// Load SCRB 1221 on lane-1 cliff (entrance animation with callbacks)
 		reloadScrbAnimation(_scrbCliffLane1Idx, 1221);
+		playCurrentFrameSound(_scrbFeatures.find(_scrbCliffLane1Idx));
 	}
 
 	// -----------------------------------------------------------------------
@@ -1085,6 +1129,7 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 				else
 					gateScrbId = _successCount + 1208;
 				reloadScrbAnimation(_scrbCliffMainIdx, gateScrbId);
+				playCurrentFrameSound(_scrbFeatures.find(_scrbCliffMainIdx));
 			}
 
 			// Update bridge segment animation.
@@ -1216,10 +1261,10 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 		if (!scrsStream)
 			return false;
 
-		// IDA: snoidScript_initAndPlay(0, &pInitPos, scrsBase, core). Passing
-		// initPos anchors the final SCRS frame at the starting point, so the
-		// sneeze/return animation begins near the bridge and lands back on the bank.
-		snoid->startScrsPlayback(scrsStream, false, true, &initPos);
+		// IDA: snoidScript_initAndPlay(0, &pInitPos, scrsBase, core). SCRS
+		// 1000-1019 are registered in pool 0, which selects state 9.
+		snoid->startScrsPlayback(scrsStream, false, false, &initPos);
+		playCurrentFrameSound(snoid);
 		_activeRejectScrb = scrsBase;
 		_activeLaneScrb = _cliffAttrState;
 		_cliffAttrState = 0;
@@ -1245,12 +1290,9 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 		_bridgeTransitCount--;
 
 		// IDA: *(linkDirection+47) = 0; animateZoombini(0, 7, core); flags |= 0x4008000
-		// Save the snoid's current SCRS-driven visible root (on the bridge) before
-		// finishScrsPlayback() restores it to the pre-SCRS origPointLoc. IDA
-		// snoidScript_renderFrame_4562B2 updates posLoc from every SCRS frame.
-		Common::Point bridgePos = snoid->getPointLoc();
-		snoid->finishScrsPlayback();
-		snoid->setPointLoc(bridgePos);  // Stay at the SCRS position, not the origPointLoc
+		// IDA starts depart from the current SCRS-driven bridge root; restoring
+		// origPointLoc first makes the snoid blip back to the left bank.
+		snoid->finishScrsPlayback(false);
 		// IDA bridge_laneWalkStepCallback @ 0x415EC1: bitmask |= 0x04008000
 		// (LOOP_ANIM | OVERLAY) on arrival — the overlay flag drives the correct
 		// z-sort/compositing for zoombinis that have crossed.
@@ -1279,6 +1321,8 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 
 		snoid->setAnimTargetPos(destPos);
 		snoid->setAnimState(kSnoidAnimDepart);
+		if (snoid->onSnoidAnimTick(this))
+			snoid->setNeedsRedraw(true);
 
 		// IDA bridge_laneWalkStepCallback @ 0x41604c: *(byte+295) = 2 — mark
 		// snoid as arrived. Drag attempts are refused on arrived snoids.
@@ -1331,6 +1375,9 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 
 	case 20:
 		// Reject/attribute display script completed its logical effect.
+		// IDA: --bridge_nZmbCurrentlyWalking before success/retry state.
+		if (0 < _bridgeTransitCount)
+			_bridgeTransitCount--;
 		if (_successCount < 6)
 			_successCount++;
 		// IDA: bridge_bRetryAllowed = 1 at case 20
@@ -1345,30 +1392,18 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 		if (_activeRejectScrb < 0 && startRejectThrowScript())
 			break;
 
-		if (0 < _bridgeTransitCount)
-			_bridgeTransitCount--;
 		_failureCount++;
 		_isRejectPlaying = 0;
 		_activeRejectScrb = -1;
 		_activeLaneScrb = -1;
 
 
-		// Find a non-colliding position to place the rejected Zoombini.
-		// Use the lane positions as reference for repositioning.
-		const Common::Point *posTable = (_currentDropLane == 1) ? kSnoidPositions : kSnoidPositions + 4;
-		Common::Point targetPos = *posTable;
-
-		// Try snoid positions that don't collide
-		for (int i = 0; i < 16; i++) {
-			if (!isPointOccupiedByOtherSnoid(snoid, kSnoidPositions[i], 500)) {
-				targetPos = kSnoidPositions[i];
-				break;
-			}
-		}
-
-		snoid->finishScrsPlayback();
-		snoid->setAnimState(kSnoidAnimIdle, &targetPos);
-		snoid->setupIdleHotspots();
+		// IDA case -1 calls snoid_findNonCollidingPos(36, 1, laneRect, runner)
+		// and then animateZoombini(0, 10, ...). This returns rejected snoids
+		// to the lane-start seats where they were placed, not to original pack slots.
+		Common::Point targetPos = findRejectReturnPosition(snoid);
+		snoid->setAnimTargetPos(targetPos);
+		snoid->setAnimState(kSnoidAnimArrivalMotion);
 		// IDA bridge_laneWalkStepCallback case -1 @ 0x4160a6: *(byte+47) = 0
 		// is the related field reset; status (+295) clears too as the snoid
 		// returns to the idle pool and is draggable again.

@@ -108,6 +108,18 @@ protected:
 	void reloadScrbAnimation(uint16 featureId, uint16 newScrbId);
 
 	/**
+	 * Play the sound assigned to a feature's current SCRB/SCRS frame.
+	 * IDA: scrb_playFrameSounds_46138B(..., bImmediate=1, runner)
+	 */
+	void playCurrentFrameSound(ZmbFeature *feature);
+
+	/**
+	 * Find the reject return seat inside the original lane start rectangle.
+	 * IDA: snoid_findNonCollidingPos(36, 1, gridParam, runner)
+	 */
+	Common::Point findRejectReturnPosition(ZmbSnoid *snoid);
+
+	/**
 	 * Process lane step events from crossing snoid SCRS playback.
 	 * IDA: bridge_zmbLaneStepCallback_415D30
 	 */

@@ -1281,7 +1281,9 @@ void ZoombiniInteractive::updateDrawOnRegHighlight() {
 			ZmbFeature *seatRunner = _scrbFeatures.find(seatRunnerId);
 			if (seatRunner) {
 				seatRunner->activateRender();
+				seatRunner->activateAnimate();
 				seatRunner->setLastFrameIdx(0);
+				seatRunner->resetNextRenderFrame();
 				seatRunner->setNeedsRedraw(true);
 			}
 		}
@@ -1301,6 +1303,7 @@ void ZoombiniInteractive::clearDrawOnRegHighlight() {
 	if (seatRunner && seatRunner->isRenderActivated()) {
 		seatRunner->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
 		seatRunner->resetNextRenderFrame();
+		seatRunner->deactivateAnimate();
 	}
 	_dragHighlightSlot = -1;
 }

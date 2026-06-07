@@ -835,6 +835,7 @@ void ZmbSnoid::startScrsPlayback(Common::SeekableReadStream *scrsStream, bool hi
 
 	_animState = rejectState ? kSnoidAnimScriptReject : kSnoidAnimScriptNormal;
 	_scrsAnimCycleCount = 0;
+	_scrsJustStarted = true;
 
 	// Start at frame 0. activateAnimate enables voice/sound event processing.
 	setLastFrameIdx(0);
@@ -862,11 +863,12 @@ void ZmbSnoid::syncScrsPointLoc() {
 	}
 }
 
-void ZmbSnoid::finishScrsPlayback() {
-	// Restore original position
-	setPointLoc(_scrsOrigPointLoc);
+void ZmbSnoid::finishScrsPlayback(bool restorePosition) {
+	if (restorePosition)
+		setPointLoc(_scrsOrigPointLoc);
 	// Clear the SCRS frame selection hook (idle snoids use frame 0 / virtual hotspots)
 	setSelectRenderFrameFunc(nullptr);
+	clearPreparedRenderHotspots();
 	deactivateAnimate();
 }
 
@@ -1462,6 +1464,11 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 		// reached. preRenderFeature handles the actual event dispatch as each
 		// frame is rendered.
 		const int32 lastFrame = static_cast<int32>(getFrameCount()) - 1;
+		if (_scrsJustStarted) {
+			_scrsJustStarted = false;
+			needsRedraw = true;
+			break;
+		}
 		if (getLastFrameIdx() < lastFrame) {
 			setLastFrameIdx(getLastFrameIdx() + 1);
 			syncScrsPointLoc();
@@ -1480,6 +1487,7 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 				setAnimState(kSnoidAnimIdle);
 			}
 			_scrsHideOnComplete = false;
+			_scrsJustStarted = false;
 			// IDA: fires onHotspotShapeOrFrameFunc(-1) completion callback.
 			if (page)
 				page->onFeatureAnimEvent(this, kZmbAnimEventM1_End);

@@ -1153,10 +1153,10 @@ public:
 	                       const Common::Point *initPos = nullptr);
 
 	/**
-	 * Clean up after SCRS playback finishes: restore pointLoc and clear the
-	 * select-render-frame hook. Called before setAnimState(kSnoidAnimIdle).
+	 * Clean up after SCRS playback finishes and clear the select-render-frame hook.
+	 * By default this restores pointLoc to the pre-SCRS origin.
 	 */
-	void finishScrsPlayback();
+	void finishScrsPlayback(bool restorePosition = true);
 
 	/**
 	 * Return the translation applied to raw SCRS hotspot coordinates while rendering.
@@ -1398,6 +1398,12 @@ private:
 	 * disappear after their scripts complete.
 	 */
 	bool _scrsHideOnComplete = false;
+	/**
+	 * IDA snoidScript_initAndPlay renders SCRS frame 0 immediately before the
+	 * timer-driven state machine advances. Keep the first ScummVM tick from
+	 * skipping directly to frame 1.
+	 */
+	bool _scrsJustStarted = false;
 	Common::Array<ZmbPreparedRenderHotspot> _preparedRenderHotspots;
 	/**
 	 * Time-based animation deadline (IDA: CFeatureRunner307::dNextRenderFrame).
