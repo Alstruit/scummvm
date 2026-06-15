@@ -148,6 +148,7 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 	_cliffAttrState = 0;
 	_crossingHotspotIdx = 0;
 	_pendingLaneEvent = 0;
+	_rejectCrossingSnoidId = 0;
 	_bRetryAllowed = 0;
 	_cliffEntranceAnimPending = 0;
 	_celebrationTarget = 0;
@@ -227,28 +228,28 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 	// IDA: word_4AAE6A = registerSCRB_45F60C(0,0,0, 6, 0x451, ..., flags)
 	loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100),
-		kResScrb1105_Overlay, 0,
+		kResScrb1105_Overlay, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00040000_CHAIN_SCRIPT |
 		ZmbFeature::FLAG_00080000_DEFER_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 		ZmbFeature::FLAG_01000000_DEFER_RENDER | ZmbFeature::FLAG_08000000_REGION_TRACK);
 
 	// [*] Cliff animations (SCRB 1202=0x4B2, 1201=0x4B1, 1200=0x4B0)
-	// IDA: word_4AAE66, word_4AAE64, word_4AAE68
+	// IDA: word_4AAE66, word_4AAE64, word_4AAE68 registered with frame interval 6.
 	loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1200),
-		kResScrb1202_CliffGate, 0,
+		kResScrb1202_CliffGate, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 		ZmbFeature::FLAG_08000000_REGION_TRACK);
 
 	loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1200),
-		kResScrb1201_CliffLane2, 0,
+		kResScrb1201_CliffLane2, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 		ZmbFeature::FLAG_08000000_REGION_TRACK);
 
 	loadScrbFeature(
 		ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1200),
-		kResScrb1200_CliffLane1, 0,
+		kResScrb1200_CliffLane1, 6,
 		ZmbFeature::FLAG_00008000_LOOP_ANIM | ZmbFeature::FLAG_00100000_PLAY_ONCE |
 		ZmbFeature::FLAG_08000000_REGION_TRACK);
 
@@ -262,7 +263,9 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 				i, 0,
 				ZmbFeature::FLAG_00100000_PLAY_ONCE);
 		} else if (i != kResScrb1100_Main && i != kResScrb1105_Overlay) {
-			// Standard overlays (1101, 1102, 1104)
+			// Decorative overlays (1101 = left-bank thin tree, 1102 = right-bank oak tree,
+			// 1104 = right-bank cup decoration).
+			// IDA bridge_initAndSetupPuzzle @ 0x41501c: registered with flags = 0.
 			loadScrbFeature(
 				ZmbResource(ZmbArchiveKind::kPage, kResBitmapShape1100),
 				i, 0,
@@ -291,12 +294,8 @@ void ZoombiniPuzzleBridge::loadFeatures() {
 	// IDA: bridge_buildAttrTollTable_4160EF()
 	buildAttrTollTable();
 
-	// Record total pack Zoombini count (IDs 10000+, excludes template snoids)
-	_totalZmbCount = 0;
-	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-		if ((*it)->getId() >= 10000)
-			_totalZmbCount++;
-	}
+	// IDA: bridge_totalZmbCount = zmb_countFeatureRunners().
+	_totalZmbCount = countPackSnoidFeatureRunners(false);
 
 	// Store feature handles for cliff animation manipulation.
 	// IDA: word_4AAE68 = 0x4B0, word_4AAE64 = 0x4B1, etc.
@@ -363,9 +362,6 @@ void ZoombiniPuzzleBridge::debugPrepareForDeparture() {
 
 Common::String ZoombiniPuzzleBridge::debugGetAnswer() const {
 	static const char *kAttrTypeNames[] = {"", "hair", "eyes", "nose", "legs"};
-
-	Common::String s = Common::String::format("Bridge (level %d): reqAttrCount=%d, laneSwap=%d\n",
-		_difficultyLevel, _reqAttrCount, _bRandomLaneSwap);
 	static const ZmbTrait::TraitCategory kAttrTypeToCategory[] = {
 		ZmbTrait::kTraitHair,
 		ZmbTrait::kTraitHair,
@@ -373,13 +369,35 @@ Common::String ZoombiniPuzzleBridge::debugGetAnswer() const {
 		ZmbTrait::kTraitNose,
 		ZmbTrait::kTraitFeet
 	};
+
+	// Build the cliff allergy description (OR of all required attributes)
+	Common::String allergy;
 	for (int i = 0; i < _reqAttrCount && i < 5; i++) {
 		uint8 t = _reqAttrTypes[i];
 		uint8 v = _reqAttrValues[i];
 		ZmbTrait::TraitCategory category = (1 <= t && t <= 4) ? kAttrTypeToCategory[t] : ZmbTrait::kTraitHair;
 		const char *name = (1 <= t && t <= 4) ? kAttrTypeNames[t] : "?";
-		s += Common::String::format("  lane %d: %s=%d (%s)\n", i, name, v, ZmbTrait::debugTraitValueName(category, v));
+		if (i > 0)
+			allergy += " OR ";
+		allergy += Common::String::format("%s=%d(%s)", name, v, ZmbTrait::debugTraitValueName(category, v));
 	}
+	if (allergy.empty())
+		allergy = "(none)";
+
+	// Bridge assignment:
+	//   testAttrMatch(trait, 1)==true means the Zoombini CAN cross bridge 1 (top).
+	//   When bridgeSwap=0: anyMatch -> bridge 1 (top),  no match -> bridge 2 (bottom).
+	//   When bridgeSwap=1: anyMatch -> bridge 2 (bottom), no match -> bridge 1 (top).
+	const char *bridge1Desc = (_bRandomLaneSwap == 0) ? "Zoombinis WITH any allergy feature"
+	                                                   : "Zoombinis WITHOUT any allergy feature";
+	const char *bridge2Desc = (_bRandomLaneSwap == 0) ? "Zoombinis WITHOUT any allergy feature"
+	                                                   : "Zoombinis WITH any allergy feature";
+
+	Common::String s = Common::String::format("Bridge (level %d): attrCount=%d\n",
+		_difficultyLevel, _reqAttrCount);
+	s += Common::String::format("  Cliff allergy: %s\n", allergy.c_str());
+	s += Common::String::format("  Bridge 1 (top):    %s\n", bridge1Desc);
+	s += Common::String::format("  Bridge 2 (bottom): %s\n", bridge2Desc);
 	return s;
 }
 
@@ -975,6 +993,15 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 		return;
 	_processingFrame = true;
 
+	// IDA bridge_buttonDraw_415122 @ 0x41514e: the Go button (idx 2) renders the
+	// disabled shape (1) while bridge_bAllZmbPlaced == 0, and the enabled shape
+	// (2) once it is nonzero.  bridge_laneWalkStepCallback @ 0x415ff4 sets that
+	// flag to getLoadedZmbRunnerCount() on the FIRST arrival.  ScummVM mirrors
+	// the flag in _anyZmbCrossed; drive the Go button from it every frame.  (The
+	// bridgeButtons_preRenderShape / bridgeVisuals_render helpers below are
+	// vestigial and were never wired into the button feature's hooks.)
+	setGoButtonsEnabled(_anyZmbCrossed != 0);
+
 	// -----------------------------------------------------------------------
 	// [0] Pending Go departure: skip normal frame logic while waiting.
 	// Base class onAnimFrame() handles the actual departure transition.
@@ -1059,12 +1086,18 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 			_bridgeTransitCount++;
 			_isRejectPlaying = _currentDropRejected ? 1 : 0;
 			// IDA bridge_funcOnHover @ 0x415558: ONLY accepted crossings mark the
-			// snoid busy (*((BYTE*)runner+295) = 1) and assign a random walk speed
-			// (runner[10] = nextRand(4, 5)). Rejected lead-ins keep the default
-			// status/speed and are gated by _isRejectPlaying instead.
-			if (!_currentDropRejected) {
+			// snoid busy (*((BYTE*)runner+295) = 1) and assign a faster animation
+			// interval (runner+40 = nextRand(4, 5)). Rejected lead-ins keep the
+			// default interval and are gated by _isRejectPlaying instead.
+			//
+			// ScummVM note: _rejectCrossingSnoidId tracks the reject-crossing snoid
+			// so processLaneStepEvent can ignore case -1 from celebration/arrived
+			// snoids that happen to fire while a reject is in progress.
+			if (_currentDropRejected) {
+				_rejectCrossingSnoidId = snoid->getId();
+			} else {
 				snoid->_runnerStatus = 1;
-				snoid->setAnimSpeed(_vm->_rnd->getRandomNumber(4, 5), 0);
+				snoid->setFrameInterval(_vm->_rnd->getRandomNumber(4, 5));
 			}
 
 			_activeRejectScrb = -1;
@@ -1182,9 +1215,19 @@ void ZoombiniPuzzleBridge::onEveryFrame() {
 			uint16 snoidId = 10000 + poolIdx;
 
 			ZmbSnoid *snoid = getSnoid(snoidId);
-			// IDA: checks *((_BYTE *)v16 + 295) nonzero (animState active)
-			// AND (v16[8] & 1) != 0 (TYPE_SNOID flag)
-			if (snoid && snoid->getAnimState() == kSnoidAnimIdle &&
+			// IDA: zmb_findIdleFeatureRunner returns null if byte+292 is set
+			// (runner is currently animating/walking) — only truly idle runners
+			// pass. Then checks *(v16+295) != 0 (runnerStatus, TYPE_SNOID flag).
+			// Both conditions must hold:
+			//   1. kSnoidAnimIdle — snoid has fully settled at their seat
+			//      (not still walking via kSnoidAnimDepart/kSnoidAnimPath).
+			//      Without this, snoids walking to their post-crossing seat get
+			//      celebration SCRSes and freeze at their current walk position.
+			//   2. _runnerStatus != 0 — arrived snoid, not a bank snoid.
+			//      Without this, bank snoids (runnerStatus=0, kSnoidAnimIdle)
+			//      could receive celebration SCRSes.
+			if (snoid && snoid->_runnerStatus != 0 &&
+				snoid->getAnimState() == kSnoidAnimIdle &&
 				snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID)) {
 				// Play celebration SCRS: shapeImageIdx + 2019
 				// IDA: snoidScript_initAndPlay(0, 0, *((char *)v16 + 239) + 2019, ...)
@@ -1264,6 +1307,10 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 		// IDA: snoidScript_initAndPlay(0, &pInitPos, scrsBase, core). SCRS
 		// 1000-1019 are registered in pool 0, which selects state 9.
 		snoid->startScrsPlayback(scrsStream, false, false, &initPos);
+		// Case 10 is dispatched during pre-render, after the old bridge-walk
+		// frame may already have been prepared. Replace it immediately so the
+		// sneeze frame owns the same draw pass, matching IDA's handoff.
+		prepareSnoidVisualCoverage(snoid, true);
 		playCurrentFrameSound(snoid);
 		_activeRejectScrb = scrsBase;
 		_activeLaneScrb = _cliffAttrState;
@@ -1339,14 +1386,10 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 
 		// Celebration schedule thresholds: 10, 12, 14, all.
 		// IDA bridge_laneWalkStepCallback @ 0x415fef uses
-		// getLoadedZmbRunnerCount_452402() — currently-registered snoid runners.
-		// Per-lane arrived counts under-trigger because rejected/walking snoids
-		// don't count as crossed. Use snoidMap size filtered by SNOID flag.
-		int16 loadedRunners = 0;
-		for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
-			if ((*it) && (*it)->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
-				loadedRunners++;
-		}
+		// getLoadedZmbRunnerCount_452402(): TYPE_SNOID, render-enabled,
+		// and occupied/status-active. ScummVM's SCRS pools also carry
+		// TYPE_SNOID, so exclude non-pack IDs.
+		int16 loadedRunners = countPackSnoidFeatureRunners(true);
 		if (loadedRunners == 10)
 			_celebrationTarget++;
 		else if (loadedRunners == 12)
@@ -1386,6 +1429,13 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 
 	case kZmbAnimEventM1_End: {
 		// End of SCRS playback: reposition rejected Zoombini.
+		// Guard: in the original engine the bridge_laneWalkStepCallback was registered
+		// only on the crossing runner, so only that runner triggered case -1 logic.
+		// In ScummVM, celebration snoids (arrived, _runnerStatus=2) also reach this
+		// path when their SCRS ends.  _rejectCrossingSnoidId tracks which snoid is
+		// the active reject crossing; if the firing snoid is different, ignore it.
+		if (_rejectCrossingSnoidId != 0 && snoid->getId() != _rejectCrossingSnoidId)
+			break;
 		_bRetryAllowed = 0;
 		if (!_isRejectPlaying)
 			break;
@@ -1394,6 +1444,7 @@ void ZoombiniPuzzleBridge::processLaneStepEvent(ZmbFeature *snoidFeature, int16 
 
 		_failureCount++;
 		_isRejectPlaying = 0;
+		_rejectCrossingSnoidId = 0;
 		_activeRejectScrb = -1;
 		_activeLaneScrb = -1;
 
@@ -1435,13 +1486,13 @@ void ZoombiniPuzzleBridge::processEntranceEvent(int16 eventId, ZmbFeature *event
 		// IDA: if (getLoadedZmbRunnerCount() < totalZmbCount
 		//        && (nextRand(4,0) > diffLevel || (puzzleFlag & 0xFFF) <= 3))
 		//     { if (getLoadedZmbRunnerCount() > 0) playVoice; }
-		int16 totalCrossed = _lane1Count + _lane2Count;
+		int16 loadedRunners = countPackSnoidFeatureRunners(true);
 		int16 diffLevel = _vm->_state->getDifficultyIdFromPageFlag(
 			_vm->_state->_f._pageFlagBridge);
-		if (totalCrossed < _totalZmbCount &&
+		if (loadedRunners < _totalZmbCount &&
 			(_vm->_rnd->getRandomNumber(0, 4) > diffLevel ||
 			 (_vm->_state->_f._pageFlagBridge & 0xFFF) <= 3)) {
-			if (totalCrossed > 0) {
+			if (0 < loadedRunners) {
 				uint16 sndId = _vm->_rnd->getRandomNumber(20045, 20048);
 				_vm->_sound->playZmbSound(ZmbResource(ZmbArchiveKind::kSystem, sndId),
 										  Audio::Mixer::kSFXSoundType);
@@ -1451,6 +1502,21 @@ void ZoombiniPuzzleBridge::processEntranceEvent(int16 eventId, ZmbFeature *event
 		// Activate cliff entrance animation trigger for next frame.
 		_cliffEntranceAnimPending = 1;
 	}
+}
+
+int16 ZoombiniPuzzleBridge::countPackSnoidFeatureRunners(bool loadedOnly) const {
+	int16 count = 0;
+	for (auto it = _snoidMap.begin(); it != _snoidMap.end(); ++it) {
+		const ZmbSnoid *snoid = *it;
+		if (!snoid || snoid->getId() < 10000)
+			continue;
+		if (!snoid->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+			continue;
+		if (loadedOnly && (!snoid->isRenderActivated() || !snoid->_packIsOccupied))
+			continue;
+		count++;
+	}
+	return count;
 }
 
 // ---------------------------------------------------------------------------

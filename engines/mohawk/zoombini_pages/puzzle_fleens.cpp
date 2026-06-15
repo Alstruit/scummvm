@@ -311,27 +311,60 @@ void ZoombiniPuzzleFleens::onGoButtonActivated() {
 }
 
 Common::String ZoombiniPuzzleFleens::debugGetAnswer() const {
-	// Fleens patternType is 1-based: 1=feet(zmb:head), 2=nose(zmb:eye), 3=eye(zmb:nose)
-	static const char *kFleensPatternTypeNames[] = {"", "feet", "nose", "eye"};
+	// Trait layout (KB: fleens-difficulty-logic-analysis.md):
+	//   ZMB source: j=0=head(hair), j=1=eye, j=2=nose, j=3=foot
+	//   Default Fleen target: byte[0]=feet, byte[1]=nose, byte[2]=eye, byte[3]=hair
+	//   _traitSlotOrder[j]: if nonzero, ZMB j is stored at fleen byte[_traitSlotOrder[j]-1]
+	//   Value transform: fleen_val = (_traitOffsets[j] + zmb_val - 2) % 5 + 1
+	//
+	//   ANSWER SNOIDS: The _mismatchIdx snoids will be CAPTURED by the Fleens.
+	//   Send those snoids to lure all 3 Fleens off the branch (Fleens jump off to capture them).
+	static const char *kZmbTraitNames[4] = {"hair", "eye", "nose", "feet"};
+	static const ZmbTrait::TraitCategory kZmbTraitCat[4] = {
+		ZmbTrait::kTraitHair, ZmbTrait::kTraitEyes, ZmbTrait::kTraitNose, ZmbTrait::kTraitFeet
+	};
+	static const char *kFleenBodyNames[4] = {"feet", "nose", "eye", "hair"};
+	static const ZmbTrait::TraitCategory kFleenBodyCat[4] = {
+		ZmbTrait::kTraitFeet, ZmbTrait::kTraitNose, ZmbTrait::kTraitEyes, ZmbTrait::kTraitHair
+	};
 
-	Common::String s = Common::String::format("Fleens (level %d): mismatchCount=%d\n",
-		_difficultyLevel, _mismatchCount);
-	s += "  Mismatched Zoombini indices: ";
-	for (int i = 0; i < _mismatchCount && i < 3; i++)
-		s += Common::String::format("%d ", _mismatchIdx[i]);
-	s += "\n";
-	s += Common::String::format("  Trait offsets (mod-5): foot=%d nose=%d eye=%d hair=%d\n",
-		_traitOffsets[0], _traitOffsets[1], _traitOffsets[2], _traitOffsets[3]);
-	s += Common::String::format("  Trait slot order: %d %d %d %d\n",
-		_traitSlotOrder[0], _traitSlotOrder[1], _traitSlotOrder[2], _traitSlotOrder[3]);
-	s += "  Challenge patterns:\n";
-	for (int i = 0; i < 12; i++) {
-		if (_fleensPatternType[i] == 0)
+	Common::String s = Common::String::format("Fleens (level %d):\n", _difficultyLevel);
+
+	// --- Trait correlations ---
+	s += "  Trait correlations (ZMB -> Fleen):\n";
+	for (int j = 0; j < 4; j++) {
+		// Determine which Fleen body part this ZMB trait feeds
+		int fleenSlot = (_traitSlotOrder[j] != 0) ? (_traitSlotOrder[j] - 1) : j;
+		if (fleenSlot < 0 || fleenSlot > 3) fleenSlot = j;
+		s += Common::String::format("  [ZMB %s] -> Fleen %s:\n",
+			kZmbTraitNames[j], kFleenBodyNames[fleenSlot]);
+		for (int v = 1; v <= 5; v++) {
+			int fv = (_traitOffsets[j] + v - 2) % 5 + 1;
+			s += Common::String::format("    (Z) %s -> (F) %s\n",
+				ZmbTrait::debugTraitValueName(kZmbTraitCat[j], v),
+				ZmbTrait::debugTraitValueName(kFleenBodyCat[fleenSlot], fv));
+		}
+	}
+
+	// --- Answer snoids: the mismatch ones to send ---
+	const ZmbStateFile &f = _vm->_state->_f;
+	s += Common::String::format("  Answer snoids (%d to send, they will be captured):\n", _mismatchCount);
+	for (int i = 0; i < _mismatchCount && i < 3; i++) {
+		int16 idx = _mismatchIdx[i];
+		if (idx < 1 || idx > f._zmbPackActive._wPackZmbCount) {
+			s += Common::String::format("    [%d] (invalid index %d)\n", i + 1, idx);
 			continue;
-		int16 ft = _fleensPatternType[i];
-		const char *ftName = (1 <= ft && ft <= 3) ? kFleensPatternTypeNames[ft] : "?";
-		s += Common::String::format("    pattern %2d: type=%d(%s) value=%d extra=%d\n",
-			i, ft, ftName, _fleensPatternValue[i], _fleensPatternExtra[i]);
+		}
+		const ZmbStateActiveEntry &entry = f._zmbPackActive._entries[idx - 1];
+		Common::String name = entry.getU32Name(_vm).encode(Common::kUtf8);
+		const ZmbTrait &t = entry._traits;
+		s += Common::String::format("    [%d] %s-%s-%s-%s (%s)\n",
+			i + 1,
+			ZmbTrait::debugTraitValueName(ZmbTrait::kTraitHair, t._head),
+			ZmbTrait::debugTraitValueName(ZmbTrait::kTraitEyes, t._eye),
+			ZmbTrait::debugTraitValueName(ZmbTrait::kTraitNose, t._nose),
+			ZmbTrait::debugTraitValueName(ZmbTrait::kTraitFeet, t._foot),
+			name.c_str());
 	}
 	return s;
 }

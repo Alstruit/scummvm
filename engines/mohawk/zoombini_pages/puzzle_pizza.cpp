@@ -317,24 +317,120 @@ void ZoombiniPuzzlePizza::onGoButtonActivated() {
 }
 
 Common::String ZoombiniPuzzlePizza::debugGetAnswer() const {
-	Common::String s = Common::String::format("Pizza (level %d): targetToppings=%d\n",
-		_difficultyLevel, _targetToppingCount);
-	s += "  correct: ";
-	for (int i = 0; i < 16; i++) {
-		if (_correctToppings[i] != 0)
-			s += Common::String::format("%d ", _correctToppings[i]);
+	// Slot layout derived from SCRB button positions (x<60 = pizza machine; x~87 = sundae machine).
+	// Official names: "Pizza Topping buttons" / "Sundae icon buttons" (English manual p.18,
+	// STRL 1920-1960). Korean manual calls the right machine "아이스크림 코너" (Icecream Corner).
+	// Level 1 (slots 0-4): Pizza 1-5 only.
+	// Level 2 (slots 0-6): 0-3=Pizza 1-4, 4=Sundae 1 [forbidden@NSE], 5=Sundae 2, 6=Pizza 5.
+	// Level 3 (slots 0-6): 0-4=Pizza 1-5, 5-6=Sundae 1-2.
+	// Level 4 (slots 0-7): 0-4=Pizza 1-5, 5-7=Sundae 1-3.
+	//
+	// Pizza 1: Olive       Pizza 2: Pepper     Pizza 3: Salami
+	// Pizza 4: Mushroom    Pizza 5: Cheese
+	// Sundae 1: Cherry     Sundae 2: Cream     Sundae 3: Chocolate
+
+	struct SlotInfo { const char *category; int number; const char *name; };
+	static const SlotInfo kL1[5] = {
+		{"Pizza",  1, "Olive"},
+		{"Pizza",  2, "Pepper"},
+		{"Pizza",  3, "Salami"},
+		{"Pizza",  4, "Mushroom"},
+		{"Pizza",  5, "Cheese"},
+	};
+	static const SlotInfo kL2[7] = {
+		{"Pizza",  1, "Olive"},
+		{"Pizza",  2, "Pepper"},
+		{"Pizza",  3, "Salami"},
+		{"Pizza",  4, "Mushroom"},
+		{"Sundae", 1, "Cherry"},    // slot 4 is forbidden at NSE
+		{"Sundae", 2, "Cream"},
+		{"Pizza",  5, "Cheese"},
+	};
+	static const SlotInfo kL3[7] = {
+		{"Pizza",  1, "Olive"},
+		{"Pizza",  2, "Pepper"},
+		{"Pizza",  3, "Salami"},
+		{"Pizza",  4, "Mushroom"},
+		{"Pizza",  5, "Cheese"},
+		{"Sundae", 1, "Cherry"},
+		{"Sundae", 2, "Cream"},
+	};
+	static const SlotInfo kL4[8] = {
+		{"Pizza",  1, "Olive"},
+		{"Pizza",  2, "Pepper"},
+		{"Pizza",  3, "Salami"},
+		{"Pizza",  4, "Mushroom"},
+		{"Pizza",  5, "Cheese"},
+		{"Sundae", 1, "Cherry"},
+		{"Sundae", 2, "Cream"},
+		{"Sundae", 3, "Chocolate"},
+	};
+	static const SlotInfo * const kLevelSlots[4] = {kL1, kL2, kL3, kL4};
+	static const int kLevelSlotCount[4] = {5, 7, 7, 8};
+
+	int levelIdx = (_difficultyLevel >= 1 && _difficultyLevel <= 4) ? _difficultyLevel - 1 : 0;
+	const SlotInfo *slots = kLevelSlots[levelIdx];
+	int slotCount = kLevelSlotCount[levelIdx];
+
+	// Build a compact troll line: "Pizza 1 (Olive), 3 (Salami) / Sundae 2 (Cream)"
+	// Groups items by category, separated by " / ".
+	auto buildTrollLine = [&](const uint8 *toppings) -> Common::String {
+		Common::String pizza, sundae;
+		for (int i = 0; i < _totalToppingSlots && i < slotCount; i++) {
+			if (!toppings[i])
+				continue;
+			const SlotInfo &si = slots[i];
+			Common::String item = Common::String::format("%d (%s)", si.number, si.name);
+			if (Common::String(si.category) == "Pizza") {
+				if (!pizza.empty()) pizza += ", ";
+				pizza += item;
+			} else {
+				if (!sundae.empty()) sundae += ", ";
+				sundae += item;
+			}
+		}
+		Common::String line;
+		if (!pizza.empty())  line += "Pizza " + pizza;
+		if (!sundae.empty()) { if (!line.empty()) line += " / "; line += "Sundae " + sundae; }
+		if (line.empty())    line = "(none)";
+		return line;
+	};
+
+	Common::String s = Common::String::format("Pizza (level %d):\n", _difficultyLevel);
+	// Trolls present by level: Arno (level 1+), Willamaen (level 2+), Shyler (level 3+).
+	// Each troll must be satisfied to complete the puzzle.
+	s += "  Arno:        " + buildTrollLine(_correctToppings) + "\n";
+	s += "  Willamaen:   " + buildTrollLine(_wrongToppingsA) + "\n";
+	s += "  Shyler:      " + buildTrollLine(_wrongToppingsB) + "\n";
+
+	// "Not Wanted": slots that are selectable by the player but no troll wants them.
+	// (Slot 4 at NSE/level 2 is forbidden — the button is blocked — so it is excluded.)
+	{
+		// Forbidden slot: ingredientIdx==4 is blocked at level 2 (NSE).
+		int forbiddenSlot = (_difficultyLevel == kPuzzleDiffLevel2) ? 4 : -1;
+		Common::String pizza, sundae;
+		for (int i = 0; i < _totalToppingSlots && i < slotCount; i++) {
+			if (i == forbiddenSlot)
+				continue;
+			if (_correctToppings[i] || _wrongToppingsA[i] || _wrongToppingsB[i])
+				continue;
+			const SlotInfo &si = slots[i];
+			Common::String item = Common::String::format("%d (%s)", si.number, si.name);
+			if (Common::String(si.category) == "Pizza") {
+				if (!pizza.empty()) pizza += ", ";
+				pizza += item;
+			} else {
+				if (!sundae.empty()) sundae += ", ";
+				sundae += item;
+			}
+		}
+		Common::String notWanted;
+		if (!pizza.empty())  notWanted += "Pizza " + pizza;
+		if (!sundae.empty()) { if (!notWanted.empty()) notWanted += " / "; notWanted += "Sundae " + sundae; }
+		if (notWanted.empty()) notWanted = "(none)";
+		s += "  Not Wanted:  " + notWanted + "\n";
 	}
-	s += "\n  wrong A: ";
-	for (int i = 0; i < 16; i++) {
-		if (_wrongToppingsA[i] != 0)
-			s += Common::String::format("%d ", _wrongToppingsA[i]);
-	}
-	s += "\n  wrong B: ";
-	for (int i = 0; i < 16; i++) {
-		if (_wrongToppingsB[i] != 0)
-			s += Common::String::format("%d ", _wrongToppingsB[i]);
-	}
-	s += "\n";
+
 	return s;
 }
 

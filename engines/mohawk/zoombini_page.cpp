@@ -644,6 +644,59 @@ void ZoombiniPage::buildSortedRenderList(Common::Array<ZmbFeature *> &outList) {
 	for (ZmbSnoid *s : _snoidMap)
 		categorizeFeature(s, loopAnimList, overlayList, normalList, entityList);
 
+	// Step 1b: Order the LOOP_ANIM bucket faithfully to IDA.
+	//
+	// IDA runner_zsortPartitionAndSort (0x4608AF) appends LOOP_ANIM runners to
+	// the v0 list WITHOUT position-sorting; their relative order comes from the
+	// explicit re-linking done at arrival.  For the bridge/tunnels/caves/etc.
+	// crossing puzzles, bridge_laneWalkStepCallback @ 0x415fea calls
+	// runner_linkRelativeToParent for each arrived Zoombini, stacking it relative
+	// to the previous arrival.  The net effect is that arrived Zoombinis are
+	// ordered by their SEAT position (lane slot): the bottom/right seat draws on
+	// top.  Non-snoid LOOP_ANIM features (bridge planks, water, the SKIP_RENDER
+	// main feature) were registered first and are never re-linked, so they stay
+	// behind the snoids in registration order.
+	//
+	// We replicate this by:
+	//   1. Keeping non-snoid LOOP_ANIM features in their collected order.
+	//   2. Sorting arrived snoids by their SEAT (_animTargetPos) ascending by
+	//      (y, x).  Using the stable seat — not the live drawn rect — keeps the
+	//      order fixed while a snoid plays its celebration jump SCRS (whose
+	//      frames temporarily move the drawn rect upward).
+	if (!loopAnimList.empty()) {
+		Common::Array<ZmbFeature *> nonSnoidLoop;
+		Common::Array<ZmbFeature *> snoidLoop;
+		for (ZmbFeature *f : loopAnimList) {
+			if (f->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+				snoidLoop.push_back(f);
+			else
+				nonSnoidLoop.push_back(f);
+		}
+
+		// Insertion sort arrived snoids by seat (bottom=y, then left=x) ascending.
+		for (uint32 i = 1; i < snoidLoop.size(); i++) {
+			ZmbFeature *key = snoidLoop[i];
+			const Common::Point keySeat = static_cast<ZmbSnoid *>(key)->getAnimTargetPos();
+			int32 j = static_cast<int32>(i) - 1;
+			while (j >= 0) {
+				const Common::Point cSeat = static_cast<ZmbSnoid *>(snoidLoop[j])->getAnimTargetPos();
+				if (cSeat.y > keySeat.y || (cSeat.y == keySeat.y && cSeat.x > keySeat.x)) {
+					snoidLoop[j + 1] = snoidLoop[j];
+					j--;
+				} else {
+					break;
+				}
+			}
+			snoidLoop[j + 1] = key;
+		}
+
+		loopAnimList.clear();
+		for (ZmbFeature *f : nonSnoidLoop)
+			loopAnimList.push_back(f);
+		for (ZmbFeature *f : snoidLoop)
+			loopAnimList.push_back(f);
+	}
+
 	// Step 2: Reorder overlayList according to cached order.
 	// IDA 0x4609A1–0x4609BC: overlay entries appended after loopAnim entries.
 	// The original engine's linked list preserves the previous Z-sort order;
@@ -683,12 +736,13 @@ void ZoombiniPage::buildSortedRenderList(Common::Array<ZmbFeature *> &outList) {
 	mergeSortedListInto(outList, entityList);
 
 	// Step 6: Cache the overlay order for next frame.
-	// Collect all non-LOOP_ANIM, non-entity features in their current
-	// sorted positions. On the next frame, these features will have
-	// OVERLAY set and will be placed from this cache.
+	// IDA preserves the previous frame's render order via zmb_pRunnerListHead.
+	// _cachedOverlayOrder holds the non-LOOP_ANIM OVERLAY features for the
+	// Step 2 overlay reorder so they keep their first-frame sorted slot.
 	_cachedOverlayOrder.clear();
 	for (ZmbFeature *f : outList) {
-		if (f->hasFlag(ZmbFeature::FLAG_04000000_OVERLAY))
+		if (!f->hasFlag(ZmbFeature::FLAG_00008000_LOOP_ANIM) &&
+			f->hasFlag(ZmbFeature::FLAG_04000000_OVERLAY))
 			_cachedOverlayOrder.push_back(f);
 	}
 }
@@ -922,6 +976,69 @@ void ZoombiniPage::prepareSnoidVisualCoverage(ZmbSnoid *snoid, bool cacheFrame) 
 		addDirtyRect(sortRect);
 }
 
+void ZoombiniPage::prepareFeatureVisualCoverage(ZmbFeature *feature) {
+	// Snoids are handled by prepareSnoidVisualCoverage(); skip them here.
+	if (!feature || feature->hasFlag(ZmbFeature::FLAG_00000001_TYPE_SNOID))
+		return;
+	if (!feature->isRenderActivated())
+		return;
+
+	// IDA runner_postRenderStandard 0x461846 gate: features with
+	// FLAG_01000000_DEFER_RENDER and wBoolDoRender=0 do not draw, hence no
+	// clickRect.  Render-activated features always compute coverage.
+	ZmbHotspotGroup *hsGroup = feature->getHotspotGroup(feature->getLastFrameIdx());
+	if (!hsGroup)
+		return;
+
+	// Mirror blitShapes()'s non-snoid path: copy hotspots, apply REGS deltas,
+	// apply POS_DELTA, then union getShapeSize() rects.  Use getShapeSize()
+	// instead of drawShape() so no pixels are written before z-sort.
+	Common::Array<ZmbHotspot> hotspots = hsGroup->copyHotspots();
+	feature->onPreRenderShape(this, hsGroup, hotspots);
+
+	ZmbRegs *shapeRegs = feature->getShapeRegs();
+	if (shapeRegs) {
+		for (uint32 i = 0; i < hotspots.size(); i++) {
+			ZmbHotspot &hs = hotspots[i];
+			if (hs._shapeIdx != ZmbHotspot::kShapeNone) {
+				const Common::Point delta = shapeRegs->getShapeDelta(hs._shapeIdx);
+				hs._x -= delta.x;
+				hs._y -= delta.y;
+			}
+		}
+	}
+
+	Common::Rect sortRect;
+	bool hasSortRect = false;
+	for (uint32 i = 0; i < hotspots.size(); i++) {
+		ZmbHotspot hs = hotspots[i];
+		if (hs._shapeIdx == ZmbHotspot::kShapeNone)
+			continue;
+
+		if (feature->hasFlag(ZmbFeature::FLAG_00800000_POS_DELTA)) {
+			const Common::Point &posDelta = feature->getPosDelta();
+			hs._x += posDelta.x;
+			hs._y += posDelta.y;
+		}
+
+		Common::Rect shapeSize = _vm->_gfx->getShapeSize(feature->getResource(), static_cast<uint16>(hs._shapeIdx));
+		Common::Rect drawnRect(hs._x, hs._y, hs._x + shapeSize.width(), hs._y + shapeSize.height());
+		drawnRect.clip(Common::Rect(0, 0, ZoombiniGraphics::kScreenWidth, ZoombiniGraphics::kScreenHeight));
+		if (drawnRect.isEmpty())
+			continue;
+
+		if (hasSortRect) {
+			sortRect.extend(drawnRect);
+		} else {
+			sortRect = drawnRect;
+			hasSortRect = true;
+		}
+	}
+
+	if (hasSortRect)
+		feature->setSortRect(sortRect);
+}
+
 void ZoombiniPage::renderFeatures() {
 	// IDA gfx_renderFrame (0x45F070) - dirty-rect rendering architecture:
 	//
@@ -984,6 +1101,17 @@ void ZoombiniPage::renderFeatures() {
 		if (!s->hasPreparedRenderHotspots())
 			prepareSnoidVisualCoverage(s, false);
 	}
+
+	// IDA computes each non-snoid runner's clickRect inside its render callback
+	// (and once at runner_registerAndAllocate), so the z-sort key is valid even
+	// on the first rendered frame.  ScummVM otherwise only sets the non-snoid
+	// sort rect in blitShapes() (post-render), leaving it empty on frame 1 and
+	// seeding the overlay cache with a wrong order.  Compute it here, before
+	// z-sort, to match the original's previous-frame clickRect semantics.
+	for (ZmbFeature *f : _scrbFeatures)
+		prepareFeatureVisualCoverage(f);
+	for (ZmbFeature *f : _subFeatures)
+		prepareFeatureVisualCoverage(f);
 
 	// Z-sort: partition and sort feature runners (IDA 0x45F2F1)
 	Common::Array<ZmbFeature *> renderList;

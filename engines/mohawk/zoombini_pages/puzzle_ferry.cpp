@@ -345,8 +345,13 @@ void ZoombiniPuzzleFerry::onGoButtonActivated() {
 }
 
 Common::String ZoombiniPuzzleFerry::debugGetAnswer() const {
+	// IDA: ferry_funcInit (0x41a394) does NOT perform a solvability check at load time.
+	// The seating SCRB is selected based on difficulty + Zoombini count only.
+	// The puzzle validates adjacency at runtime when snoids are placed.
+	// Any valid seating arrangement that satisfies adjacency wins — no single intended answer.
 	Common::String s = Common::String::format("Ferry (level %d): seatingSCRB=%d, seats=%d\n",
 		_difficultyLevel, _seatingSCRB, _drawOnRegCount);
+	s += "  No designated answer: any adjacency-valid seating solves the puzzle.\n";
 	s += "  Rule: adjacent seats must share at least one trait\n";
 
 	// Show current seating with occupant traits

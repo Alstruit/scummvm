@@ -517,8 +517,28 @@ Common::String ZoombiniPuzzleLilly::debugGetAnswer() const {
 		}
 		s += "\n";
 		s += "    obstacle runners read the chosen lily-pad attribute from row 0 of their entry column and pathfind only through cells with that same value.\n";
+
+		// Intended answer: toad tattoo → path entry column
+		s += "  Intended toad paths (place toad with matching tattoo on entry column):\n";
+		for (int i = 0; i < _obstacleEntryCount && i < 16; i++) {
+			s += Common::String::format("    Entry col %d: toad with %s tattoo\n",
+				_obstacleEntryCols[i],
+				formatLillyPadAttrValue(_obstacleEntryType[i], _obstacleEntryValue[i]).c_str());
+		}
 	} else {
 		s += "  Obstacle plan: none; this board is solved by reading the mixed grid and, from level 2 onward, using swaps to repair bad routes.\n";
+		// For mixed boards, the intended answer is each active scripted slot
+		s += "  Intended paths (active scripted slots with placements > 0):\n";
+		bool anyActive = false;
+		for (int i = 1; i < 13; i++) {
+			if (_patternMask[i] != 0 || _patternType[i] == kLillyPadAttrNone || _patternUsageCount[i] == 0)
+				continue;
+			anyActive = true;
+			s += Common::String::format("    Slot %d: toad with %s tattoo (%d placements on board)\n",
+				i, formatLillyPadAttrValue(_patternType[i], _patternValue[i]).c_str(), _patternUsageCount[i]);
+		}
+		if (!anyActive)
+			s += "    (no scripted paths established yet)\n";
 	}
 	return s;
 }

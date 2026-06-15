@@ -1297,13 +1297,20 @@ void ZoombiniInteractive::clearDrawOnRegHighlight() {
 	if (_dragHighlightSlot < 0)
 		return;
 
-	// IDA: 0x453AA5–0x453AB4: Unhighlight — set SKIP_ONCE flag and trigger render
+	// IDA runner_clearRenderFlagAndMarkDirty_454143: hide the helper and dirty
+	// its previous coverage so the yellow mask is erased immediately.
 	uint16 seatRunnerId = _drawOnRegRunnerIds[_dragHighlightSlot];
 	ZmbFeature *seatRunner = _scrbFeatures.find(seatRunnerId);
 	if (seatRunner && seatRunner->isRenderActivated()) {
-		seatRunner->addFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
+		Common::Rect dirtyRect = seatRunner->getSortRect();
+		if (dirtyRect.isEmpty())
+			dirtyRect = seatRunner->getClickRect();
+		if (!dirtyRect.isEmpty())
+			addExternalDirtyRect(dirtyRect);
+		seatRunner->removeFlag(ZmbFeature::FLAG_00010000_SKIP_ONCE);
 		seatRunner->resetNextRenderFrame();
 		seatRunner->deactivateAnimate();
+		seatRunner->deactivateRender();
 	}
 	_dragHighlightSlot = -1;
 }

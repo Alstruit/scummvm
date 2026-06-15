@@ -426,36 +426,95 @@ void ZoombiniPuzzleCaves::onGoButtonActivated() {
 }
 
 Common::String ZoombiniPuzzleCaves::debugGetAnswer() const {
-	static const char *kAttrTypeNames[] = {"", "hair", "eyes", "nose", "legs"};
-
-	Common::String s = Common::String::format("Caves (level %d): guardComplexity=%d, entranceCount=%d\n",
-		_difficultyLevel, _guardComplexity, _entranceCount);
-	for (int i = 0; i < 2; i++) {
-		int16 t = _baseAttrTypes[i];
-		const char *name = (1 <= t && t <= 4) ? kAttrTypeNames[t] : "?";
-		s += Common::String::format("  Guard %d base attr: %s(%d)\n", i, name, t);
-	}
-	s += "  Entrance requirements (slot -> attrReq/attrOffset):\n";
-	for (int i = 0; i < _entranceCount && i < 11; i++) {
-		s += Common::String::format("    slot %2d: req=%d offset=%d\n",
-			i, _entranceAttrReq[i], _entranceAttrOffset[i]);
-	}
-	s += "  Attr columns: ";
-	static const ZmbTrait::TraitCategory kAttrTypeToCategory[] = {
-		ZmbTrait::kTraitHair,
-		ZmbTrait::kTraitHair,
-		ZmbTrait::kTraitEyes,
-		ZmbTrait::kTraitNose,
-		ZmbTrait::kTraitFeet
+	// IDA: caves_entranceAttrDist_418CB1 confirms offset encoding:
+	//   _entranceAttrOffset[slot] = attrValue + attrType*5 (attrType 0-indexed: 0=hair,1=eyes,2=nose,3=feet)
+	// Slots 1-5 = big guards (primary attr); slots 6-10 = small side guards (secondary attr).
+	// Slot i and slot i+5 are paired at the same path position.
+	// Rule is fixed per band; regenerated each new band.
+	static const char *kAttrTypeNames0[] = {"hair", "eyes", "nose", "feet"};
+	static const ZmbTrait::TraitCategory kAttrTypeToCategory0[] = {
+		ZmbTrait::kTraitHair, ZmbTrait::kTraitEyes,
+		ZmbTrait::kTraitNose, ZmbTrait::kTraitFeet
 	};
-	for (int i = 0; i < 10; i++) {
-		if (_attrColumns[i] != 0) {
-			int16 t = _baseAttrTypes[0];
-			ZmbTrait::TraitCategory category = (1 <= t && t <= 4) ? kAttrTypeToCategory[t] : ZmbTrait::kTraitHair;
-			s += Common::String::format("%d(%s) ", _attrColumns[i], ZmbTrait::debugTraitValueName(category, _attrColumns[i]));
+
+	// Decode a 1-based offset (1-20) to attr type/value string
+	auto decodeOffset = [&](uint8 offset) -> Common::String {
+		if (offset < 1 || offset > 20)
+			return "?";
+		int t = (offset - 1) / 5;
+		int v = (offset - 1) % 5 + 1;
+		ZmbTrait::TraitCategory cat = (t < 4) ? kAttrTypeToCategory0[t] : ZmbTrait::kTraitHair;
+		const char *tname = (t < 4) ? kAttrTypeNames0[t] : "?";
+		return Common::String::format("%s=%d(%s)", tname, v, ZmbTrait::debugTraitValueName(cat, v));
+	};
+
+	// Helper: get trait byte for attr type 0-indexed
+	auto getTraitByType = [&](const ZmbStateActiveEntry &e, int t) -> uint8 {
+		switch (t) {
+		case 0: return static_cast<uint8>(e._traits._head);
+		case 1: return static_cast<uint8>(e._traits._eye);
+		case 2: return static_cast<uint8>(e._traits._nose);
+		case 3: return static_cast<uint8>(e._traits._foot);
+		default: return 0;
 		}
+	};
+
+	Common::String s = Common::String::format("Lion's Lair (level %d): %d path slots, complexity=%d\n",
+		_difficultyLevel, _entranceCount, _guardComplexity);
+
+	const ZmbStateFile &f = _vm->_state->_f;
+
+	// For each active slot, show the required trait and which snoids from the pack match
+	int shown = 0;
+	for (int row = 1; row <= 5 && shown < _entranceCount; row++) {
+		bool bigActive  = (_entranceAttrReq[row] != 0);
+		bool smallActive = (_guardComplexity >= 2 && row + 5 <= 10 && _entranceAttrReq[row + 5] != 0);
+		if (!bigActive && !smallActive)
+			continue;
+		shown++;
+
+		// Decode requirements
+		int bigT = -1, bigV = -1, smallT = -1, smallV = -1;
+		if (bigActive && _entranceAttrOffset[row] >= 1 && _entranceAttrOffset[row] <= 20) {
+			bigT = (_entranceAttrOffset[row] - 1) / 5;
+			bigV = (_entranceAttrOffset[row] - 1) % 5 + 1;
+		}
+		if (smallActive && _entranceAttrOffset[row + 5] >= 1 && _entranceAttrOffset[row + 5] <= 20) {
+			smallT = (_entranceAttrOffset[row + 5] - 1) / 5;
+			smallV = (_entranceAttrOffset[row + 5] - 1) % 5 + 1;
+		}
+
+		s += Common::String::format("  Slot %d: ", shown);
+		if (bigActive)
+			s += decodeOffset(_entranceAttrOffset[row]);
+		if (bigActive && smallActive)
+			s += " + ";
+		if (smallActive)
+			s += decodeOffset(_entranceAttrOffset[row + 5]);
+
+		// Find snoids matching this slot
+		s += "  →";
+		bool any = false;
+		for (int16 i = 0; i < f._zmbPackActive._wPackZmbCount; i++) {
+			const ZmbStateActiveEntry &e = f._zmbPackActive._entries[i];
+			if (!e._bIsOccupied)
+				continue;
+			bool bigMatch  = (bigT < 0)  || (getTraitByType(e, bigT)   == bigV);
+			bool smallMatch = (smallT < 0) || (getTraitByType(e, smallT) == smallV);
+			if (bigMatch && smallMatch) {
+				Common::String name = e.getU32Name(_vm).encode(Common::kUtf8);
+				s += Common::String::format(" %s-%s-%s-%s (%s)",
+					ZmbTrait::debugTraitValueName(ZmbTrait::kTraitHair, e._traits._head),
+					ZmbTrait::debugTraitValueName(ZmbTrait::kTraitEyes, e._traits._eye),
+					ZmbTrait::debugTraitValueName(ZmbTrait::kTraitNose, e._traits._nose),
+					ZmbTrait::debugTraitValueName(ZmbTrait::kTraitFeet, e._traits._foot),
+					name.c_str());
+				any = true;
+			}
+		}
+		if (!any) s += " (none)";
+		s += "\n";
 	}
-	s += "\n";
 	return s;
 }
 
@@ -710,8 +769,8 @@ void ZoombiniPuzzleCaves::distributeEntranceAttributes() {
 		break;
 
 	case kPuzzleDiffLevel2: {
-		// Level 2: Random 2-4 of first 5 entrances
-		int16 numActive = _vm->_rnd->getRandomNumber(2, 4);
+		// IDA: nextRand_410705(2, 2) => min=max=2, always exactly 2 active entrances
+		int16 numActive = 2;
 		int16 poolSize = 5;
 		for (int i = 0; i < numActive; i++) {
 			int16 randIdx = _vm->_rnd->getRandomNumber(1, poolSize);
@@ -735,7 +794,8 @@ void ZoombiniPuzzleCaves::distributeEntranceAttributes() {
 				slotPool[i] = i;
 			}
 
-			int16 numActive = _vm->_rnd->getRandomNumber(2, 4);
+			// IDA: nextRand_410705(2, 2) => always exactly 2 per group
+			int16 numActive = 2;
 			int16 poolSize = 5;
 			for (int i = 0; i < numActive; i++) {
 				int16 randIdx = _vm->_rnd->getRandomNumber(1, poolSize);
@@ -1156,6 +1216,15 @@ void ZoombiniPuzzleCaves::onEveryFrame() {
 	if (_processingFrame || !_puzzleActive)
 		return;
 	_processingFrame = true;
+
+	// IDA caves_buttonDraw_4181FD @ 0x41822f: the Go button renders the disabled
+	// shape (1) when caves_bAdvanceButtonEnabled_4A08D8 == 0, and the enabled
+	// shape (2) otherwise.  That flag starts 0 (caves_funcInit @ 0x4169a9) and is
+	// set to 1 on the FIRST Zoombini placement (caves_onClickHandler @ 0x418099,
+	// when caves_nTotalSlotCount becomes 1).  ScummVM tracks the same state in
+	// _bAdvanceEnabled; drive the Go button shape from it every frame so the
+	// button is disabled until at least one Zoombini is accepted.
+	setGoButtonsEnabled(_bAdvanceEnabled);
 
 	// [0] Pending Go departure: skip normal logic
 	if (_pendingGoDepart) {

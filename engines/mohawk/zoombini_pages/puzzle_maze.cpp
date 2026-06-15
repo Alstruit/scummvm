@@ -395,6 +395,11 @@ void ZoombiniPuzzleMaze::loadFeatures() {
 	_celebrationTarget = 0;
 	_celebrationPoolState = 0;
 	_celebrationLastFrame = 0;
+
+	// IDA: lilly_bAdvanceEnabled = 0 / lilly_stateVar8 = 0 at puzzle init.
+	// Go button starts disabled until the first Zoombini reaches a path node.
+	_bAdvanceEnabled = false;
+	_nodeArrivalCount = 0;
 }
 
 void ZoombiniPuzzleMaze::onGoButtonActivated() {
@@ -403,27 +408,122 @@ void ZoombiniPuzzleMaze::onGoButtonActivated() {
 }
 
 Common::String ZoombiniPuzzleMaze::debugGetAnswer() const {
-	// Maze: cellAttrType 1=hair, 2=eyes, 3=nose, 4=feet; cellAttrValue 1-5
+	// Bubblewonder Abyss: snoids are launched into a 13x13 hex grid.
+	// _selectedPathSlots[] holds the trait-slot indices for each of the 2-3 chosen paths.
+	// Slot encoding: kAttrOffsets = {0,5,10,15} → slot = offset[j] + traitValue
+	//   slots 1-5 = hair 1-5, slots 6-10 = eye 1-5, slots 11-15 = nose 1-5, slots 16-20 = feet 1-5
+	// Cell type 2 = attribute routing: snoid with matching trait gets routed to nodeDirection;
+	//   otherwise continues straight.
+	// _nodeCycleFlag[r][c] != 0 = colored arrow that CYCLES direction on each snoid pass.
 	static const char *kAttrTypeNames[] = {"", "hair", "eyes", "nose", "feet"};
-
-	Common::String s = Common::String::format("Maze (level %d):\n", _difficultyLevel);
-	s += "  Cell attribute grid (non-empty cells):\n";
-	static const ZmbTrait::TraitCategory kAttrTypeToCategory[] = {
-		ZmbTrait::kTraitHair,
-		ZmbTrait::kTraitHair,
-		ZmbTrait::kTraitEyes,
-		ZmbTrait::kTraitNose,
-		ZmbTrait::kTraitFeet
+	static const ZmbTrait::TraitCategory kAttrTypeCat[] = {
+		ZmbTrait::kTraitHair, ZmbTrait::kTraitHair,
+		ZmbTrait::kTraitEyes, ZmbTrait::kTraitNose, ZmbTrait::kTraitFeet
 	};
+	static const char *kDirNames[] = {"decCol(W)", "incRow(S)", "incCol(E)", "decRow(N)"};
+
+	auto decodeSlot = [&](int16 slot) -> Common::String {
+		if (slot < 1 || slot > 20) return "?";
+		int t = 0;
+		int v = slot;
+		for (int j = 3; j >= 0; j--) {
+			if (slot > kAttrOffsets[j]) { t = j + 1; v = slot - kAttrOffsets[j]; break; }
+		}
+		if (t < 1 || t > 4) return "?";
+		ZmbTrait::TraitCategory cat = kAttrTypeCat[t];
+		return Common::String::format("%s=%d(%s)", kAttrTypeNames[t], v,
+			ZmbTrait::debugTraitValueName(cat, v));
+	};
+
+	Common::String s = Common::String::format("Bubblewonder Abyss (level %d):\n", _difficultyLevel);
+
+	// Show the selected path slots (2-3 distinct trait values)
+	Common::Array<int16> uniqueSlots;
+	for (int i = 0; i < _pathSlotWriteIdx && i < 20; i++) {
+		int16 sl = _selectedPathSlots[i];
+		if (!sl) continue;
+		bool dup = false;
+		for (uint j = 0; j < uniqueSlots.size(); j++)
+			if (uniqueSlots[j] == sl) { dup = true; break; }
+		if (!dup) uniqueSlots.push_back(sl);
+	}
+
+	s += Common::String::format("  %d active path(s):\n", uniqueSlots.size());
+	const ZmbStateFile &f = _vm->_state->_f;
+	for (uint pi = 0; pi < uniqueSlots.size(); pi++) {
+		int16 sl = uniqueSlots[pi];
+		s += Common::String::format("  Path %d: matching %s →", (int)(pi + 1),
+			decodeSlot(sl).c_str());
+
+		// Derive attr type/value from slot
+		int t = 0, v = sl;
+		for (int j = 3; j >= 0; j--) {
+			if (sl > kAttrOffsets[j]) { t = j + 1; v = sl - kAttrOffsets[j]; break; }
+		}
+
+		// Find snoids with this trait — use the loaded snoid's cached name
+		for (int16 i = 0; i < f._zmbPackActive._wPackZmbCount; i++) {
+			const ZmbStateActiveEntry &e = f._zmbPackActive._entries[i];
+			if (!e._bIsOccupied) continue;
+			uint8 traitVal = 0;
+			switch (t) {
+			case 1: traitVal = e._traits._head; break;
+			case 2: traitVal = e._traits._eye;  break;
+			case 3: traitVal = e._traits._nose; break;
+			case 4: traitVal = e._traits._foot; break;
+			}
+			if (traitVal == v) {
+				// Fetch name from the already-loaded snoid (avoids non-const getU32Name)
+				uint16 snoidId = static_cast<uint16>(10000 + i);
+				ZmbSnoid *snoid = getSnoid(snoidId);
+				Common::String snName = snoid ? snoid->_name.encode() : Common::String("?");
+				s += Common::String::format(" %s-%s-%s-%s (%s)",
+					ZmbTrait::debugTraitValueName(ZmbTrait::kTraitHair, e._traits._head),
+					ZmbTrait::debugTraitValueName(ZmbTrait::kTraitEyes, e._traits._eye),
+					ZmbTrait::debugTraitValueName(ZmbTrait::kTraitNose, e._traits._nose),
+					ZmbTrait::debugTraitValueName(ZmbTrait::kTraitFeet, e._traits._foot),
+					snName.c_str());
+			}
+		}
+		s += "\n";
+	}
+
+	// Show attribute routing cells (cell type 2) - these are the key sorting nodes
+	s += "  Attribute routing cells (cell type 2):\n";
+	bool anyRouting = false;
 	for (int r = 0; r < kGridRows; r++) {
 		for (int c = 0; c < kGridCols; c++) {
+			if (_cellTypes[r][c] != 2) continue;
+			anyRouting = true;
 			int16 t = _cellAttrType[r][c];
 			int16 v = _cellAttrValue[r][c];
-			if (t == 0 && v == 0)
-				continue;
-			ZmbTrait::TraitCategory category = (1 <= t && t <= 4) ? kAttrTypeToCategory[t] : ZmbTrait::kTraitHair;
-			const char *name = (1 <= t && t <= 4) ? kAttrTypeNames[t] : "?";
-			s += Common::String::format("    [%2d,%2d] %s=%d (%s)\n", r, c, name, v, ZmbTrait::debugTraitValueName(category, v));
+			const char *dir = (_nodeDirection[r][c] >= 0 && _nodeDirection[r][c] < 4)
+				? kDirNames[_nodeDirection[r][c]] : "?";
+			const char *cycle = _nodeCycleFlag[r][c] ? " [CYCLE arrow changes each pass]" : "";
+			ZmbTrait::TraitCategory cat = (t >= 1 && t <= 4) ? kAttrTypeCat[t] : ZmbTrait::kTraitHair;
+			s += Common::String::format("    [%2d,%2d] if %s=%d(%s) → route %s%s\n",
+				r, c, kAttrTypeNames[t], v,
+				ZmbTrait::debugTraitValueName(cat, v), dir, cycle);
+		}
+	}
+	if (!anyRouting)
+		s += "    (none yet — grid not initialized)\n";
+
+	// Summary of cycle (colored-arrow) nodes
+	bool anyCycle = false;
+	for (int r = 0; r < kGridRows && !anyCycle; r++)
+		for (int c = 0; c < kGridCols && !anyCycle; c++)
+			if (_nodeCycleFlag[r][c]) anyCycle = true;
+	if (anyCycle) {
+		s += "  Colored arrows (cycle direction on each pass):\n";
+		for (int r = 0; r < kGridRows; r++) {
+			for (int c = 0; c < kGridCols; c++) {
+				if (!_nodeCycleFlag[r][c]) continue;
+				const char *dir = (_nodeDirection[r][c] >= 0 && _nodeDirection[r][c] < 4)
+					? kDirNames[_nodeDirection[r][c]] : "?";
+				s += Common::String::format("    [%2d,%2d] currently pointing %s (changes each pass)\n",
+					r, c, dir);
+			}
 		}
 	}
 	return s;
@@ -1952,6 +2052,13 @@ void ZoombiniPuzzleMaze::onFeatureAnimEvent(ZmbFeature *feature, int16 eventCode
 					int16 runnerIdx = findRunnerByFeatureId(feature->getId());
 					if (runnerIdx >= 0)
 						handleCollisionTracking(eventCode, runnerIdx);
+
+					// IDA maze_runnerArriveAtNode_425ADB @ 0x425b65: on a path-node
+					// arrival event, the first arrival (++lilly_stateVar8 == 1) sets
+					// lilly_bAdvanceEnabled = 1, enabling the Go button.  Mirror that
+					// here so the button unlocks once a Zoombini starts crossing.
+					if (eventCode == 30 && ++_nodeArrivalCount == 1)
+						_bAdvanceEnabled = true;
 				}
 				break;
 			default:
@@ -3134,6 +3241,12 @@ void ZoombiniPuzzleMaze::onEveryFrame() {
 	if (_reentryGuard)
 		return;
 	_reentryGuard = true;
+
+	// IDA maze_invalidateVisualRects @ 0x4238bf: the Go button renders enabled
+	// only while lilly_bAdvanceEnabled is set (first node arrival).  Drive the
+	// ScummVM Go button from _bAdvanceEnabled each frame so it stays disabled
+	// until a Zoombini begins crossing the maze.
+	setGoButtonsEnabled(_bAdvanceEnabled);
 
 	if (_puzzleReady)
 		processQueues();

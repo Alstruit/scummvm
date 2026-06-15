@@ -132,6 +132,12 @@ protected:
 	void processEntranceEvent(int16 eventId, ZmbFeature *eventSource);
 
 	/**
+	 * Count real pack snoid feature runners, excluding SCRS animation pools.
+	 * IDA: zmb_countFeatureRunners / getLoadedZmbRunnerCount_452402.
+	 */
+	int16 countPackSnoidFeatureRunners(bool loadedOnly) const;
+
+	/**
 	 * Find an idle pack snoid, optionally preferring a specific ID.
 	 * IDA: findIdleFeatureRunner_456A95
 	 */
@@ -348,6 +354,17 @@ protected:
 
 	/** Re-entrance guard. IDA: word_4A07FC */
 	bool _processingFrame = false;
+
+	/** Pack snoid ID currently being rejected (0 = none).
+	 * IDA: In the original, bridge_laneWalkStepCallback_415D30 was registered ONLY on
+	 * the crossing runner, so only that runner fired the callback.  In ScummVM every
+	 * pack snoid dispatches to processLaneStepEvent via onFeatureAnimEvent, including
+	 * celebration snoids (arrived, _runnerStatus=2).  We track the reject-crossing snoid
+	 * ID so that case -1 logic (startRejectThrowScript / _isRejectPlaying clear / return-
+	 * to-bank) is applied ONLY to the designated crossing snoid, not to arrived snoids
+	 * whose celebration SCRSes happen to fire kZmbAnimEventM1_End while a reject is live.
+	 */
+	uint16 _rejectCrossingSnoidId = 0;
 
 	/** Last frame counter snapshot. IDA: snapshotFrameCounter_414C6C */
 	uint32 _lastFrameSnapshot = 0;

@@ -1154,9 +1154,10 @@ public:
 
 	/**
 	 * Clean up after SCRS playback finishes and clear the select-render-frame hook.
-	 * By default this restores pointLoc to the pre-SCRS origin.
+	 * The automatic completion path keeps pointLoc at the current SCRS position,
+	 * matching IDA's animateZoombini(0, 0, ...) handoff.
 	 */
-	void finishScrsPlayback(bool restorePosition = true);
+	void finishScrsPlayback(bool restorePosition = false);
 
 	/**
 	 * Return the translation applied to raw SCRS hotspot coordinates while rendering.
@@ -1381,8 +1382,8 @@ private:
 	/** Current walk direction bucket 0–4 (0=slope-down, 2=horizontal, 4=slope-up). */
 	int _walkDirBucket = 2;
 	/**
-	 * Saved _pointLoc before SCRS playback began. Restored by finishScrsPlayback()
-	 * so the snoid reappears at its original position when reverting to idle.
+	 * Saved _pointLoc before SCRS playback began. Only restored by callers that
+	 * explicitly ask for pre-SCRS position restoration.
 	 */
 	Common::Point _scrsOrigPointLoc;
 	/**
@@ -1408,12 +1409,12 @@ private:
 	/**
 	 * Time-based animation deadline (IDA: CFeatureRunner307::dNextRenderFrame).
 	 * Animation fires when page->getCurrentFrameCounter() >= _nextAnimFrame,
-	 * then sets _nextAnimFrame = currentFrameCounter + kAnimInterval (=6).
+	 * then sets _nextAnimFrame = currentFrameCounter + getFrameInterval().
 	 *
 	 * IDA: dFrameInterval = 6 (registerVirtualScrbZoombiniAnimation_452A64), and the
 	 * original checks dNextRenderFrame <= scrb_dwFrameRenderTime (= getMillis()/17).
 	 * This makes the animation timer wall-clock-based: the interval is always
-	 * 6 * 17ms = 102ms of real time, regardless of actual render frame rate.
+	 * dFrameInterval * 17ms of real time, regardless of actual render frame rate.
 	 *
 	 * Initialized to 0 so the first tick fires immediately, matching the original's
 	 * dNextRenderFrame = 0 set in zmb_registerSnoidFeatureRunner.

@@ -705,6 +705,23 @@ protected:
 	void prepareSnoidVisualCoverage(ZmbSnoid *snoid, bool cacheFrame);
 
 	/**
+	 * Compute and store the Z-sort rect for a non-snoid SCRB feature from its
+	 * current animation frame, mirroring blitShapes()'s shape-position math but
+	 * using getShapeSize() instead of drawing.
+	 *
+	 * IDA computes each runner's clickRect inside the render callback
+	 * (runner_preRenderStandard / postRenderStandard) and the next frame's
+	 * z-sort reads that previous-frame clickRect.  Critically, IDA also computes
+	 * it once at registration time (runner_registerAndAllocate), so the sort key
+	 * is valid on the very first rendered frame.  ScummVM otherwise sets the
+	 * non-snoid sort rect only during blitShapes() (post-render, after z-sort),
+	 * leaving it empty on frame 1 and corrupting the overlay cache order.  This
+	 * helper closes that gap by computing the sort rect during the pre-render
+	 * pass, before z-sort, for every render-activated SCRB feature.
+	 */
+	void prepareFeatureVisualCoverage(ZmbFeature *feature);
+
+	/**
 	 * IDA: scrb_currentRenderRunnerIdx accumulator.
 	 * Collects dirty rects from external sources (e.g. feature loads, SCRB swaps)
 	 * between render frames.  Merged into _dirtyBounds at start of renderFeatures().

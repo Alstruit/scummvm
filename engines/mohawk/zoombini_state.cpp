@@ -404,7 +404,7 @@ void ZmbStateStoredEntry::sync(Common::Serializer &s, bool isTlcLayout) {
 		s.skip(2);
 }
 
-Common::U32String ZmbStateStoredEntry::getU32Name(MohawkEngine_Zoombini *vm) {
+Common::U32String ZmbStateStoredEntry::getU32Name(MohawkEngine_Zoombini *vm) const {
 	return vm->_text->toU32String(_name, ARRAYSIZE(_name));
 }
 
@@ -425,7 +425,7 @@ void ZmbStateActiveEntry::sync(Common::Serializer &s, bool isTlcLayout) {
 		s.skip(1);
 }
 
-Common::U32String ZmbStateActiveEntry::getU32Name(MohawkEngine_Zoombini *vm) {
+Common::U32String ZmbStateActiveEntry::getU32Name(MohawkEngine_Zoombini *vm) const {
 	return vm->_text->toU32String(_name, ARRAYSIZE(_name));
 }
 

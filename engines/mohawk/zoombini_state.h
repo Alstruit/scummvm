@@ -256,7 +256,7 @@ struct ZmbStateStoredEntry {
 	byte _name[10] = {0};
 
 	void sync(Common::Serializer &s, bool isTlcLayout);
-	Common::U32String getU32Name(MohawkEngine_Zoombini *vm);
+	Common::U32String getU32Name(MohawkEngine_Zoombini *vm) const;
 };
 
 struct ZmbStateStoredChunk {
@@ -287,7 +287,7 @@ struct ZmbStateActiveEntry {
 	byte _name[10] = {0};
 
 	void sync(Common::Serializer &s, bool isTlcLayout);
-	Common::U32String getU32Name(MohawkEngine_Zoombini *vm);
+	Common::U32String getU32Name(MohawkEngine_Zoombini *vm) const;
 };
 
 struct ZmbStateActivePack {

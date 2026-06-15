@@ -498,7 +498,6 @@ private:
 
 	int16 _arrivalQueue[kMaxQueueSize];
 	int16 _arrivalQueueSize = 0;
-
 	int16 _rowChangeQueue[kMaxQueueSize];
 	int16 _rowChangeQueueSize = 0;
 
@@ -620,6 +619,20 @@ private:
 	// --- Zoombini count ---
 	int16 _loadedZmbCount = 0;
 	int16 _arrivedZmbCount = 0;
+
+	/**
+	 * Go (advance) button enabled flag.
+	 * IDA: lilly_bAdvanceEnabled (0x4AE9F2) — shared with the Lilly engine.
+	 * maze_runnerArriveAtNode_425ADB @ 0x425b65 sets it to 1 when the FIRST
+	 * Zoombini reaches a path node (++lilly_stateVar8 == 1).
+	 * maze_invalidateVisualRects @ 0x4238bf renders the Go button enabled only
+	 * while this flag is set, so the button stays disabled until one Zoombini
+	 * has begun crossing the maze.
+	 */
+	bool _bAdvanceEnabled = false;
+
+	/** Count of Zoombinis that have arrived at a path node. IDA: lilly_stateVar8. */
+	int16 _nodeArrivalCount = 0;
 };
 
 } // End of namespace Mohawk

@@ -336,11 +336,13 @@ void ZmbFeature::parseFrames(Common::SeekableReadStream *stream, uint16 frameCou
 			if (shapeid < 0) {
 				// 0xFF00: end of frame
 				// 0xFFxx: end of frame, with event code in low byte
-				// 0xFExx: end of frame, with extra int16 (sound resource id)
+				// 0xFExx: end of frame, with event code in low byte and
+				//        extra int16 (sound resource id)
 				if (shapeid < -256) {
 					int16 soundResId = stream->readSint16BE();
 					hsGroup->assignSoundRes(resolveSoundId(soundResId));
-				} else if (shapeid > -256) {
+				}
+				if ((shapeid & 0xFF) != 0) {
 					hsGroup->assignEventCode(static_cast<uint8>(shapeid & 0xFF));
 				}
 				break;
@@ -750,6 +752,7 @@ void ZmbFeature::runSubFeature(ZoombiniPage *page) {
 
 ZmbSnoid::ZmbSnoid(MohawkEngine_Zoombini *vm, uint16 snoidId, uint32 flags) : _vm(vm), _id(snoidId), ZmbFeature(vm, snoidId, flags) {
 	assert(hasFlag(FLAG_00000001_TYPE_SNOID));
+	setFrameInterval(6);
 }
 
 ZmbSnoid::~ZmbSnoid() {
@@ -778,6 +781,7 @@ void ZmbSnoid::startScrsPlayback(Common::SeekableReadStream *scrsStream, bool hi
                                   bool rejectState, const Common::Point *initPos) {
 	// Save original position for restoration when SCRS finishes
 	_scrsOrigPointLoc = getPointLoc();
+	clearPreparedRenderHotspots();
 
 	// Parse SCRS data (calls clear() which destroys any prior idle/SCRS hotspot data)
 	parseScrsStream(scrsStream);
@@ -869,6 +873,7 @@ void ZmbSnoid::finishScrsPlayback(bool restorePosition) {
 	// Clear the SCRS frame selection hook (idle snoids use frame 0 / virtual hotspots)
 	setSelectRenderFrameFunc(nullptr);
 	clearPreparedRenderHotspots();
+	_scrsRenderOffset = Common::Point(0, 0);
 	deactivateAnimate();
 }
 
@@ -951,12 +956,11 @@ void ZmbSnoid::setAnimState(SnoidAnimState state, const Common::Point *pos) {
 // IDA uses a slope-based direction bucket (0=up, 1=up-right, 2=right, 3=down-right, 4=down)
 // then a fixed speed table; the dominant axis uses the table value directly and the
 // minor axis is a proportional fraction.
-// Speed values are raw pixels per animation tick.  onSnoidAnimTick() uses a time-based
-// deadline (IDA: dNextRenderFrame <= scrb_dwFrameRenderTime) with kAnimInterval=6, matching
-// IDA dFrameInterval=6 from zmb_registerSnoidFeatureRunner.  The original's frame counter
-// is getMillis()/17 (ceil(1000/60), 486SX integer approx), so one animation tick = 6*17ms
-// = 102ms of wall clock time.  ScummVM uses getCurrentFrameCounter() = getMillis()/16.667,
-// giving 6*16.667ms ≈ 100ms — close enough to the original.
+// Speed values are raw pixels per animation tick. onSnoidAnimTick() uses a time-based
+// deadline (IDA: dNextRenderFrame <= scrb_dwFrameRenderTime) advanced by the runner's
+// frame interval. The default interval is 6, but Bridge accepted crossings override it
+// to 4 or 5. The original's frame counter is getMillis()/17 (ceil(1000/60), 486SX
+// integer approx), so one default animation tick is 6*17ms = 102ms of wall clock time.
 static void calcPathSpeed(int16 dx, int16 dy, int16 &speedX, int16 &speedY) {
 	// dy here = curY - targetY (positive means target is above current pos on screen)
 	int slope;
@@ -969,11 +973,11 @@ static void calcPathSpeed(int16 dx, int16 dy, int16 &speedX, int16 &speedY) {
 	}
 
 	// Direction bucket + speed table from IDA snoidPath_stepAndComputeVelocity_4548DF:
-	// dir 0 (≤-1409): mostly upward        → sx=5,  sy=-15
-	// dir 1 (-1409..-333): steep up-right  → sx=13, sy=-10
-	// dir 2 (-332..331):   mostly horizontal→ sx=16, sy=8
-	// dir 3 (332..1408):   steep down-right → sx=13, sy=10
-	// dir 4 (≥1409): mostly downward        → sx=5,  sy=15
+	// dir 0 (<= -1409): mostly upward         -> sx=5,  sy=-15
+	// dir 1 (-1409..-333): steep up-right     -> sx=13, sy=-10
+	// dir 2 (-332..331):   mostly horizontal  -> sx=16, sy=8
+	// dir 3 (332..1408):   steep down-right   -> sx=13, sy=10
+	// dir 4 (>= 1409):     mostly downward    -> sx=5,  sy=15
 	int16 sx, sy;
 	if (slope <= -1409) {
 		sx = 5;
@@ -1013,7 +1017,7 @@ static void calcPathSpeed(int16 dx, int16 dy, int16 &speedX, int16 &speedY) {
 
 	// Speed values are raw pixels-per-animation-interval from the IDA speed table
 	// (snoidPath_stepAndComputeVelocity_4548DF).  onSnoidAnimTick() fires every
-	// kAnimInterval=6 frame-counter units (~100ms), matching IDA dFrameInterval=6.
+	// getFrameInterval() frame-counter units, matching IDA dFrameInterval.
 	// No extra scaling needed.
 	speedX = ABS(speedX);
 	if (speedY != 0) {
@@ -1095,7 +1099,7 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 		// in onRender_ZoombiniAnimation_452B9C.  The post-render callback
 		// (onPostRender_ZoombiniAnimation_452ADD) always draws when
 		// wBoolDoRender=1, so _isRenderActivated is NOT changed by
-		// stagger delays — only animation timing is gated.
+		// stagger delays - only animation timing is gated.
 		_delayUntilFrame = 0;
 	}
 	// IDA 0x452BBC: hidden snoids (wBoolDoRender=0) skip the entire animation
@@ -1104,12 +1108,12 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 	// voice SFX with uninitialised traits, producing wrong sounds.
 	if (!isRenderActivated())
 		return false;
-	// IDA: dFrameInterval = 6.  Time-based deadline, not frame-count.
-	static constexpr uint32 kAnimInterval = 6;
+	// IDA: dFrameInterval is per runner. Bridge accepted crossings set it to
+	// a random 4 or 5, while default snoid runners keep the registration-time 6.
 	uint32 currentFrame = page->getCurrentFrameCounter();
 	if (currentFrame < _nextAnimFrame)
 		return false;
-	_nextAnimFrame = currentFrame + kAnimInterval;
+	_nextAnimFrame = currentFrame + getFrameInterval();
 
 	bool needsRedraw = false;
 
@@ -1476,14 +1480,14 @@ bool ZmbSnoid::onSnoidAnimTick(ZoombiniPage *page) {
 		} else {
 			// SCRS animation finished.
 			// IDA: if chRand_64_0==1, hide the snoid (wBoolDoRender=0) without
-			// restoring position. Otherwise animateZoombini(0,0,...) -> idle.
+			// restoring position. Otherwise animateZoombini(0,0,...) -> idle at
+			// the current SCRS-driven position.
 			if (_scrsHideOnComplete) {
+				finishScrsPlayback(false);
 				deactivateRender();
-				setSelectRenderFrameFunc(nullptr);
-				deactivateAnimate();
 				_animState = kSnoidAnimIdle;
 			} else {
-				finishScrsPlayback();
+				finishScrsPlayback(false);
 				setAnimState(kSnoidAnimIdle);
 			}
 			_scrsHideOnComplete = false;

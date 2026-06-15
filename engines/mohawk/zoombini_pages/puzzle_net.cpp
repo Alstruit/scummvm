@@ -364,22 +364,66 @@ void ZoombiniPuzzleNet::onGoButtonActivated() {
 }
 
 Common::String ZoombiniPuzzleNet::debugGetAnswer() const {
-	// Net axis: 0=foot, 1=nose, 2=eye, 3=head (same as Hotel packed-DWORD order)
+	// Mudball Wall:
+	// - Player selects color + shape (+ inner color at levels 3-4) for each mudball.
+	// - Color determines which WALL ROW the mudball hits.
+	// - Shape determines which WALL COLUMN the mudball hits.
+	// - Inner color (level 4) selects a sub-cell within the column.
+	// - Each active target slot in the ruleGrid has unique (color, shape) values.
+	// - When the mudball combination matches a slot, the snoid assigned to that
+	//   slot's game column is catapulted over the wall.
+	//
+	// IDA findSlotByAttrColumns logic:
+	//   if _attrRowLabel==2: ruleGridA[slot]==_randAttrColOffset[2] (color)
+	//                        ruleGridB[slot]==_randAttrColOffset[1] (shape)
+	//   else:                ruleGridB[slot]==_randAttrColOffset[2] (color)
+	//                        ruleGridA[slot]==_randAttrColOffset[1] (shape)
+	// Button offsets are 0-4 (matching left-to-right click order).
+	// Rule is fixed per band; regenerated each new band.
+	// STRL 2500-2560: "color→row, shape→column, inner color→sub-column"
+
 	static const char *kAxisNames[] = {"foot", "nose", "eye", "head"};
+	bool useGridAForColor = (_attrRowLabel == 2);
 
-	const char *rowName = (0 <= _attrRowLabel && _attrRowLabel <= 3) ? kAxisNames[_attrRowLabel] : "?";
-	const char *colName = (0 <= _attrColLabel && _attrColLabel <= 3) ? kAxisNames[_attrColLabel] : "?";
-	const char *seedName = (0 <= _seed && _seed <= 3) ? kAxisNames[_seed] : "?";
+	const char *colorAxisName = useGridAForColor
+		? ((0 <= _attrColLabel && _attrColLabel <= 3) ? kAxisNames[_attrColLabel] : "?")
+		: ((0 <= _attrRowLabel && _attrRowLabel <= 3) ? kAxisNames[_attrRowLabel] : "?");
+	const char *shapeAxisName = useGridAForColor
+		? ((0 <= _attrRowLabel && _attrRowLabel <= 3) ? kAxisNames[_attrRowLabel] : "?")
+		: ((0 <= _attrColLabel && _attrColLabel <= 3) ? kAxisNames[_attrColLabel] : "?");
+	const char *innerAxisName = (0 <= _seed && _seed <= 3) ? kAxisNames[_seed] : "?";
 
-	Common::String s = Common::String::format("Net (level %d): columns=%d\n",
+	Common::String s = Common::String::format("Mudball Wall (level %d): %d target(s)\n",
 		_difficultyLevel, _columnCount);
-	s += Common::String::format("  Row axis: %s(%d), Col axis: %s(%d), Seed: %s(%d)\n",
-		rowName, _attrRowLabel, colName, _attrColLabel, seedName, _seed);
-	s += Common::String::format("  Permutation index: %d\n", _attrPermutationIdx);
-	s += "  Column sizes: ";
-	for (int i = 0; i < _columnCount && i < 12; i++)
-		s += Common::String::format("%d ", _columnSizes[i]);
-	s += "\n";
+	s += Common::String::format("  Color buttons (wall row):    %s attribute\n", colorAxisName);
+	s += Common::String::format("  Shape buttons (wall column): %s attribute\n", shapeAxisName);
+	if (_difficultyLevel >= kPuzzleDiffLevel4)
+		s += Common::String::format("  Inner color  (sub-column):   %s attribute\n", innerAxisName);
+	s += "  Button positions are 0-4 (0 = leftmost button).\n";
+
+	// Each active slot (one per game column) has unique required offsets in ruleGridA/B.
+	// Iterate all slot positions; nonzero slotColumnAssign = one game column's target.
+	s += "  [Required Mudballs]\n";
+	int16 targetIdx = 0;
+	for (int16 pos = 0; pos < _totalSlotCount; pos++) {
+		if (_slotColumnAssign[pos] == 0)
+			continue;
+
+		int16 rga = _ruleGridA[pos];
+		int16 rgb = _ruleGridB[pos];
+		int16 rgc = (_difficultyLevel >= kPuzzleDiffLevel3) ? _ruleGridC[pos] : -1;
+
+		// Map grid values to color/shape offsets
+		int16 colorOffset = useGridAForColor ? rga : rgb;
+		int16 shapeOffset = useGridAForColor ? rgb : rga;
+		int16 colSize = _slotColumnAssign[pos];
+
+		s += Common::String::format("  (%d) Color %d + Shape %d",
+			++targetIdx, colorOffset, shapeOffset);
+		if (rgc >= 0)
+			s += Common::String::format(" + Inner %d", rgc);
+		s += Common::String::format("  \u2192 fires %d snoid(s) in sequence\n", colSize);
+	}
 	return s;
 }
 

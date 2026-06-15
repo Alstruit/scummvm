@@ -481,34 +481,33 @@ void ZoombiniPuzzleSmoke::onGoButtonActivated() {
 }
 
 Common::String ZoombiniPuzzleSmoke::debugGetAnswer() const {
-	// _questionAttrs layout: [0]=head, [1]=eye, [2]=nose, [3]=foot (primary)
-	//                        [4]=head, [5]=eye, [6]=nose, [7]=foot (secondary)
-	static const char *kSlotNames[] = {"head", "eye", "nose", "foot"};
-	// Category mapping for value names: head->0(hair), eye->1(eyes), nose->2(nose), foot->3(feet)
+	// Mirror Machine: each Zoombini in the queue is a sub-puzzle.
+	// Level 1-2: 1 snoid shown at a time. Place snoid in cart + matching crystal plate.
+	// Level 3-4: 2 snoids shown at a time.
+	// Crystal plate must have exactly the same traits as the snoid shown in the cart.
+	// _zmbQueue[0.._zmbCount-1] is the full sequence to solve (in order).
+	int pairSize = (_difficultyLevel >= kPuzzleDiffLevel3) ? 2 : 1;
+	Common::String s = Common::String::format(
+		"Mirror Machine (level %d): %d snoids, %d shown at a time\n",
+		_difficultyLevel, _zmbCount, pairSize);
+	s += "  [Required Crystals — place snoid in cart and select the matching crystal plate]\n";
 
-	Common::String s = Common::String::format("Smoke (level %d): questionResult=%d\n",
-		_difficultyLevel, _questionResult);
-	s += "  Question attrs (primary):  ";
-	static const ZmbTrait::TraitCategory kQuestionCategories[] = {
-		ZmbTrait::kTraitHair,
-		ZmbTrait::kTraitEyes,
-		ZmbTrait::kTraitNose,
-		ZmbTrait::kTraitFeet
-	};
-	for (int i = 0; i < 4; i++) {
-		int16 v = _questionAttrs[i];
-		ZmbTrait::TraitCategory category = kQuestionCategories[i];
-		const char *valName = (1 <= v && v <= 5) ? ZmbTrait::debugTraitValueName(category, v) : "-";
-		s += Common::String::format("%s=%d(%s) ", kSlotNames[i], v, valName);
+	for (int16 i = 0; i < _zmbCount; i++) {
+		uint16 snoidId = _zmbQueue[i];
+		ZmbSnoid *snoid = snoidId ? getSnoid(snoidId) : nullptr;
+		if (!snoid) {
+			s += Common::String::format("  (%2d) (snoid not found)\n", i + 1);
+			continue;
+		}
+		Common::String name = snoid->_name.encode(Common::kUtf8);
+		s += Common::String::format("  (%2d) %s-%s-%s-%s (%s)\n",
+			i + 1,
+			ZmbTrait::debugTraitValueName(ZmbTrait::kTraitHair, snoid->_trait._head),
+			ZmbTrait::debugTraitValueName(ZmbTrait::kTraitEyes, snoid->_trait._eye),
+			ZmbTrait::debugTraitValueName(ZmbTrait::kTraitNose, snoid->_trait._nose),
+			ZmbTrait::debugTraitValueName(ZmbTrait::kTraitFeet, snoid->_trait._foot),
+			name.c_str());
 	}
-	s += "\n  Question attrs (secondary): ";
-	for (int i = 4; i < 8; i++) {
-		int16 v = _questionAttrs[i];
-		ZmbTrait::TraitCategory category = kQuestionCategories[i - 4];
-		const char *valName = (1 <= v && v <= 5) ? ZmbTrait::debugTraitValueName(category, v) : "-";
-		s += Common::String::format("%s=%d(%s) ", kSlotNames[i - 4], v, valName);
-	}
-	s += "\n";
 	return s;
 }
 
@@ -1945,6 +1944,14 @@ void ZoombiniPuzzleSmoke::onEveryFrame() {
 	if (_processingFrame || !_puzzleActive)
 		return;
 	_processingFrame = true;
+
+	// IDA smoke_invalidateVisualRects @ 0x44a561: the exit-gate (Go) button
+	// renders enabled only while smoke_bExitGateEnabled is set.  That flag
+	// starts 0 (smoke_init @ 0x44985f) and is set to 1 on the FIRST Zoombini
+	// reaching the cliff (smoke_onHover @ 0x44a944, when smoke_loadedOnCliffCount
+	// becomes 1).  ScummVM tracks the same in _bExitGateEnabled; drive the Go
+	// button from it each frame so it stays disabled until one Zoombini crosses.
+	setGoButtonsEnabled(_bExitGateEnabled);
 
 	// Pending Go departure
 	if (_pendingGoDepart) {

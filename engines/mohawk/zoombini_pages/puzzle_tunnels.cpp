@@ -1829,6 +1829,14 @@ void ZoombiniPuzzleTunnels::processSnoidAnimEvent(ZmbSnoid *snoid, int16 eventCo
 				} else if (_enteredCount == 14) {
 					_celebrationTarget += 2;
 				}
+
+				// IDA tunnels_scrbAnimCallback @ 0x45b953: after the gate-arrival
+				// milestone bump, if the Go-button flag (word_4B7A0E) is still 0 it
+				// is set to getLoadedZmbRunnerCount() (> 0).  This enables the Go
+				// button on the FIRST successful crossing - not at puzzle setup.
+				// tunnels_invalidateVisualRects @ 0x45a389 drives the button shape
+				// from that same flag every frame.
+				setGoButtonsEnabled(true);
 			}
 
 			// Set initial entered count on first entry
@@ -2079,9 +2087,8 @@ void ZoombiniPuzzleTunnels::onEveryFrame() {
 						}
 					} else {
 						// IDA: *(v5+40) = 4 — set frame interval to 4 ticks per
-						// frame, slowing the snoid's animation. The animation
-						// speed setter on ZmbSnoid achieves the equivalent.
-						snoid->setAnimSpeed(4, 0);
+						// frame, slowing the snoid's animation.
+						snoid->setFrameInterval(4);
 					}
 
 					_animLocked = true;
@@ -2127,7 +2134,9 @@ postAnimQueue:
 			_mainPathFeature->removeFlag(ZmbFeature::FLAG_01000000_DEFER_RENDER);
 			// Animation complete callback will call playAmbientSound
 		}
-		setGoButtonsEnabled(true);
+		// IDA tunnels_mainInit @ 0x459de5 sets word_4B7A0E = 0 (Go disabled) at
+		// setup; the Go button is only enabled later on the first crossing (see
+		// processSnoidAnimEvent gate-arrival path).  Do NOT enable it here.
 	}
 
 	// Celebration fidget system (IDA: word_4B7AEE < word_4B7AEC)
@@ -2189,28 +2198,93 @@ void ZoombiniPuzzleTunnels::onGoButtonActivated() {
 }
 
 Common::String ZoombiniPuzzleTunnels::debugGetAnswer() const {
+	// IDA: tunnels_evalAttrRule_45C65D + kTunnelEntryPositions.
+	// 4 cave entrances are in a single horizontal row (y≈415-430):
+	//   Zone 1: x=98  (leftmost)     Zone 2: x=178 (left-center)
+	//   Zone 3: x=453 (right-center) Zone 4: x=533 (rightmost)
+	// Guard A (guards[0], v12) = Rock left (Crystal) / Rock right (Igno):
+	//   v12=T → Crystal's pair (zones 1,2 left)  v12=F → Igno's pair (zones 3,4 right)
+	// Guard B (guards[1], v11) = Rock top (Onyx) / Rock bottom (Ferrous):
+	//   v11=T → Onyx's pair (zones 1,4 outer)    v11=F → Ferrous's pair (zones 2,3 inner)
+	// Cave layout:
+	//   Zone 1 (leftmost):     Rock left (Crystal) + Rock top (Onyx)
+	//   Zone 2 (left-center):  Rock left (Crystal) + Rock bottom (Ferrous)
+	//   Zone 3 (right-center): Rock right (Igno)   + Rock bottom (Ferrous)
+	//   Zone 4 (rightmost):    Rock right (Igno)   + Rock top (Onyx)
+	// Rock names from English manual: "Onyx and Ferrous, Crystal and Ignorameous"
+	// Crystal=left, Igno=right confirmed by manual caption. Rule changes each new band.
 	static const char *kAttrTypeNames[] = {"", "hair", "eyes", "nose", "legs"};
+	static const ZmbTrait::TraitCategory kAttrTypeToCategory[] = {
+		ZmbTrait::kTraitHair,
+		ZmbTrait::kTraitHair,
+		ZmbTrait::kTraitEyes,
+		ZmbTrait::kTraitNose,
+		ZmbTrait::kTraitFeet
+	};
 
-	Common::String s = Common::String::format("Tunnels (level %d): guardCount=%d\n",
-		_difficultyLevel, _guardCount);
-	for (int i = 0; i < _guardCount && i < 2; i++) {
-		const TunnelGuard &g = _guards[i];
-		s += Common::String::format("  guard %d: side=%s, conditions=%d\n",
-			i, g.sideFlag ? "right" : "left", g.condCount);
-		static const ZmbTrait::TraitCategory kAttrTypeToCategory[] = {
-			ZmbTrait::kTraitHair,
-			ZmbTrait::kTraitHair,
-			ZmbTrait::kTraitEyes,
-			ZmbTrait::kTraitNose,
-			ZmbTrait::kTraitFeet
-		};
+	// Build trait description string for one guard's conditions
+	auto traitDesc = [&](const TunnelGuard &g) -> Common::String {
+		Common::String d;
 		for (int j = 0; j < g.condCount && j < 2; j++) {
 			uint8 t = g.attrType[j];
 			uint8 v = g.attrValue[j];
-			ZmbTrait::TraitCategory category = (1 <= t && t <= 4) ? kAttrTypeToCategory[t] : ZmbTrait::kTraitHair;
-			const char *name = (1 <= t && t <= 4) ? kAttrTypeNames[t] : "?";
-			s += Common::String::format("    cond %d: %s=%d (%s)\n", j, name, v, ZmbTrait::debugTraitValueName(category, v));
+			ZmbTrait::TraitCategory cat = (1 <= t && t <= 4) ? kAttrTypeToCategory[t] : ZmbTrait::kTraitHair;
+			const char *tname = (1 <= t && t <= 4) ? kAttrTypeNames[t] : "?";
+			if (j > 0)
+				d += (g.attrType[0] == g.attrType[1]) ? " OR " : " AND ";
+			d += Common::String::format("%s=%d(%s)", tname, v, ZmbTrait::debugTraitValueName(cat, v));
 		}
+		return d;
+	};
+
+	// "vNeedsTrue=true" means the rock that v12=T/v11=T maps to (Crystal or Onyx).
+	// sideFlag=true → v=T when snoid HAS trait; sideFlag=false → v=T when snoid LACKS trait.
+	auto acceptDesc = [&](const TunnelGuard &g, bool vNeedsTrue) -> Common::String {
+		bool requiresHaving = (vNeedsTrue == g.sideFlag);
+		Common::String d = requiresHaving ? "ACCEPTS HAS " : "ACCEPTS LACKS ";
+		d += traitDesc(g);
+		return d;
+	};
+
+	Common::String s = Common::String::format("Tunnels (level %d): rules change each new band\n",
+		_difficultyLevel);
+
+	// Describe each named rock and what it accepts
+	// Guards checked in order: Rock left/right (Guard A) first, then Rock top/bottom (Guard B)
+	if (_guardCount >= 1) {
+		s += Common::String::format("  Rock left  (Crystal):   %s\n",
+			acceptDesc(_guards[0], true).c_str());
+		s += Common::String::format("  Rock right (Igno):      %s\n",
+			acceptDesc(_guards[0], false).c_str());
+	}
+	if (_guardCount >= 2) {
+		s += Common::String::format("  Rock top   (Onyx):      %s\n",
+			acceptDesc(_guards[1], true).c_str());
+		s += Common::String::format("  Rock bottom(Ferrous):   %s\n",
+			acceptDesc(_guards[1], false).c_str());
+	}
+
+	s += "  Cave layout (left to right):\n";
+	if (_guardCount == 1) {
+		// Level 1: 2 caves — Crystal on left (zone 1), Igno on right (zone 2)
+		s += Common::String::format("    Rock left  (Crystal): %s\n",
+			acceptDesc(_guards[0], true).c_str());
+		s += Common::String::format("    Rock right (Igno):    %s\n",
+			acceptDesc(_guards[0], false).c_str());
+	} else if (_guardCount >= 2) {
+		// Levels 2-4: 4 caves
+		s += Common::String::format("    [1] leftmost:    Rock left  (Crystal) %s  +  Rock top   (Onyx)    %s\n",
+			acceptDesc(_guards[0], true).c_str(),
+			acceptDesc(_guards[1], true).c_str());
+		s += Common::String::format("    [2] left-center: Rock left  (Crystal) %s  +  Rock bottom(Ferrous) %s\n",
+			acceptDesc(_guards[0], true).c_str(),
+			acceptDesc(_guards[1], false).c_str());
+		s += Common::String::format("    [3] right-center:Rock right (Igno)    %s  +  Rock bottom(Ferrous) %s\n",
+			acceptDesc(_guards[0], false).c_str(),
+			acceptDesc(_guards[1], false).c_str());
+		s += Common::String::format("    [4] rightmost:   Rock right (Igno)    %s  +  Rock top   (Onyx)    %s\n",
+			acceptDesc(_guards[0], false).c_str(),
+			acceptDesc(_guards[1], true).c_str());
 	}
 	return s;
 }
