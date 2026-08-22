@@ -50,7 +50,15 @@ namespace Cyberflix {
 struct MovieMusicPlaylist {
 	Common::Array<uint32> resourceIds;
 	uint64 startTicks = 0;
+	uint32 startFrame = 0;
 	int loopStart = 0;
+	bool loops = false;
+};
+
+struct MovieMusicTrack {
+	Common::Array<byte> pcm;
+	uint32 startFrame = 0;
+	uint32 loopStartSample = 0;
 	bool loops = false;
 };
 
@@ -157,6 +165,49 @@ static void renderMovieMusicPlaylists(const Common::Array<byte> &fileData,
 
 	if (wrotePlaylistEntry)
 		track.swap(rendered);
+}
+
+static MovieMusicTrack decodeInteractiveMovieMusic(const Common::Array<byte> &fileData,
+		const Archive &archive, const MovieMusicPlaylist &playlist,
+		Common::HashMap<uint32, Common::SharedPtr<Common::Array<byte> > > &cache) {
+	MovieMusicTrack track;
+	track.startFrame = playlist.startFrame;
+
+	for (uint i = 0; i < playlist.resourceIds.size(); ++i) {
+		if (i == static_cast<uint>(playlist.loopStart))
+			track.loopStartSample = track.pcm.size();
+		Common::SharedPtr<Common::Array<byte> > pcm = decodeMovieSound(fileData,
+				archive, playlist.resourceIds[i], cache);
+		if (!pcm || pcm->empty() || pcm->size() > 0xffffffffU - track.pcm.size())
+			continue;
+		const uint32 oldSize = track.pcm.size();
+		track.pcm.resize(oldSize + pcm->size());
+		memcpy(track.pcm.begin() + oldSize, pcm->begin(), pcm->size());
+	}
+
+	track.loops = playlist.loops && track.loopStartSample < track.pcm.size();
+	return track;
+}
+
+static bool startInteractiveMovieMusic(Audio::Mixer *mixer, Audio::SoundHandle &handle,
+		const MovieMusicTrack &track, byte volume) {
+	if (!mixer || track.pcm.empty())
+		return false;
+
+	Audio::SeekableAudioStream *stream = makeOwnedRawPcmStream(track.pcm);
+	if (!stream)
+		return false;
+	Audio::AudioStream *playbackStream = stream;
+	if (track.loops) {
+		playbackStream = new Audio::SubLoopingAudioStream(stream, 0,
+				Audio::Timestamp(0, track.loopStartSample, kAudioSampleRate),
+				Audio::Timestamp(0, track.pcm.size(), kAudioSampleRate));
+	}
+
+	mixer->stopHandle(handle);
+	mixer->playStream(Audio::Mixer::kSFXSoundType, &handle, playbackStream);
+	mixer->setChannelVolume(handle, volume);
+	return true;
 }
 
 // Sample-add an 8-bit unsigned mono SFX buffer into the music track at the given
@@ -661,6 +712,7 @@ void MovieRuntime::playMovie(CyberflixEngine &engine, const Common::String &name
 	// sound at their concatenation offset instead of their trigger frame.
 	Common::Array<byte> pcmBuf;
 	Common::Array<MovieMusicPlaylist> musicPlaylists;
+	Common::Array<MovieMusicTrack> interactiveMusicTracks;
 	// Cumulative start time (60 Hz ticks) of each video frame; last entry is the total
 	// duration. Built from the per-frame event chunks below. Empty => no usable
 	// master header, in which case the frame loop falls back to a fixed cadence.
@@ -813,6 +865,7 @@ void MovieRuntime::playMovie(CyberflixEngine &engine, const Common::String &name
 						const uint32 sourceCount = diskStreamed ? recordCount : playlistCount;
 						MovieMusicPlaylist playlist;
 						playlist.startTicks = cumTicks;
+						playlist.startFrame = pfVideoRes.size();
 						for (uint32 e = 0; e < sourceCount; ++e) {
 							const int index = diskStreamed ? static_cast<int>(e + 1)
 									: static_cast<int16>(READ_LE_UINT16(mt + 6 + e * 2));
@@ -946,19 +999,29 @@ void MovieRuntime::playMovie(CyberflixEngine &engine, const Common::String &name
 		frameStartTicks.push_back(cumTicks); // total movie duration (all segments)
 	}
 
-	if (!frameStartTicks.empty())
-		renderMovieMusicPlaylists(fileData, archive, musicPlaylists,
-				frameStartTicks.back(), pcmBuf);
-
 	// A movie is interactive if any frame carries buttons (the main menu,
-	// BEDCARDS, BEDCAB, ...). Such movies loop their soundtrack while they wait
-	// for the user; linear movies (the logo) play their track once.
+	// BEDCARDS, PENOTE, ...). Its duration is controlled by input, so preserve
+	// the playlist as a first pass plus its authored loop tail. Rendering only
+	// the short nominal frame timeline and looping that buffer repeats a prefix
+	// of the first cue instead of ever advancing to later chunks.
 	bool hasInteractive = false;
 	for (uint i = 0; i < pfButtons.size(); ++i)
 		if (!pfButtons[i].empty()) {
 			hasInteractive = true;
 			break;
 		}
+	if (hasInteractive) {
+		Common::HashMap<uint32, Common::SharedPtr<Common::Array<byte> > > musicCache;
+		for (uint i = 0; i < musicPlaylists.size(); ++i) {
+			MovieMusicTrack track = decodeInteractiveMovieMusic(fileData, archive,
+					musicPlaylists[i], musicCache);
+			if (!track.pcm.empty())
+				interactiveMusicTracks.push_back(track);
+		}
+	} else if (!frameStartTicks.empty()) {
+		renderMovieMusicPlaylists(fileData, archive, musicPlaylists,
+				frameStartTicks.back(), pcmBuf);
+	}
 	const bool playFrameSfxLive = hasInteractive || pcmBuf.empty();
 	uint32 frameSfxBytes = 0;
 	for (uint i = 0; i < pfFrameSfx.size(); ++i)
@@ -1011,23 +1074,33 @@ void MovieRuntime::playMovie(CyberflixEngine &engine, const Common::String &name
 	Common::String nextMovieName;
 	int nextMovieStartFrame = 0;
 	bool hasMovieAudio = false;
+	int activeMusicTrack = -1;
 	if (!pcmBuf.empty()) {
 		Audio::SeekableAudioStream *stream = makeOwnedRawPcmStream(pcmBuf);
 		if (stream) {
-			if (hasInteractive) {
-				Audio::AudioStream *loop = new Audio::LoopingAudioStream(stream, 0);
-				engine._mixer->playStream(Audio::Mixer::kSFXSoundType, &audioHandle, loop);
-			} else {
-				engine._mixer->playStream(Audio::Mixer::kSFXSoundType, &audioHandle, stream);
-			}
+			engine._mixer->playStream(Audio::Mixer::kSFXSoundType, &audioHandle, stream);
 			engine._mixer->setChannelVolume(audioHandle, engine.audioRuntime().effectiveAudioVolume(255));
 			hasMovieAudio = true;
 		}
+	} else if (!interactiveMusicTracks.empty()) {
+		for (uint i = 0; i < interactiveMusicTracks.size(); ++i) {
+			if (interactiveMusicTracks[i].startFrame > static_cast<uint32>(initialFrame))
+				break;
+			activeMusicTrack = i;
+		}
+		if (activeMusicTrack >= 0) {
+			hasMovieAudio = startInteractiveMovieMusic(engine._mixer, audioHandle,
+					interactiveMusicTracks[activeMusicTrack],
+					engine.audioRuntime().effectiveAudioVolume(255));
+		}
 	}
 
+	uint32 musicBytes = pcmBuf.size();
+	for (uint i = 0; i < interactiveMusicTracks.size(); ++i)
+		musicBytes += interactiveMusicTracks[i].pcm.size();
 	debug(0, "Cyberflix: movie '%s' frames=%u audioBytes=%u frameSfxBytes=%u audioMs=%u",
-			currentMovieName.c_str(), pfVideoRes.empty() ? frames.size() : pfVideoRes.size(), pcmBuf.size(), frameSfxBytes,
-			static_cast<uint32>((static_cast<uint64>(pcmBuf.size()) * 1000 / kAudioSampleRate)));
+			currentMovieName.c_str(), pfVideoRes.empty() ? frames.size() : pfVideoRes.size(), musicBytes, frameSfxBytes,
+			static_cast<uint32>((static_cast<uint64>(musicBytes) * 1000 / kAudioSampleRate)));
 
 
 	// Composite frames in order into a persistent surface (frames are
@@ -1062,6 +1135,16 @@ void MovieRuntime::playMovie(CyberflixEngine &engine, const Common::String &name
 			hasMovieAudio ? 1 : 0, movieSkippable ? 1 : 0, actionCue1, actionCue2);
 	while (fi >= 0 && fi < frameCount && !engine.shouldQuit() && !skip) {
 		const uint frameIndex = static_cast<uint>(fi);
+		for (uint i = 0; i < interactiveMusicTracks.size(); ++i) {
+			if (interactiveMusicTracks[i].startFrame == frameIndex &&
+					activeMusicTrack != static_cast<int>(i)) {
+				activeMusicTrack = i;
+				hasMovieAudio = startInteractiveMovieMusic(engine._mixer, audioHandle,
+						interactiveMusicTracks[i],
+						engine.audioRuntime().effectiveAudioVolume(255));
+				break;
+			}
+		}
 		// Multi-segment movies code each segment independently. The native
 		// player (FUN_0040ca80) re-enters the segment-load path (LAB_0040cad3)
 		// for each segment, reinitializing the decode context. Resetting the
