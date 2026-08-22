@@ -1075,6 +1075,16 @@ void MovieRuntime::playMovie(CyberflixEngine &engine, const Common::String &name
 	int nextMovieStartFrame = 0;
 	bool hasMovieAudio = false;
 	int activeMusicTrack = -1;
+	// An embedded movie soundtrack replaces the script-owned theme, sound and
+	// voice channels. Leaving those handles alive mixes the preceding room audio
+	// underneath the movie (most visibly in CREDITS) even though the movie has
+	// supplied its own complete audio program. Stop them before installing the
+	// movie handle; frame and button cues below remain movie-local.
+	if (!pcmBuf.empty() || !interactiveMusicTracks.empty()) {
+		engine.audioRuntime().haltTheme(engine);
+		engine.audioRuntime().haltSound(engine, 3);
+		engine.audioRuntime().haltVoice(engine);
+	}
 	if (!pcmBuf.empty()) {
 		Audio::SeekableAudioStream *stream = makeOwnedRawPcmStream(pcmBuf);
 		if (stream) {
